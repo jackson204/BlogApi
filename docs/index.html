@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>部落格 API 學習筆記</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<main class="page">
+<h1>📚 部落格 Web API 學習筆記</h1>
+<p class="subtitle">以部落格當主線，每個階段遇到問題時再學對應主題。先自己寫，寫完再打開 🔒 參考答案。</p>
+
+<input id="q" class="search" type="search" placeholder="搜尋主題，例如：Include、多對多、DI、N+1、volume…" autocomplete="off">
+
+<div id="list" class="lesson-list"></div>
+<p id="empty" class="empty">找不到符合的課程，換個關鍵字試試。</p>
+
+</main>
+<script>
+// 新增課程時：把 file 填上，就會變成可點擊
+var lessons = [
+  { stage: "階段 0", title: "00｜環境準備：用 Docker 跑 MSSQL", file: "lessons/00-docker-mssql.html",
+    tags: ["Docker", "image", "container", "volume", "port", "docker compose", "MSSQL", "連線字串", "sqlcmd", "Rider Database"] },
+  { stage: "階段 1", title: "01｜文章 CRUD：EF Core 入門", file: null,
+    tags: ["Web API", "Controller", "EF Core", "DbContext", "Migration", "LINQ", "SQL", "ToQueryString"] },
+  { stage: "階段 2", title: "02a｜作者與文章：一對多", file: null,
+    tags: ["一對多", "Foreign Key", "Include", "導覽屬性"] },
+  { stage: "階段 2", title: "02b｜使用者與個人檔案：一對一", file: null,
+    tags: ["一對一", "HasOne", "WithOne"] },
+  { stage: "階段 2", title: "02c｜文章與標籤：多對多", file: null,
+    tags: ["多對多", "中介表", "Join Entity"] },
+  { stage: "階段 3", title: "03｜程式分層與 DI：沒有 DI 會怎樣？", file: null,
+    tags: ["DI", "依賴注入", "Service", "Repository", "Transient", "Scoped", "Singleton"] },
+  { stage: "階段 4", title: "04｜文章列表效能優化", file: null,
+    tags: ["N+1", "延遲載入", "Lazy Loading", "預先載入", "Select 投影", "SelectMany", "AsNoTracking", "分頁", "DTO"] },
+  { stage: "階段 5", title: "05｜選修：登入、驗證、錯誤處理、測試", file: null,
+    tags: ["JWT", "FluentValidation", "例外處理", "單元測試"] }
+];
+
+var list = document.getElementById("list");
+var empty = document.getElementById("empty");
+
+function render(keyword) {
+  var k = keyword.trim().toLowerCase();
+  list.innerHTML = "";
+  var shown = 0;
+  lessons.forEach(function (l) {
+    var hay = (l.stage + " " + l.title + " " + l.tags.join(" ")).toLowerCase();
+    if (k && hay.indexOf(k) === -1) return;
+    shown++;
+    var el = document.createElement(l.file ? "a" : "div");
+    el.className = "lesson-card" + (l.file ? "" : " locked");
+    if (l.file) el.href = l.file;
+    el.innerHTML =
+      '<span class="status">' + (l.file ? "✅ 可以開始" : "⏳ 尚未產出") + "</span>" +
+      '<div class="stage">' + l.stage + "</div>" +
+      '<div class="title">' + l.title + "</div>" +
+      '<div class="tags">' + l.tags.map(function (t) { return '<span class="tag">' + t + "</span>"; }).join("") + "</div>";
+    list.appendChild(el);
+  });
+  empty.style.display = shown ? "none" : "block";
+}
+
+document.getElementById("q").addEventListener("input", function (e) { render(e.target.value); });
+render("");
+</script>
+</body>
+</html>

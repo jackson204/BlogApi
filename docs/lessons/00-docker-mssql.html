@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>00 Docker 跑 MSSQL</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 階段 0</div>
+<h1>00｜環境準備：用 Docker 跑 MSSQL</h1>
+<p class="subtitle">不用在 Windows 安裝 SQL Server，一行指令就有一台資料庫可以用</p>
+<div class="tags">
+  <span class="tag">Docker</span><span class="tag">image</span><span class="tag">container</span>
+  <span class="tag">volume</span><span class="tag">port</span><span class="tag">docker compose</span>
+  <span class="tag">MSSQL</span><span class="tag">連線字串</span>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#problem">這一課要解決的問題</a></li>
+    <li><a href="#concept">原理：image、container、port、volume</a></li>
+    <li><a href="#usage">用法：docker run → docker compose</a></li>
+    <li><a href="#exercise">練習題（答案摺疊）</a></li>
+    <li><a href="#connstr">連線字串：給下一課用</a></li>
+    <li><a href="#pitfalls">優缺點 &amp; 常見坑</a></li>
+    <li><a href="#next">延伸問題</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="problem">1. 這一課要解決的問題</h2>
+<p>部落格要存文章、作者、標籤，所以一定需要資料庫。傳統做法是在 Windows 上安裝 SQL Server，但會遇到這些麻煩：</p>
+<ul>
+  <li>安裝檔很大、會常駐好幾個 Windows 服務，不用時也在吃記憶體</li>
+  <li>想換版本（2019 → 2022）或重來一次，要解除安裝、重裝</li>
+  <li>換電腦或跟別人合作時，每個人的環境都要重新設定，很難保證一樣</li>
+</ul>
+<p><strong>Docker 的想法：</strong>把「SQL Server + 它需要的作業系統環境」打包成一個盒子，要用就開、不用就關、壞了就丟掉重開。</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>本機安裝 SQL Server</th><th>Docker 跑 SQL Server</th></tr>
+  <tr><td>安裝</td><td>下載安裝檔、一步一步設定</td><td>一行指令</td></tr>
+  <tr><td>移除</td><td>解除安裝，常有殘留</td><td><code>docker rm</code> 就乾淨了</td></tr>
+  <tr><td>換版本</td><td>很麻煩</td><td>改一個 tag</td></tr>
+  <tr><td>團隊一致性</td><td>靠文件跟運氣</td><td>同一份 <code>docker-compose.yml</code></td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="concept">2. 原理</h2>
+
+<h3>2-1. image 和 container：就像 class 和物件</h3>
+<p>用你熟悉的 C# 來比喻最好懂：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Docker</th><th>C# 比喻</th><th>說明</th></tr>
+  <tr><td><strong>image</strong>（映像檔）</td><td><code>class</code></td><td>唯讀的範本，描述「這個盒子裡裝了什麼」</td></tr>
+  <tr><td><strong>container</strong>（容器）</td><td><code>new</code> 出來的物件</td><td>依照 image 跑起來的實體，同一個 image 可以開很多個</td></tr>
+  <tr><td><strong>registry</strong>（倉庫）</td><td>NuGet</td><td>放 image 的地方，例如 Docker Hub、Microsoft 的 mcr.microsoft.com</td></tr>
+</table>
+</div>
+
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    R[("Registry<br>mcr.microsoft.com")] -- "docker pull<br>下載" --> I["Image<br>mssql/server:2022-latest<br>（唯讀範本）"]
+    I -- "docker run<br>產生實體" --> C1["Container A<br>blog-mssql"]
+    I -- "docker run" --> C2["Container B<br>其他專案的 DB"]
+</div>
+<div class="diagram-caption">同一個 image 可以開出很多個互不干擾的 container</div>
+</div>
+
+<h3>2-2. port 對應：從 Windows 怎麼連進盒子裡？</h3>
+<p>container 有自己獨立的網路，SQL Server 在<strong>盒子裡</strong>聽 1433 port。要讓 Windows 上的 Rider 或你的 API 連得到，必須把 Windows 的某個 port「接」到盒子裡的 1433。寫法是 <code>-p 主機port:容器port</code>。</p>
+
+<div class="callout">
+<p>❓ <strong>常見問題：兩邊都是 1433，可以用不一樣的嗎？</strong></p>
+<p>可以。兩個數字<strong>分別屬於不同的世界</strong>：</p>
+<ul>
+  <li><strong>冒號左邊（主機 port）</strong>：在 Windows 上開的入口，<strong>可以自己決定</strong>。你的程式連的是這個數字。</li>
+  <li><strong>冒號右邊（容器 port）</strong>：盒子裡 SQL Server 實際在聽的 port。SQL Server 預設就是 1433，所以<strong>通常不改</strong>。</li>
+</ul>
+<p>比喻：大樓的大門門牌（左邊）可以隨你換，但住戶的房間號碼（右邊）是固定的，警衛負責把大門的訪客帶到房間。</p>
+</div>
+
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    subgraph A["寫法 -p 1433:1433"]
+        W1["Windows<br>localhost:1433"] --> C1["容器內<br>SQL Server :1433"]
+    end
+    subgraph B["寫法 -p 14330:1433"]
+        W2["Windows<br>localhost:14330"] --> C2["容器內<br>SQL Server :1433"]
+    end
+</div>
+<div class="diagram-caption">左邊換成 14330 之後，連線字串也要跟著改成 Server=localhost,14330；容器裡面還是 1433</div>
+</div>
+
+<p><strong>什麼時候會用不一樣的？</strong></p>
+<ul>
+  <li>Windows 本機已經裝了 SQL Server，1433 被佔用 → 左邊改成 14330</li>
+  <li>同時跑兩個專案的資料庫 → 一個 <code>1433:1433</code>，另一個 <code>1434:1433</code>。兩個容器內部都是 1433，互不衝突，因為每個容器有自己獨立的網路</li>
+</ul>
+
+<h3>2-3. volume：container 刪掉，資料要留著</h3>
+<p>container 被刪除時，裡面的檔案也會一起不見。資料庫檔案是最不能丟的東西，所以要把 SQL Server 存資料的資料夾 <code>/var/opt/mssql</code> 掛到 <strong>volume</strong> 上。volume 由 Docker 另外保管，跟 container 的生命週期分開。</p>
+
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    subgraph HOST["你的 Windows 電腦"]
+        RIDER["Rider<br>Database 工具"]
+        API["BlogApi<br>（下一課）"]
+        P(["localhost:1433"])
+        RIDER --> P
+        API --> P
+        subgraph DOCKER["Docker"]
+            subgraph BOX["Container: blog-mssql"]
+                SQL["SQL Server<br>聽 1433"]
+                DIR["/var/opt/mssql<br>資料庫檔案"]
+                SQL --> DIR
+            end
+            VOL[("Volume<br>mssql-data")]
+        end
+        P -- "-p 1433:1433<br>port 對應" --> SQL
+        DIR -. "-v 掛載<br>實際存在這裡" .-> VOL
+    end
+</div>
+<div class="diagram-caption">實線：網路連線　虛線：資料實際存放的位置</div>
+</div>
+
+<h3>2-4. container 的生命週期</h3>
+<div class="diagram">
+<div class="mermaid">
+stateDiagram-v2
+    [*] --> Running: docker run / compose up
+    Running --> Stopped: docker stop
+    Stopped --> Running: docker start
+    Stopped --> Removed: docker rm
+    Running --> Removed: docker rm -f / compose down
+    Removed --> [*]
+    note right of Stopped
+        停止：資料還在 container 裡
+    end note
+    note right of Removed
+        刪除：container 內的檔案消失
+        掛在 volume 的資料還在
+    end note
+</div>
+</div>
+
+<div class="callout">
+<p>💡 重點：<strong>stop 不會丟資料，rm 會</strong>。除非資料放在 volume 上。<br>
+練習題 2 會讓你親眼看到資料不見，再用 volume 解決。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="usage">3. 用法</h2>
+
+<h3>3-1. 簡單版：一行 <code>docker run</code></h3>
+<p><strong>正式語法</strong>（Docker 官方文件的寫法，<code>[ ]</code> 代表可以省略）：</p>
+<pre><code class="language-plaintext">docker run [OPTIONS] IMAGE[:TAG] [COMMAND]</code></pre>
+<ul>
+  <li><code>OPTIONS</code>：各種參數，例如 <code>-d</code>、<code>--name</code>、<code>-p</code>、<code>-e</code>、<code>-v</code>。<strong>順序不重要，但一定要寫在 image 名稱前面</strong></li>
+  <li><code>IMAGE[:TAG]</code>：要用哪個 image、哪個版本；沒寫 tag 就是 <code>latest</code></li>
+</ul>
+<p>先用 nginx（一個網頁伺服器）練習，它啟動快、看得到畫面：</p>
+<pre><code class="language-powershell">docker run -d --name demo-nginx -p 8080:80 nginx:1.27</code></pre>
+<p>參數很多時可以換行。PowerShell 的換行符號是行尾的 <code>`</code>（反引號，鍵盤 Esc 下面那顆），Git Bash 則是 <code>\</code>：</p>
+<pre><code class="language-powershell">docker run -d `
+  --name demo-nginx `
+  -p 8080:80 `
+  nginx:1.27</code></pre>
+<p>用瀏覽器開 <code>http://localhost:8080</code> 會看到 nginx 歡迎頁。各參數的意思：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>參數</th><th>意思</th></tr>
+  <tr><td><code>-d</code></td><td>detached，在背景執行，不佔住終端機</td></tr>
+  <tr><td><code>--name demo-nginx</code></td><td>幫 container 取名字，之後用名字操作它</td></tr>
+  <tr><td><code>-p 8080:80</code></td><td>Windows 的 8080 → 容器裡的 80</td></tr>
+  <tr><td><code>-e KEY=VALUE</code></td><td>設定環境變數（SQL Server 用它來設密碼）</td></tr>
+  <tr><td><code>-v 名稱:路徑</code></td><td>把 volume 掛到容器內的路徑</td></tr>
+  <tr><td><code>nginx:1.27</code></td><td>image 名稱:tag（tag 就是版本）</td></tr>
+</table>
+</div>
+<p>玩完記得清掉：<code>docker rm -f demo-nginx</code></p>
+
+<div class="callout">
+<p>📖 <strong>寫法要去哪裡查？</strong></p>
+<ul>
+  <li><strong>指令本身的參數</strong>：Docker 官方 <a href="https://docs.docker.com/reference/cli/docker/container/run/" target="_blank">docker run 參考文件</a>，或直接在終端機打 <code>docker run --help</code></li>
+  <li><strong>某個 image 需要哪些環境變數</strong>：每個 image 規定的都不一樣，要看<strong>那個 image 自己的說明頁</strong>。SQL Server 看 Microsoft 官方的 <a href="https://learn.microsoft.com/sql/linux/quickstart-install-connect-docker" target="_blank">Quickstart：用 Docker 執行 SQL Server 容器</a>，或 Docker Hub 上的 <a href="https://hub.docker.com/r/microsoft/mssql-server" target="_blank">microsoft/mssql-server</a> 頁面</li>
+</ul>
+<p>題 1 要用的 <code>ACCEPT_EULA</code>、<code>MSSQL_SA_PASSWORD</code>，就是從 Microsoft 的文件裡來的，不是 Docker 本身的規定。</p>
+</div>
+
+<h3>3-2. 常用指令速查</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>指令</th><th>用途</th></tr>
+  <tr><td><code>docker ps</code> / <code>docker ps -a</code></td><td>看執行中的 / 全部的 container</td></tr>
+  <tr><td><code>docker logs 名稱</code></td><td>看 container 的輸出。<strong>container 啟動失敗時先看這個</strong></td></tr>
+  <tr><td><code>docker exec -it 名稱 指令</code></td><td>在執行中的 container 裡面跑指令</td></tr>
+  <tr><td><code>docker stop</code> / <code>start</code> / <code>rm</code></td><td>停止 / 啟動 / 刪除</td></tr>
+  <tr><td><code>docker images</code></td><td>看本機有哪些 image</td></tr>
+  <tr><td><code>docker volume ls</code></td><td>看有哪些 volume</td></tr>
+</table>
+</div>
+
+<h3>3-3. 進階版：<code>docker compose</code></h3>
+<p><code>docker run</code> 的參數一長就很難記，也不好跟別人分享。<strong>docker compose</strong> 把這些設定寫成一個 YAML 檔，之後只要：</p>
+<pre><code class="language-powershell">docker compose up -d     # 依照 docker-compose.yml 建立並啟動
+docker compose down      # 停止並刪除 container（volume 會保留）
+docker compose down -v   # 連 volume 一起刪掉（資料會清空！）</code></pre>
+
+<div class="diagram">
+<div class="mermaid">
+sequenceDiagram
+    actor You as 你
+    participant CLI as docker compose
+    participant Hub as mcr.microsoft.com
+    participant C as Container blog-mssql
+    You->>CLI: docker compose up -d
+    CLI->>CLI: 讀 docker-compose.yml 和 .env
+    alt 本機還沒有 image
+        CLI->>Hub: pull mssql/server:2022-latest
+        Hub-->>CLI: image（約 1.5 GB，第一次比較久）
+    end
+    CLI->>CLI: 建立 volume mssql-data（已存在就沿用）
+    CLI->>C: 建立並啟動 container
+    CLI-->>You: Started（指令先回來了）
+    Note over C: SQL Server 還在背景初始化<br>大約要 10~30 秒才能連線
+    C-->>You: docker logs 出現<br>"SQL Server is now ready for client connections"
+</div>
+<div class="diagram-caption">注意：指令回來 ≠ 資料庫已經可以連線</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="exercise">4. 練習題</h2>
+
+<div class="callout warn">
+<p>⚠️ 開始前：先打開 <strong>Docker Desktop</strong>，等左下角顯示 Engine running。<br>
+沒開的話，任何 docker 指令都會出現 <code>open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified</code>。</p>
+</div>
+
+<!-- 題 1 -->
+<div class="exercise">
+<h3>題 1：用 docker run 啟動 SQL Server</h3>
+<p>需求：</p>
+<ul>
+  <li>image：<code>mcr.microsoft.com/mssql/server:2022-latest</code></li>
+  <li>container 名稱：<code>blog-mssql</code>，在背景執行</li>
+  <li>環境變數：<code>ACCEPT_EULA=Y</code>，<code>MSSQL_SA_PASSWORD=Blog_Dev_2026!</code></li>
+  <li>Windows 的 1433 對應到容器的 1433</li>
+  <li>這一題<strong>先不要</strong>掛 volume</li>
+</ul>
+<p><strong>💡 提示：每個需求對應哪個參數</strong>（對照「3-1」的參數表，照 <code>docker run [OPTIONS] IMAGE</code> 的順序組起來）</p>
+<div class="table-wrap">
+<table>
+  <tr><th>需求</th><th>用哪個</th></tr>
+  <tr><td>在背景執行</td><td><code>-d</code></td></tr>
+  <tr><td>container 名稱</td><td><code>--name</code></td></tr>
+  <tr><td>環境變數（兩個）</td><td><code>-e</code>，一個變數寫一次，所以要寫兩次</td></tr>
+  <tr><td>Windows 1433 → 容器 1433</td><td><code>-p 主機:容器</code></td></tr>
+  <tr><td>image</td><td>放在最後面</td></tr>
+</table>
+</div>
+<p>如果組不出來，可以先看 Microsoft Quickstart 文件裡的範例指令，跟上面的需求比對，看看哪些地方要改。</p>
+<p class="accept">✅ 驗收：<code>docker ps</code> 看到 blog-mssql 是 Up；<code>docker logs blog-mssql</code> 最後出現 <em>SQL Server is now ready for client connections</em></p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-powershell">docker run -d --name blog-mssql `
+  -e "ACCEPT_EULA=Y" `
+  -e "MSSQL_SA_PASSWORD=Blog_Dev_2026!" `
+  -p 1433:1433 `
+  mcr.microsoft.com/mssql/server:2022-latest
+
+docker ps
+docker logs blog-mssql</code></pre>
+<p>如果 <code>docker ps</code> 看不到它，但 <code>docker ps -a</code> 顯示 <em>Exited</em>，最常見的原因是密碼太簡單。SQL Server 要求至少 8 碼，並包含大寫、小寫、數字、符號其中三種。用 <code>docker logs</code> 可以看到錯誤訊息。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 2 -->
+<div class="exercise">
+<h3>題 2：親眼看資料消失</h3>
+<p>需求：</p>
+<ol>
+  <li>用 <code>docker exec</code> 進到容器，執行容器內建的 <code>sqlcmd</code>（路徑 <code>/opt/mssql-tools18/bin/sqlcmd</code>）</li>
+  <li>建立一個資料庫 <code>TestDb</code>，確認看得到它</li>
+  <li>把 container 刪掉（<code>rm -f</code>），再用題 1 的指令重新啟動</li>
+  <li>再查一次：TestDb 還在嗎？</li>
+</ol>
+<p class="accept">✅ 驗收：你能用自己的話說出「為什麼 TestDb 不見了」</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-powershell"># 進入 sqlcmd 互動模式（-C 代表信任自簽憑證）
+docker exec -it blog-mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Blog_Dev_2026!" -C</code></pre>
+<pre><code class="language-sql">CREATE DATABASE TestDb;
+GO
+SELECT name FROM sys.databases;
+GO
+-- 輸入 exit 離開</code></pre>
+<pre><code class="language-powershell">docker rm -f blog-mssql
+# 再執行一次題 1 的 docker run ...（等 10~30 秒）
+docker exec -it blog-mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Blog_Dev_2026!" -C -Q "SELECT name FROM sys.databases"</code></pre>
+<p><strong>為什麼不見了？</strong>資料庫檔案存在容器內的 <code>/var/opt/mssql</code>，容器被刪除時這個資料夾也跟著刪除。新的 container 是從乾淨的 image 重新長出來的，就像重新 <code>new</code> 一個物件，舊物件裡的欄位值不會帶過來。</p>
+<p>👉 解法是 volume，下一題用 compose 一起處理。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 3 -->
+<div class="exercise">
+<h3>題 3：改寫成 docker-compose.yml（加上 volume）</h3>
+<p>需求：</p>
+<ul>
+  <li>建立資料夾 <code>%USERPROFILE%\RiderProjects\BlogApi</code>（<code>%USERPROFILE%</code> 是 Windows 的使用者資料夾，例如 <code>C:\Users\你的帳號</code>），在裡面新增 <code>docker-compose.yml</code></li>
+  <li>內容等同題 1，另外加上：名為 <code>mssql-data</code> 的 volume 掛到 <code>/var/opt/mssql</code></li>
+  <li>密碼<strong>不要直接寫在 yml 裡</strong>，改放在同資料夾的 <code>.env</code> 檔，yml 用 <code>${變數名}</code> 讀取</li>
+  <li>加上 <code>restart: unless-stopped</code>，讓 Docker Desktop 重開後自動啟動</li>
+</ul>
+<p>開始前先清掉題 1、2 的 container：<code>docker rm -f blog-mssql</code></p>
+<p class="accept">✅ 驗收：<code>docker compose up -d</code> 啟動 → 建立 TestDb → <code>docker compose down</code> → 再 <code>up -d</code> → TestDb <strong>還在</strong></p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/docker-compose.yml</p>
+<pre><code class="language-yaml">services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: blog-mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    restart: unless-stopped
+
+volumes:
+  mssql-data:</code></pre>
+<p class="file-label">BlogApi/.env</p>
+<pre><code class="language-ini">MSSQL_SA_PASSWORD=Blog_Dev_2026!</code></pre>
+<p class="file-label">BlogApi/.gitignore（之後用 git 時，避免把密碼推上去）</p>
+<pre><code class="language-ini">.env</code></pre>
+<pre><code class="language-powershell">cd $HOME\RiderProjects\BlogApi   # PowerShell 的 $HOME 就是使用者資料夾
+docker compose config   # 先檢查：會印出套用 .env 之後的完整設定，語法錯誤會在這裡報出來
+docker compose up -d
+docker volume ls        # 會看到 blogapi_mssql-data（前面會加上資料夾名稱）</code></pre>
+<p><strong>重點：</strong></p>
+<ul>
+  <li>最下面的 <code>volumes:</code> 是<strong>宣告</strong>有這個 volume；service 裡的 <code>volumes:</code> 是<strong>使用</strong>它</li>
+  <li><code>docker compose down</code> 不會刪 volume，所以資料留著；加了 <code>-v</code> 才會刪</li>
+</ul>
+</div>
+</details>
+</div>
+
+<!-- 題 4 -->
+<div class="exercise">
+<h3>題 4：用 Rider 連線並建立 BlogDb</h3>
+<p>需求：</p>
+<ol>
+  <li>在 Rider 開啟 Database 工具視窗，新增 Microsoft SQL Server 資料來源，連到題 3 的容器</li>
+  <li>執行 <code>SELECT @@VERSION</code> 確認版本是 2022</li>
+  <li>建立資料庫 <code>BlogDb</code>，之後的課程都用它；TestDb 可以刪掉了</li>
+</ol>
+<p class="accept">✅ 驗收：Rider 左邊的樹狀結構看得到 BlogDb</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p><strong>先決定要開哪個 solution：</strong>Rider 的 Database 工具視窗要在開啟 solution 之後才能用，歡迎畫面上沒有。建議直接建立之後要用的專案資料夾：</p>
+<ol>
+  <li>Rider 歡迎畫面 → <strong>New Solution</strong> → 左側 <strong>Other</strong> 分類選空白方案（<em>Empty Solution</em>，有些版本叫 <em>Blank Solution</em>）</li>
+  <li>Solution name：<code>BlogApi</code>，Location：<code>%USERPROFILE%\RiderProjects</code>（Rider 的預設位置，通常不用改）</li>
+  <li>建立後就會有 <code>%USERPROFILE%\RiderProjects\BlogApi\BlogApi.sln</code>，下一課的 Web API 專案會加進這個 solution</li>
+</ol>
+<p class="file-label">建立後的資料夾結構</p>
+<pre><code class="language-plaintext">%USERPROFILE%\RiderProjects\
+└─ BlogApi\               ← 這次建立的 solution，同時也是 git repo 的根目錄
+    ├─ BlogApi.sln        ← 新版 Rider 可能產生 BlogApi.slnx，功能一樣
+    ├─ README.md          ← GitHub 首頁
+    ├─ .gitignore         ← 排除 bin/ obj/ .idea/ .env
+    └─ docs\              ← 學習筆記（就是你現在看的這份），用 GitHub Pages 發布
+        ├─ index.html
+        ├─ assets\
+        └─ lessons\
+
+（下一課加入 Web API 專案、題 3 加入 docker-compose.yml 後）
+└─ BlogApi\
+    ├─ BlogApi.sln
+    ├─ docker-compose.yml
+    ├─ .env               ← 有密碼，被 .gitignore 排除，不會推上 GitHub
+    ├─ docs\
+    └─ BlogApi\           ← Web API 專案（下一課建立）
+        └─ BlogApi.csproj</code></pre>
+<p>Data Source 預設只存在這個 solution 裡。如果想在其他專案也看到同一個連線，在 Data Sources 設定視窗對它按右鍵選 <strong>Make Global</strong>。</p>
+<p><strong>建立連線：</strong></p>
+<ol>
+  <li><strong>View → Tool Windows → Database</strong>，點 <strong>+ → Data Source → Microsoft SQL Server</strong></li>
+  <li>Host：<code>localhost</code>　Port：<code>1433</code>　Authentication：<em>User &amp; Password</em>　User：<code>sa</code>　Password：<code>Blog_Dev_2026!</code></li>
+  <li>第一次會提示下載 driver，按下載</li>
+  <li>到 <strong>Advanced</strong> 分頁，把 <code>trustServerCertificate</code> 設成 <code>true</code>（容器用的是自簽憑證）</li>
+  <li><strong>Test Connection</strong> 成功後按 OK，開一個 Query Console：</li>
+</ol>
+<pre><code class="language-sql">SELECT @@VERSION;
+CREATE DATABASE BlogDb;
+DROP DATABASE IF EXISTS TestDb;   -- 有做題 2、3 才會有 TestDb；IF EXISTS 讓沒有的時候也不會報錯</code></pre>
+<p>如果出現 <code>Database 'BlogDb' already exists</code>，代表 <code>CREATE DATABASE</code> 被執行了第二次。第一次其實已經建立成功，左邊樹狀結構看得到 BlogDb 就沒問題。</p>
+<p>下一課 EF Core 的 Migration 其實可以自動建立資料庫。這裡先手動建一次，是為了讓你確定「連得上」這件事本身沒問題。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="connstr">5. 連線字串：給下一課用</h2>
+<p>.NET 程式連資料庫靠的是一串 <code>key=value;</code> 組成的文字，叫做<strong>連線字串</strong>：</p>
+<pre><code class="language-ini">Server=localhost,1433;Database=BlogDb;User Id=sa;Password=Blog_Dev_2026!;TrustServerCertificate=True</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>片段</th><th>意思</th></tr>
+  <tr><td><code>Server=localhost,1433</code></td><td>主機和 port。注意 SQL Server 用<strong>逗號</strong>分隔 port，不是冒號</td></tr>
+  <tr><td><code>Database=BlogDb</code></td><td>要連哪個資料庫</td></tr>
+  <tr><td><code>User Id=sa;Password=...</code></td><td>帳號密碼（sa 是最高權限帳號，只適合開發用）</td></tr>
+  <tr><td><code>TrustServerCertificate=True</code></td><td>新版 SqlClient 預設會加密連線並驗證憑證；容器是自簽憑證，不加這個會連不上</td></tr>
+</table>
+</div>
+
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    subgraph NOW["現在：API 在 Windows 跑"]
+        A1["BlogApi"] -- "Server=localhost,1433" --> D1["blog-mssql"]
+    end
+    subgraph LATER["以後：API 也放進 compose"]
+        A2["blogapi container"] -- "Server=mssql,1433<br>用 service 名稱" --> D2["mssql container"]
+    end
+</div>
+<div class="diagram-caption">在容器裡面，localhost 指的是「容器自己」，所以要改用 compose 的 service 名稱</div>
+</div>
+
+<div class="exercise">
+<h3>題 5：準備好連線字串</h3>
+<p>下一課會建立 Web API 專案，專案裡會有 <code>appsettings.Development.json</code>。先想好：連線字串要放在這個 JSON 的哪個位置、key 要叫什麼？</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">appsettings.Development.json（下一課建立專案後再加）</p>
+<pre><code class="language-json">{
+  "ConnectionStrings": {
+    "BlogDb": "Server=localhost,1433;Database=BlogDb;User Id=sa;Password=Blog_Dev_2026!;TrustServerCertificate=True"
+  }
+}</code></pre>
+<p><code>ConnectionStrings</code> 是 .NET 約定的區段名稱，之後可以用 <code>builder.Configuration.GetConnectionString("BlogDb")</code> 直接讀出來。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="pitfalls">6. 優缺點 &amp; 常見坑</h2>
+<h3>優點</h3>
+<ul>
+  <li>環境乾淨、可以重來，弄壞了 <code>down -v</code> 再 <code>up</code> 就好</li>
+  <li>設定檔就是文件，<code>docker-compose.yml</code> 放進專案，別人也能一鍵啟動</li>
+</ul>
+<h3>缺點</h3>
+<ul>
+  <li>Docker Desktop 本身也會佔記憶體（WSL2），SQL Server 容器至少需要約 2 GB</li>
+  <li>多了一層網路和檔案系統，出問題時要多一個地方排查</li>
+</ul>
+
+<h3>常見坑</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>症狀</th><th>原因</th><th>解法</th></tr>
+  <tr><td><code>dockerDesktopLinuxEngine ... cannot find the file</code></td><td>Docker Desktop 沒開</td><td>打開 Docker Desktop，等 Engine running</td></tr>
+  <tr><td>container 一啟動就 Exited</td><td>密碼不符合複雜度，或沒設 <code>ACCEPT_EULA</code></td><td><code>docker logs blog-mssql</code> 看錯誤</td></tr>
+  <tr><td><code>port is already allocated</code></td><td>本機已經裝了 SQL Server，佔住 1433</td><td>改成 <code>"14330:1433"</code>，連線字串也改成 <code>localhost,14330</code></td></tr>
+  <tr><td>剛 up 完馬上連，連不上</td><td>SQL Server 還在初始化</td><td>等 10~30 秒，或看 logs 出現 ready</td></tr>
+  <tr><td>憑證錯誤 / The certificate chain was issued by an authority that is not trusted</td><td>自簽憑證</td><td>連線字串加 <code>TrustServerCertificate=True</code>；Rider 的 Advanced 設定同理</td></tr>
+  <tr><td>用 <code>./data:/var/opt/mssql</code> 掛載後權限錯誤</td><td>Windows 資料夾直接掛載（bind mount）給 Linux 容器，權限對不上</td><td>用 named volume（本課的寫法）</td></tr>
+  <tr><td>改了 <code>.env</code> 的密碼，卻登不進去</td><td>sa 密碼只在<strong>第一次</strong>建立資料庫時設定，存在 volume 裡</td><td>開發環境直接 <code>docker compose down -v</code> 重建</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="next">7. 延伸問題（想想看，答案在後面的課會出現）</h2>
+<ol>
+  <li>連線字串裡有密碼，<code>appsettings.Development.json</code> 如果推上 GitHub 會怎樣？.NET 的 <strong>User Secrets</strong> 怎麼解決這件事？</li>
+  <li><code>2022-latest</code> 這種 tag 會跟著更新。正式專案該用 latest，還是固定版本？為什麼？</li>
+  <li>如果想讓 API 等資料庫「真的 ready」才啟動，compose 的 <code>healthcheck</code> + <code>depends_on: condition: service_healthy</code> 要怎麼寫？</li>
+</ol>
+
+<nav class="footer-nav">
+  <a href="../index.html">← 回目錄</a>
+  <span>下一課：01 文章 CRUD（EF Core）→ 尚未產出</span>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>
