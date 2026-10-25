@@ -20,6 +20,15 @@
   <span class="tag">MSSQL</span><span class="tag">連線字串</span>
 </div>
 
+<div class="callout">
+<p>🧰 <strong>本課使用版本</strong>（2026-10 驗證過）</p>
+<ul>
+  <li>Docker Desktop（Docker Engine 28、Compose v2）</li>
+  <li>SQL Server 2022 image <code>mcr.microsoft.com/mssql/server:2022-latest</code>（驗證時是 16.0.4305.5）</li>
+  <li>連線字串的說明以 <code>Microsoft.Data.SqlClient</code> 6.x 為準，也就是 EF Core 10 使用的版本</li>
+</ul>
+</div>
+
 <nav class="toc">
   <strong>目錄</strong>
   <ol>
@@ -434,8 +443,22 @@ DROP DATABASE IF EXISTS TestDb;   -- 有做題 2、3 才會有 TestDb；IF EXIST
   <tr><td><code>Server=localhost,1433</code></td><td>主機和 port。注意 SQL Server 用<strong>逗號</strong>分隔 port，不是冒號</td></tr>
   <tr><td><code>Database=BlogDb</code></td><td>要連哪個資料庫</td></tr>
   <tr><td><code>User Id=sa;Password=...</code></td><td>帳號密碼（sa 是最高權限帳號，只適合開發用）</td></tr>
-  <tr><td><code>TrustServerCertificate=True</code></td><td>新版 SqlClient 預設會加密連線並驗證憑證；容器是自簽憑證，不加這個會連不上</td></tr>
+  <tr><td><code>TrustServerCertificate=True</code></td><td>新版 SqlClient 預設會加密連線並驗證憑證；容器是自簽憑證，不加這個會連不上（版本細節見下方）</td></tr>
 </table>
+</div>
+
+<div class="callout">
+<p>❓ <strong>「新版 SqlClient」是指哪一版？</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>套件版本</th><th><code>Encrypt</code> 預設值</th><th>誰會用到</th></tr>
+  <tr><td><code>System.Data.SqlClient</code>（舊套件，已不再更新）</td><td><code>False</code></td><td>.NET Framework 時代的專案</td></tr>
+  <tr><td><code>Microsoft.Data.SqlClient</code> 3.x 以前</td><td><code>False</code></td><td>EF Core 6 以前</td></tr>
+  <tr><td><code>Microsoft.Data.SqlClient</code> <strong>4.0 起</strong>（2021-11）</td><td><strong><code>True</code></strong></td><td><strong>EF Core 7 以後</strong>（EF Core 7 改用 SqlClient 5.0）</td></tr>
+</table>
+</div>
+<p>本課程用的 EF Core 10.0.13 依賴的是 <code>Microsoft.Data.SqlClient</code> 6.1.7，所以會遇到。<code>Encrypt=True</code> 時用戶端會驗證伺服器憑證是不是受信任的機構簽發的；容器的憑證是 SQL Server 自己產生的（自簽），驗證不會通過，所以開發環境要加 <code>TrustServerCertificate=True</code> 跳過驗證。</p>
+<p>正式環境不建議跳過，應該幫 SQL Server 安裝正式的憑證。官方說明：<a href="https://learn.microsoft.com/ef/core/what-is-new/ef-core-7.0/breaking-changes" target="_blank">EF Core 7 中斷性變更（Encrypt 預設為 true）</a></p>
 </div>
 
 <div class="diagram">
@@ -505,7 +528,7 @@ flowchart LR
 
 <nav class="footer-nav">
   <a href="../index.html">← 回目錄</a>
-  <span>下一課：01 文章 CRUD（EF Core）→ 尚未產出</span>
+  <a href="01-efcore-crud.html">下一課：01 文章 CRUD（EF Core）→</a>
 </nav>
 
 </main>

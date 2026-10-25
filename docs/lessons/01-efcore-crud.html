@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>01 文章 CRUD：EF Core 入門</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 階段 1</div>
+<h1>01｜文章 CRUD：EF Core 入門</h1>
+<p class="subtitle">不寫一行 SQL，用 C# 對資料庫做新增、查詢、修改、刪除，再回頭看 EF Core 幫你產生了什麼 SQL</p>
+<div class="tags">
+  <span class="tag">Web API</span><span class="tag">Controller</span><span class="tag">EF Core</span>
+  <span class="tag">DbContext</span><span class="tag">Migration</span><span class="tag">LINQ</span>
+  <span class="tag">SQL</span><span class="tag">ToQueryString</span><span class="tag">User Secrets</span>
+</div>
+
+<div class="callout">
+<p>🧰 <strong>本課使用版本</strong>（2026-10 驗證過）</p>
+<ul>
+  <li>.NET SDK <strong>10.0</strong>（專案 <code>TargetFramework</code> 是 <code>net10.0</code>）</li>
+  <li>EF Core <strong>10.0.13</strong>（<code>Microsoft.EntityFrameworkCore.SqlServer</code>、<code>.Design</code>）</li>
+  <li><code>dotnet-ef</code> 工具 <strong>10.0.13</strong>（版本要跟 EF Core 一致）</li>
+  <li>SQL Server 2022（第 0 課的 Docker 容器）</li>
+</ul>
+<p>套件版本會一直更新。如果你看到的版本號比較新，只要<strong>主版本相同（都是 10.x）</strong>，寫法就一樣。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#problem">這一課要解決的問題</a></li>
+    <li><a href="#concept">原理：Web API 請求流程、ORM、Migration、Change Tracking</a></li>
+    <li><a href="#usage">用法：每一步的正式寫法</a></li>
+    <li><a href="#exercise">練習題（答案摺疊）</a></li>
+    <li><a href="#sql">觀察 SQL：LINQ 對照產生的 SQL</a></li>
+    <li><a href="#pitfalls">優缺點 &amp; 常見坑</a></li>
+    <li><a href="#next">延伸問題</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="problem">1. 這一課要解決的問題</h2>
+<p>第 0 課已經有一個空的 <code>BlogDb</code>。部落格最基本的功能是<strong>文章的 CRUD</strong>：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>功能</th><th>CRUD</th><th>HTTP</th><th>網址</th></tr>
+  <tr><td>新增文章</td><td><strong>C</strong>reate</td><td>POST</td><td><code>/api/posts</code></td></tr>
+  <tr><td>文章列表、關鍵字搜尋</td><td><strong>R</strong>ead</td><td>GET</td><td><code>/api/posts?keyword=xxx</code></td></tr>
+  <tr><td>單篇文章</td><td><strong>R</strong>ead</td><td>GET</td><td><code>/api/posts/{id}</code></td></tr>
+  <tr><td>修改文章</td><td><strong>U</strong>pdate</td><td>PUT</td><td><code>/api/posts/{id}</code></td></tr>
+  <tr><td>刪除文章</td><td><strong>D</strong>elete</td><td>DELETE</td><td><code>/api/posts/{id}</code></td></tr>
+</table>
+</div>
+<p>如果不用任何工具，C# 程式要自己開連線、組 SQL 字串、執行、再把每一列結果一欄一欄塞回物件。每多一張表就要重寫一次，還很容易寫出 SQL Injection 漏洞。</p>
+<p><strong>EF Core 的想法：</strong>你只寫 C# 的 class 和 LINQ，它負責翻譯成 SQL、執行、再把結果轉回物件。這類工具叫做 <strong>ORM</strong>（Object-Relational Mapping，物件關聯對應）。</p>
+
+<!-- ============================================================ -->
+<h2 id="concept">2. 原理</h2>
+
+<h3>2-1. 一個 API 請求從進來到回應，經過哪些地方？</h3>
+<div class="diagram">
+<div class="mermaid">
+sequenceDiagram
+    participant C as 前端 / .http 檔
+    participant K as ASP.NET Core
+    participant PC as PostsController
+    participant DB as BlogDbContext
+    participant SQL as SQL Server
+    C->>K: GET /api/posts?keyword=Docker
+    K->>K: Routing：找到對應的 Controller 和方法
+    K->>PC: 建立 PostsController，並把 BlogDbContext 傳進建構子
+    PC->>DB: _db.Posts.Where(...).ToListAsync()
+    DB->>DB: 把 LINQ 翻譯成 SQL
+    DB-)SQL: 送出 SELECT ... WHERE ... LIKE ...（await 等待中，不佔住執行緒）
+    SQL--)DB: 回傳資料列
+    DB->>DB: 每一列轉成 Post 物件
+    DB-->>PC: List of Post
+    PC-->>K: return posts
+    K-->>C: 200 OK + JSON
+</div>
+<div class="diagram-caption">實線箭頭：同步呼叫　開口箭頭：非同步（await）　虛線：回傳</div>
+</div>
+<p>「把 BlogDbContext 傳進建構子」這件事叫做<strong>依賴注入（DI）</strong>，第 3 課會專門講。這一課先照著寫就好。</p>
+
+<h3>2-2. ORM：class 和資料表怎麼對應？</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>C#（EF Core）</th><th>資料庫</th><th>說明</th></tr>
+  <tr><td>Entity class <code>Post</code></td><td>資料表 <code>Posts</code></td><td>一個 class 對應一張表</td></tr>
+  <tr><td>屬性 <code>Title</code></td><td>欄位 <code>Title</code></td><td>一個屬性對應一個欄位</td></tr>
+  <tr><td>一個 <code>Post</code> 物件</td><td>一列資料</td><td></td></tr>
+  <tr><td><code>DbSet&lt;Post&gt; Posts</code></td><td>代表整張 <code>Posts</code> 表</td><td>對它下 LINQ，就是對這張表查詢</td></tr>
+  <tr><td><code>DbContext</code></td><td>一次和資料庫的「工作階段」</td><td>管理連線、追蹤物件變化、<code>SaveChanges</code> 時一次寫入</td></tr>
+  <tr><td>屬性名稱叫 <code>Id</code></td><td>主鍵 + 自動編號（IDENTITY）</td><td>EF Core 的<strong>慣例</strong>，不用另外設定</td></tr>
+</table>
+</div>
+
+<h3>2-3. Migration：C# 改了，資料表怎麼跟著改？</h3>
+<p>你修改 Entity class 後，資料庫不會自己變。<strong>Migration</strong> 會比對「現在的 class」和「上一次的快照」，產生一份變更紀錄（C# 檔），再由它產生 SQL 去改資料庫。</p>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    A["Post.cs<br>BlogDbContext.cs"] -- "dotnet ef migrations add 名稱" --> B["Migrations 資料夾<br>xxxx_InitialCreate.cs<br>（變更紀錄，要 commit）"]
+    B -- "dotnet ef database update" --> C["產生 SQL<br>CREATE TABLE Posts ..."]
+    C --> D[("BlogDb<br>Posts 表")]
+    C --> E[("__EFMigrationsHistory<br>記錄已套用到哪一版")]
+</div>
+<div class="diagram-caption">Migration 就像資料庫的 git commit，每一次變更都有紀錄，可以追蹤、也可以退回</div>
+</div>
+
+<h3>2-4. Change Tracking：為什麼要呼叫 SaveChanges？</h3>
+<p>DbContext 會<strong>追蹤</strong>透過它查出來或加進去的物件。你對物件做的事情只是在「記帳」，呼叫 <code>SaveChangesAsync()</code> 時才一次產生 SQL 寫進資料庫。</p>
+<div class="diagram">
+<div class="mermaid">
+stateDiagram-v2
+    [*] --> Added: _db.Posts.Add(post)
+    Added --> Unchanged: SaveChanges 時送出 INSERT
+    [*] --> Unchanged: 查詢出來，例如 FindAsync
+    Unchanged --> Modified: 修改屬性 post.Title = ...
+    Modified --> Unchanged: SaveChanges 時送出 UPDATE
+    Unchanged --> Deleted: _db.Posts.Remove(post)
+    Deleted --> [*]: SaveChanges 時送出 DELETE
+</div>
+<div class="diagram-caption">忘了呼叫 SaveChanges，資料就只停留在「記帳」階段，不會進資料庫</div>
+</div>
+
+<h3>2-5. LINQ 什麼時候才真的查資料庫？</h3>
+<p><code>Where</code>、<code>OrderBy</code> 只是在<strong>組合查詢條件</strong>，還沒送出任何 SQL。要等到呼叫 <code>ToListAsync()</code>、<code>FirstOrDefaultAsync()</code>、<code>CountAsync()</code> 這類「要拿結果」的方法，才會真的執行。這叫做<strong>延遲執行（deferred execution）</strong>。</p>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    A["_db.Posts"] --> B[".Where(...)"] --> C[".OrderByDescending(...)"] --> D[".ToListAsync()"]
+    D == "這時候才送出 SQL" ==> E[("SQL Server")]
+    A -.-|"到這裡都還沒查資料庫"| C
+</div>
+</div>
+<p>所以可以先 <code>var query = _db.Posts.AsQueryable();</code>，再依照條件決定要不要加 <code>Where</code>。最後只會送出<strong>一句</strong>組合好的 SQL。</p>
+
+<!-- ============================================================ -->
+<h2 id="usage">3. 用法：每一步的正式寫法</h2>
+
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://learn.microsoft.com/aspnet/core/tutorials/first-web-api" target="_blank">教學：建立以 Controller 為基礎的 Web API</a></li>
+  <li><a href="https://learn.microsoft.com/ef/core/get-started/overview/first-app" target="_blank">EF Core 入門</a>、<a href="https://learn.microsoft.com/ef/core/managing-schemas/migrations/" target="_blank">Migrations 概觀</a></li>
+  <li><a href="https://learn.microsoft.com/ef/core/cli/dotnet" target="_blank">dotnet ef 指令參考</a></li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/security/app-secrets" target="_blank">開發時安全儲存機密（User Secrets）</a></li>
+</ul>
+</div>
+
+<h3>3-1. 建立專案</h3>
+<pre><code class="language-plaintext">dotnet new webapi -n 專案名稱 --use-controllers -f net10.0
+dotnet sln add 專案資料夾/專案名稱.csproj</code></pre>
+<ul>
+  <li><code>--use-controllers</code>：.NET 10 的 webapi 範本<strong>預設是 Minimal API</strong>，要加這個才會產生 Controller 版本</li>
+  <li><code>-f net10.0</code>：指定 .NET 版本</li>
+</ul>
+
+<h3>3-2. 安裝套件和工具</h3>
+<pre><code class="language-plaintext">dotnet add package 套件名稱 [--version 版本]
+dotnet tool install --global dotnet-ef      # 第一次安裝
+dotnet tool update --global dotnet-ef       # 已經裝過，更新到最新版
+dotnet ef --version                         # 確認版本</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>套件</th><th>用途</th></tr>
+  <tr><td><code>Microsoft.EntityFrameworkCore.SqlServer</code></td><td>EF Core 本體 + SQL Server 的翻譯器</td></tr>
+  <tr><td><code>Microsoft.EntityFrameworkCore.Design</code></td><td>讓 <code>dotnet ef</code> 工具可以讀你的專案、產生 Migration</td></tr>
+  <tr><td><code>dotnet-ef</code>（工具，不是套件）</td><td>提供 <code>dotnet ef migrations ...</code> 這些指令</td></tr>
+</table>
+</div>
+
+<h3>3-3. Entity 和 DbContext</h3>
+<p class="file-label">語法骨架</p>
+<pre><code class="language-csharp">public class 類別名稱
+{
+    public int Id { get; set; }                  // 叫 Id → 自動當主鍵
+    public string 欄位 { get; set; } = string.Empty;
+}
+
+public class 名稱DbContext : DbContext
+{
+    public 名稱DbContext(DbContextOptions&lt;名稱DbContext&gt; options) : base(options) { }
+
+    public DbSet&lt;類別名稱&gt; 表名 =&gt; Set&lt;類別名稱&gt;();
+}</code></pre>
+
+<h3>3-4. 連線字串：用 User Secrets，不要寫進 appsettings</h3>
+<div class="callout danger">
+<p>⚠️ 你的 repo 是 <strong>public</strong> 的。<code>appsettings.Development.json</code> 會被 commit，裡面的密碼全世界都看得到。</p>
+<p>User Secrets 把機密存在<strong>專案資料夾以外</strong>（Windows 的 <code>%APPDATA%\Microsoft\UserSecrets\</code>），所以不會被 commit。開發環境（Development）執行時，.NET 會自動讀它。</p>
+</div>
+<pre><code class="language-plaintext">dotnet user-secrets init                       # 在 csproj 加上 UserSecretsId
+dotnet user-secrets set "區段:鍵" "值"           # 冒號代表 JSON 的階層
+dotnet user-secrets list                       # 看目前存了什麼</code></pre>
+<p><code>"ConnectionStrings:BlogDb"</code> 等同 JSON 的 <code>{ "ConnectionStrings": { "BlogDb": "..." } }</code>。Rider 也可以對專案按右鍵 → <strong>Tools → .NET User Secrets</strong> 直接編輯。</p>
+
+<h3>3-5. 註冊 DbContext</h3>
+<pre><code class="language-csharp">builder.Services.AddDbContext&lt;名稱DbContext&gt;(options =&gt;
+    options.UseSqlServer(builder.Configuration.GetConnectionString("連線字串名稱")));</code></pre>
+<p>要寫在 <code>Program.cs</code> 的 <code>builder.Build()</code> <strong>之前</strong>。這行的意思是「之後有人需要 DbContext 時，用這個連線字串建立一個給它」，第 3 課講 DI 時會再細講。</p>
+
+<h3>3-6. Migration 指令</h3>
+<pre><code class="language-plaintext">dotnet ef migrations add 名稱          # 產生變更紀錄（名稱自己取，例如 InitialCreate、AddPostSummary）
+dotnet ef database update              # 套用到資料庫
+dotnet ef migrations script            # 只印出 SQL，不執行（想看它會做什麼時很好用）
+dotnet ef migrations remove            # 移除「最後一個還沒套用」的 migration</code></pre>
+<p>這些指令要在<strong>專案資料夾</strong>（有 .csproj 的那層）執行，或加上 <code>--project 專案資料夾</code>。</p>
+
+<h3>3-7. Controller 骨架</h3>
+<pre><code class="language-csharp">[ApiController]                       // 自動做模型驗證、自動從 body 讀 JSON
+[Route("api/[controller]")]           // [controller] 會換成類別名稱去掉 Controller → api/posts
+public class PostsController : ControllerBase
+{
+    [HttpGet]            // GET    api/posts
+    [HttpGet("{id}")]    // GET    api/posts/5   → 參數 int id 會自動拿到 5
+    [HttpPost]           // POST   api/posts
+    [HttpPut("{id}")]    // PUT    api/posts/5
+    [HttpDelete("{id}")] // DELETE api/posts/5
+}</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>回傳方法</th><th>HTTP 狀態碼</th><th>什麼時候用</th></tr>
+  <tr><td><code>return 物件;</code> 或 <code>Ok(物件)</code></td><td>200 OK</td><td>查詢成功</td></tr>
+  <tr><td><code>CreatedAtAction(nameof(查單筆方法), new { id = ... }, 物件)</code></td><td>201 Created</td><td>新增成功，回應的 <code>Location</code> header 會附上新資料的網址</td></tr>
+  <tr><td><code>NoContent()</code></td><td>204 No Content</td><td>修改、刪除成功，沒有內容要回傳</td></tr>
+  <tr><td><code>NotFound()</code></td><td>404 Not Found</td><td>找不到這個 id</td></tr>
+  <tr><td>（自動）</td><td>400 Bad Request</td><td><code>[ApiController]</code> 發現傳進來的資料驗證失敗時，自動回傳</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="exercise">4. 練習題</h2>
+<div class="callout warn">
+<p>⚠️ 開始前：Docker Desktop 要開著，<code>docker start blog-mssql</code> 讓資料庫跑起來。</p>
+</div>
+
+<!-- 題 1 -->
+<div class="exercise">
+<h3>題 1：建立 Web API 專案</h3>
+<p>需求：</p>
+<ul>
+  <li>在第 0 課建立的 <code>BlogApi</code> solution 裡，新增一個 ASP.NET Core Web API 專案，名稱也叫 <code>BlogApi</code></li>
+  <li>.NET 10、使用 Controller（不是 Minimal API）</li>
+  <li>執行專案，用範本附的 <code>BlogApi.http</code> 呼叫 <code>GET /weatherforecast</code></li>
+  <li>確認能跑之後，刪掉範本的 <code>WeatherForecast.cs</code>、<code>Controllers/WeatherForecastController.cs</code>，以及 <code>.http</code> 裡 weatherforecast 那段</li>
+</ul>
+<p><strong>💡 提示</strong>：兩種方式擇一</p>
+<div class="table-wrap">
+<table>
+  <tr><th>方式</th><th>怎麼做</th></tr>
+  <tr><td>Rider</td><td>對 solution 按右鍵 → Add → New Project → ASP.NET Core Web API，注意 Framework 和「使用 Controller」的選項</td></tr>
+  <tr><td>指令</td><td>照 3-1 的語法，在 solution 資料夾執行</td></tr>
+</table>
+</div>
+<p class="accept">✅ 驗收：<code>.http</code> 檔送出請求後回傳 200 和一串天氣 JSON</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-powershell">cd $HOME\RiderProjects\BlogApi
+dotnet new webapi -n BlogApi --use-controllers -f net10.0
+dotnet sln add BlogApi/BlogApi.csproj</code></pre>
+<p>Rider 的話，Type 選 <em>Web API</em>，Framework 選 <em>net10.0</em>，勾選 <em>Use controllers</em>（不同版本的 Rider 選項名稱可能略有不同）。</p>
+<p>執行：Rider 上方選 <code>BlogApi: http</code> 按 ▶，或 <code>dotnet run --project BlogApi</code>。打開 <code>BlogApi.http</code>，點 GET 那行左邊的 ▶ 送出。</p>
+<p>完成後的結構：</p>
+<pre><code class="language-plaintext">BlogApi\                 ← solution / git repo
+├─ BlogApi.sln
+├─ docs\
+└─ BlogApi\              ← 這次建立的專案
+    ├─ BlogApi.csproj
+    ├─ BlogApi.http      ← Rider 可以直接執行的 HTTP 請求檔
+    ├─ Program.cs        ← 程式進入點
+    ├─ appsettings.json
+    ├─ Controllers\
+    └─ Properties\launchSettings.json   ← 執行時用的網址和 port</code></pre>
+<p>每個專案的 port 是隨機產生的，看 <code>launchSettings.json</code> 的 <code>applicationUrl</code> 就知道。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 2 -->
+<div class="exercise">
+<h3>題 2：安裝 EF Core 套件和 dotnet-ef 工具</h3>
+<p>需求：</p>
+<ul>
+  <li>在 BlogApi 專案安裝 <code>Microsoft.EntityFrameworkCore.SqlServer</code> 和 <code>Microsoft.EntityFrameworkCore.Design</code></li>
+  <li>確認 <code>dotnet ef --version</code> 是 <strong>10.x</strong>；如果是 9.x 或更舊，就更新它</li>
+  <li><code>dotnet build</code> 沒有錯誤，也<strong>沒有警告</strong></li>
+</ul>
+<p><strong>💡 提示</strong>：語法在 3-2。安裝完 build 一次，看看會不會出現 <code>NU1902</code> / <code>NU1903</code> 警告，出現的話先自己讀讀看它在說什麼。</p>
+<p class="accept">✅ 驗收：<code>dotnet ef --version</code> 顯示 10.x；<code>dotnet build</code> 顯示 0 個警告、0 個錯誤</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-powershell">cd $HOME\RiderProjects\BlogApi\BlogApi
+dotnet add package Microsoft.EntityFrameworkCore.SqlServer
+dotnet add package Microsoft.EntityFrameworkCore.Design
+dotnet tool update --global dotnet-ef     # 還沒裝過的話用 install
+dotnet ef --version
+dotnet build</code></pre>
+<p><strong>關於 NU1902 / NU1903 警告</strong>（2026-10 驗證時會出現）：</p>
+<pre><code class="language-plaintext">warning NU1903: 套件 'System.Security.Cryptography.Pkcs' 9.0.11 具有已知的 高 嚴重性弱點</code></pre>
+<p>這個套件不是你裝的，是被間接帶進來的。可以用這個指令查是誰帶進來的：</p>
+<pre><code class="language-powershell">dotnet nuget why System.Security.Cryptography.Pkcs</code></pre>
+<pre><code class="language-plaintext">└── Microsoft.EntityFrameworkCore.SqlServer (v10.0.13)
+    └── Microsoft.Data.SqlClient (v6.1.7)
+        └── System.Security.Cryptography.Pkcs (v9.0.11)   ← 有漏洞的舊版</code></pre>
+<p>解法是<strong>直接安裝新版</strong>。專案直接參考的版本會蓋過間接帶進來的舊版：</p>
+<pre><code class="language-powershell">dotnet add package System.Security.Cryptography.Pkcs</code></pre>
+<p>完成後的 csproj：</p>
+<pre><code class="language-xml">&lt;ItemGroup&gt;
+  &lt;PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" /&gt;
+  &lt;PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13"&gt;
+    &lt;IncludeAssets&gt;runtime; build; native; contentfiles; analyzers; buildtransitive&lt;/IncludeAssets&gt;
+    &lt;PrivateAssets&gt;all&lt;/PrivateAssets&gt;
+  &lt;/PackageReference&gt;
+  &lt;PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.13" /&gt;
+  &lt;PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" /&gt;
+&lt;/ItemGroup&gt;</code></pre>
+<p>之後 EF Core 更新、SqlClient 改用新版 Pkcs 時，這行就可以拿掉。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 3 -->
+<div class="exercise">
+<h3>題 3：建立 Post Entity 和 BlogDbContext</h3>
+<p>需求：</p>
+<ul>
+  <li><code>Models/Post.cs</code>：欄位有 <code>Id</code>、<code>Title</code>（最多 200 字）、<code>Content</code>、<code>CreatedAt</code>、<code>UpdatedAt</code>（可以是 null，因為新文章還沒被修改過）</li>
+  <li><code>Data/BlogDbContext.cs</code>：有一個 <code>Posts</code> 代表文章表</li>
+</ul>
+<p><strong>💡 提示</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>需求</th><th>用什麼</th></tr>
+  <tr><td>主鍵、自動編號</td><td>屬性名稱叫 <code>Id</code>、型別 <code>int</code>，靠慣例自動設定</td></tr>
+  <tr><td>最多 200 字</td><td><code>[MaxLength(200)]</code>，在 <code>System.ComponentModel.DataAnnotations</code> 命名空間</td></tr>
+  <tr><td>可以是 null 的時間</td><td><code>DateTime?</code></td></tr>
+  <tr><td>DbContext 骨架</td><td>3-3 的語法</td></tr>
+</table>
+</div>
+<p class="accept">✅ 驗收：<code>dotnet build</code> 成功</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Models/Post.cs</p>
+<pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
+
+namespace BlogApi.Models;
+
+public class Post
+{
+    public int Id { get; set; }
+
+    [MaxLength(200)]
+    public string Title { get; set; } = string.Empty;
+
+    public string Content { get; set; } = string.Empty;
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime? UpdatedAt { get; set; }
+}</code></pre>
+<p class="file-label">BlogApi/Data/BlogDbContext.cs</p>
+<pre><code class="language-csharp">using BlogApi.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace BlogApi.Data;
+
+public class BlogDbContext : DbContext
+{
+    public BlogDbContext(DbContextOptions&lt;BlogDbContext&gt; options) : base(options)
+    {
+    }
+
+    public DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();
+}</code></pre>
+<ul>
+  <li><code>= string.Empty</code>：專案有開 <code>Nullable</code>，<code>string</code> 代表「不可以是 null」，所以要給預設值，不然編譯器會警告</li>
+  <li><code>DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();</code>：官方文件也常見 <code>public DbSet&lt;Post&gt; Posts { get; set; }</code>，兩種都可以。用 <code>=&gt; Set&lt;Post&gt;()</code> 的好處是不會有 nullable 警告</li>
+</ul>
+</div>
+</details>
+</div>
+
+<!-- 題 4 -->
+<div class="exercise">
+<h3>題 4：設定連線字串（User Secrets）並註冊 DbContext</h3>
+<p>需求：</p>
+<ul>
+  <li>用 User Secrets 存連線字串，名稱叫 <code>BlogDb</code>，連到第 0 課的 <code>BlogDb</code></li>
+  <li>在 <code>Program.cs</code> 註冊 <code>BlogDbContext</code>，讀取這個連線字串</li>
+</ul>
+<p><strong>💡 提示</strong>：連線字串內容在<a href="00-docker-mssql.html#connstr">第 0 課第 5 節</a>；User Secrets 語法在 3-4；註冊語法在 3-5。</p>
+<p class="accept">✅ 驗收：<code>dotnet user-secrets list</code> 看得到 <code>ConnectionStrings:BlogDb</code>；<code>git status</code> 看不到任何含密碼的檔案</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-powershell">cd $HOME\RiderProjects\BlogApi\BlogApi
+dotnet user-secrets init
+dotnet user-secrets set "ConnectionStrings:BlogDb" "Server=localhost,1433;Database=BlogDb;User Id=sa;Password=Blog_Dev_2026!;TrustServerCertificate=True"
+dotnet user-secrets list</code></pre>
+<p class="file-label">BlogApi/Program.cs（加上兩個 using 和 AddDbContext 那段）</p>
+<pre><code class="language-csharp">using BlogApi.Data;
+using Microsoft.EntityFrameworkCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+
+builder.Services.AddControllers();
+// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddOpenApi();
+
+builder.Services.AddDbContext&lt;BlogDbContext&gt;(options =&gt;
+    options.UseSqlServer(builder.Configuration.GetConnectionString("BlogDb")));
+
+var app = builder.Build();
+// ...下面維持範本原樣</code></pre>
+<p><code>dotnet user-secrets init</code> 會在 csproj 加一行 <code>&lt;UserSecretsId&gt;一串 GUID&lt;/UserSecretsId&gt;</code>。這個 GUID 只是資料夾名稱，<strong>不是密碼</strong>，commit 沒關係。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 5 -->
+<div class="exercise">
+<h3>題 5：Migration 建立 Posts 表</h3>
+<p>需求：</p>
+<ol>
+  <li>建立第一個 migration，名稱 <code>InitialCreate</code></li>
+  <li><strong>套用之前</strong>，先用指令印出它會執行的 SQL，讀讀看</li>
+  <li>套用到資料庫</li>
+  <li>在 Rider 的 Database 視窗重新整理 BlogDb，找到 <code>Posts</code> 和 <code>__EFMigrationsHistory</code> 兩張表，看看欄位型別</li>
+</ol>
+<p><strong>💡 提示</strong>：指令都在 3-6。注意要在有 .csproj 的資料夾執行。</p>
+<p class="accept">✅ 驗收：Rider 看得到 Posts 表；<code>Title</code> 是 <code>nvarchar(200)</code>、<code>UpdatedAt</code> 允許 NULL</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-powershell">cd $HOME\RiderProjects\BlogApi\BlogApi
+dotnet ef migrations add InitialCreate
+dotnet ef migrations script
+dotnet ef database update</code></pre>
+<p><code>migrations script</code> 印出來的 SQL（實際驗證結果）：</p>
+<pre><code class="language-sql">IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
+BEGIN
+    CREATE TABLE [__EFMigrationsHistory] (
+        [MigrationId] nvarchar(150) NOT NULL,
+        [ProductVersion] nvarchar(32) NOT NULL,
+        CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
+    );
+END;
+GO
+
+BEGIN TRANSACTION;
+CREATE TABLE [Posts] (
+    [Id] int NOT NULL IDENTITY,
+    [Title] nvarchar(200) NOT NULL,
+    [Content] nvarchar(max) NOT NULL,
+    [CreatedAt] datetime2 NOT NULL,
+    [UpdatedAt] datetime2 NULL,
+    CONSTRAINT [PK_Posts] PRIMARY KEY ([Id])
+);
+
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES (N'20261025140722_InitialCreate', N'10.0.13');
+
+COMMIT;
+GO</code></pre>
+<p>對照 C# 看看：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>C#</th><th>產生的 SQL</th><th>原因</th></tr>
+  <tr><td><code>int Id</code></td><td><code>int NOT NULL IDENTITY</code> + PRIMARY KEY</td><td>慣例：叫 Id 的 int 就是自動編號主鍵</td></tr>
+  <tr><td><code>[MaxLength(200)] string Title</code></td><td><code>nvarchar(200) NOT NULL</code></td><td>有 MaxLength；<code>string</code> 不是 <code>string?</code>，所以 NOT NULL</td></tr>
+  <tr><td><code>string Content</code></td><td><code>nvarchar(max)</code></td><td>沒設定長度，預設是 max</td></tr>
+  <tr><td><code>DateTime?</code></td><td><code>datetime2 NULL</code></td><td><code>?</code> 代表可以是 null</td></tr>
+</table>
+</div>
+<p>Migration 產生的 <code>Migrations\</code> 資料夾<strong>要 commit</strong>，它就是資料庫結構的版本紀錄。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 6 -->
+<div class="exercise">
+<h3>題 6：PostsController 五支 API</h3>
+<p>需求：完成第 1 節表格裡的 5 支 API。另外：</p>
+<ul>
+  <li>新增、修改時，前端<strong>只能傳</strong> <code>title</code> 和 <code>content</code>。<code>Id</code>、<code>CreatedAt</code> 由後端決定，不能讓前端亂傳</li>
+  <li><code>title</code>、<code>content</code> 必填，<code>title</code> 最多 200 字；不符合要回 400</li>
+  <li>列表依 <code>CreatedAt</code> 新到舊排序；有傳 <code>keyword</code> 時只回傳標題包含關鍵字的文章</li>
+  <li>找不到 id 時回 404</li>
+  <li>全部使用 async 版本的方法</li>
+</ul>
+<p><strong>💡 提示：每支 API 用到什麼</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>API</th><th>EF Core 方法</th><th>成功時回傳</th></tr>
+  <tr><td>GET 列表</td><td><code>Where</code>、<code>OrderByDescending</code>、<code>ToListAsync</code></td><td>200 + 陣列</td></tr>
+  <tr><td>GET 單筆</td><td><code>FindAsync(id)</code></td><td>200 + 物件</td></tr>
+  <tr><td>POST</td><td><code>Add</code> → <code>SaveChangesAsync</code></td><td>201 <code>CreatedAtAction</code></td></tr>
+  <tr><td>PUT</td><td><code>FindAsync</code> → 改屬性 → <code>SaveChangesAsync</code></td><td>204 <code>NoContent</code></td></tr>
+  <tr><td>DELETE</td><td><code>FindAsync</code> → <code>Remove</code> → <code>SaveChangesAsync</code></td><td>204 <code>NoContent</code></td></tr>
+</table>
+</div>
+<p>「前端只能傳 title 和 content」：另外寫一個只有這兩個屬性的 <code>record</code> 當參數型別，不要直接用 <code>Post</code>。驗證可以用 <code>[Required]</code>、<code>[MaxLength]</code>。</p>
+<p class="accept">✅ 驗收：用題 7 的 <code>.http</code> 檔，每支 API 都回傳正確的狀態碼</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Models/PostRequest.cs</p>
+<pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
+
+namespace BlogApi.Models;
+
+// 新增、修改文章時，前端只能傳這兩個欄位
+public record PostRequest(
+    [Required, MaxLength(200)] string Title,
+    [Required] string Content);</code></pre>
+<p class="file-label">BlogApi/Controllers/PostsController.cs</p>
+<pre><code class="language-csharp">using BlogApi.Data;
+using BlogApi.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace BlogApi.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class PostsController : ControllerBase
+{
+    private readonly BlogDbContext _db;
+
+    public PostsController(BlogDbContext db)
+    {
+        _db = db;
+    }
+
+    // GET api/posts?keyword=docker
+    [HttpGet]
+    public async Task&lt;ActionResult&lt;List&lt;Post&gt;&gt;&gt; GetAll(string? keyword)
+    {
+        var query = _db.Posts.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            query = query.Where(p =&gt; p.Title.Contains(keyword));
+        }
+
+        var posts = await query
+            .OrderByDescending(p =&gt; p.CreatedAt)
+            .ToListAsync();
+
+        return posts;
+    }
+
+    // GET api/posts/5
+    [HttpGet("{id}")]
+    public async Task&lt;ActionResult&lt;Post&gt;&gt; GetById(int id)
+    {
+        var post = await _db.Posts.FindAsync(id);
+        if (post is null)
+        {
+            return NotFound();
+        }
+
+        return post;
+    }
+
+    // POST api/posts
+    [HttpPost]
+    public async Task&lt;ActionResult&lt;Post&gt;&gt; Create(PostRequest request)
+    {
+        var post = new Post
+        {
+            Title = request.Title,
+            Content = request.Content,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _db.Posts.Add(post);
+        await _db.SaveChangesAsync();
+
+        return CreatedAtAction(nameof(GetById), new { id = post.Id }, post);
+    }
+
+    // PUT api/posts/5
+    [HttpPut("{id}")]
+    public async Task&lt;IActionResult&gt; Update(int id, PostRequest request)
+    {
+        var post = await _db.Posts.FindAsync(id);
+        if (post is null)
+        {
+            return NotFound();
+        }
+
+        post.Title = request.Title;
+        post.Content = request.Content;
+        post.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    // DELETE api/posts/5
+    [HttpDelete("{id}")]
+    public async Task&lt;IActionResult&gt; Delete(int id)
+    {
+        var post = await _db.Posts.FindAsync(id);
+        if (post is null)
+        {
+            return NotFound();
+        }
+
+        _db.Posts.Remove(post);
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+}</code></pre>
+<ul>
+  <li><strong>為什麼不用 <code>Post</code> 當參數？</strong>如果前端傳 <code>{"id": 999, "createdAt": "1999-01-01"}</code>，這些值會被直接寫進去。這叫做 <em>over-posting</em>。用 <code>PostRequest</code> 就只收得到兩個欄位</li>
+  <li><strong>PUT 為什麼沒有呼叫 <code>Update()</code>？</strong><code>FindAsync</code> 查出來的物件已經被追蹤（Unchanged），改屬性後會自動變成 Modified，<code>SaveChangesAsync</code> 就會送出 UPDATE（見 2-4）</li>
+  <li><strong><code>CreatedAt</code> 用 <code>DateTime.UtcNow</code></strong>：存 UTC 時間，前端再依照使用者的時區顯示，避免伺服器搬到其他時區時時間錯亂</li>
+</ul>
+</div>
+</details>
+</div>
+
+<!-- 題 7 -->
+<div class="exercise">
+<h3>題 7：用 .http 檔測試，並觀察 SQL</h3>
+<p>需求：</p>
+<ol>
+  <li>在 <code>appsettings.Development.json</code> 開啟 EF Core 的 SQL log</li>
+  <li>在 <code>BlogApi.http</code> 寫好 5 支 API 的請求：新增兩篇 → 列表 → 關鍵字搜尋 → 單筆 → 查不存在的 id → 修改 → 刪除</li>
+  <li>每送一個請求，就到 Rider 的 Run 視窗看 EF Core 印出的 SQL</li>
+  <li>在 <code>GetAll</code> 裡用 <code>ToQueryString()</code> 印出 SQL，跟 log 比較看看</li>
+</ol>
+<p><strong>💡 提示</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>需求</th><th>用什麼</th></tr>
+  <tr><td>開 SQL log</td><td><code>Logging:LogLevel</code> 加一個分類 <code>Microsoft.EntityFrameworkCore.Database.Command</code>，等級 <code>Information</code></td></tr>
+  <tr><td>.http 檔語法</td><td>每個請求用 <code>###</code> 分隔；<code>方法 網址</code>，下一行放 header，空一行再放 JSON body</td></tr>
+  <tr><td>ToQueryString</td><td>對還沒執行的 query（<code>ToListAsync</code> 之前）呼叫 <code>.ToQueryString()</code>，會回傳 SQL 字串</td></tr>
+</table>
+</div>
+<p class="accept">✅ 驗收：每個請求的狀態碼依序是 201、201、200、200、200、404、204、204；Run 視窗看得到 INSERT / SELECT / UPDATE / DELETE</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/appsettings.Development.json</p>
+<pre><code class="language-json">{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.EntityFrameworkCore.Database.Command": "Information"
+    }
+  }
+}</code></pre>
+<p class="file-label">BlogApi/BlogApi.http（port 換成你 launchSettings.json 裡的）</p>
+<pre><code class="language-plaintext">@BlogApi_HostAddress = http://localhost:5068
+
+### 新增文章 1 → 201
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "title": "Docker 入門",
+  "content": "用 Docker 跑 MSSQL"
+}
+
+### 新增文章 2 → 201
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "title": "EF Core 入門",
+  "content": "DbContext 與 Migration"
+}
+
+### 文章列表 → 200
+GET {{BlogApi_HostAddress}}/api/posts
+
+### 關鍵字搜尋 → 200
+GET {{BlogApi_HostAddress}}/api/posts?keyword=Docker
+
+### 單篇文章 → 200
+GET {{BlogApi_HostAddress}}/api/posts/1
+
+### 不存在的文章 → 404
+GET {{BlogApi_HostAddress}}/api/posts/999
+
+### 修改文章 → 204
+PUT {{BlogApi_HostAddress}}/api/posts/1
+Content-Type: application/json
+
+{
+  "title": "Docker 入門（修訂）",
+  "content": "更新內容"
+}
+
+### 刪除文章 → 204
+DELETE {{BlogApi_HostAddress}}/api/posts/2
+
+### 驗證失敗 → 400
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "title": ""
+}</code></pre>
+<p>最後一個請求會得到 400，訊息是 <code>"The Title field is required."</code>、<code>"The Content field is required."</code>。這是 <code>[ApiController]</code> 自動幫你做的驗證。</p>
+<p class="file-label">ToQueryString：暫時加在 GetAll 的 ToListAsync 之前</p>
+<pre><code class="language-csharp">var sql = query.OrderByDescending(p =&gt; p.CreatedAt).ToQueryString();
+Console.WriteLine(sql);</code></pre>
+<p>傳入 <code>keyword=Docker</code> 時的輸出（實際驗證結果）：</p>
+<pre><code class="language-sql">DECLARE @keyword_contains nvarchar(200) = N'%Docker%';
+
+SELECT [p].[Id], [p].[Content], [p].[CreatedAt], [p].[Title], [p].[UpdatedAt]
+FROM [Posts] AS [p]
+WHERE [p].[Title] LIKE @keyword_contains ESCAPE N'\'
+ORDER BY [p].[CreatedAt] DESC</code></pre>
+<p>和 log 的差別：log 為了安全不會印出參數的值（顯示成 <code>?</code>），<code>ToQueryString()</code> 則會多一行 <code>DECLARE</code> 把參數值寫出來，複製到 Rider 的 Query Console 就能直接執行。<strong>看完記得把這兩行刪掉。</strong></p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="sql">5. 觀察 SQL：LINQ 對照產生的 SQL</h2>
+<p>以下是題 7 實際執行時，EF Core 10 印出的 SQL（只保留重點）：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>C#</th><th>產生的 SQL</th></tr>
+  <tr>
+    <td><pre><code class="language-csharp">_db.Posts
+  .OrderByDescending(p =&gt; p.CreatedAt)
+  .ToListAsync()</code></pre></td>
+    <td><pre><code class="language-sql">SELECT [p].[Id], [p].[Content], [p].[CreatedAt],
+       [p].[Title], [p].[UpdatedAt]
+FROM [Posts] AS [p]
+ORDER BY [p].[CreatedAt] DESC</code></pre></td>
+  </tr>
+  <tr>
+    <td><pre><code class="language-csharp">.Where(p =&gt; p.Title.Contains(keyword))</code></pre></td>
+    <td><pre><code class="language-sql">WHERE [p].[Title] LIKE @keyword_contains ESCAPE N'\'
+-- @keyword_contains = N'%Docker%'</code></pre></td>
+  </tr>
+  <tr>
+    <td><pre><code class="language-csharp">_db.Posts.FindAsync(id)</code></pre></td>
+    <td><pre><code class="language-sql">SELECT TOP(1) [p].[Id], [p].[Content], ...
+FROM [Posts] AS [p]
+WHERE [p].[Id] = @p</code></pre></td>
+  </tr>
+  <tr>
+    <td><pre><code class="language-csharp">_db.Posts.Add(post);
+await _db.SaveChangesAsync();</code></pre></td>
+    <td><pre><code class="language-sql">INSERT INTO [Posts] ([Content], [CreatedAt],
+                     [Title], [UpdatedAt])
+OUTPUT INSERTED.[Id]
+VALUES (@p0, @p1, @p2, @p3);</code></pre></td>
+  </tr>
+  <tr>
+    <td><pre><code class="language-csharp">post.Title = ...;
+post.Content = ...;
+post.UpdatedAt = ...;
+await _db.SaveChangesAsync();</code></pre></td>
+    <td><pre><code class="language-sql">UPDATE [Posts] SET [Content] = @p0, [Title] = @p1,
+                   [UpdatedAt] = @p2
+OUTPUT 1
+WHERE [Id] = @p3;</code></pre></td>
+  </tr>
+  <tr>
+    <td><pre><code class="language-csharp">_db.Posts.Remove(post);
+await _db.SaveChangesAsync();</code></pre></td>
+    <td><pre><code class="language-sql">DELETE FROM [Posts]
+OUTPUT 1
+WHERE [Id] = @p0;</code></pre></td>
+  </tr>
+</table>
+</div>
+
+<h3>從 SQL 看出來的重點</h3>
+<ul>
+  <li><strong>全部都是參數化查詢</strong>（<code>@p0</code>、<code>@keyword_contains</code>），值不會直接拼進 SQL 字串，所以不會有 SQL Injection</li>
+  <li><strong><code>OUTPUT INSERTED.[Id]</code></strong>：INSERT 時順便把資料庫產生的自動編號拿回來，這就是 <code>SaveChangesAsync()</code> 之後 <code>post.Id</code> 會有值的原因</li>
+  <li><strong>UPDATE 只更新有改的欄位</strong>：<code>CreatedAt</code> 沒改，所以不在 SET 裡面。這是 Change Tracking 的功勞</li>
+  <li><strong>PUT 和 DELETE 都是兩句 SQL</strong>：先 <code>SELECT TOP(1)</code>（<code>FindAsync</code>），再 UPDATE / DELETE。之後的課會介紹 <code>ExecuteUpdateAsync</code> / <code>ExecuteDeleteAsync</code>，可以一句完成</li>
+  <li><strong><code>Contains</code> 變成 <code>LIKE '%...%'</code></strong>：前後都有 <code>%</code>，資料量大時用不到索引，第 4 課談效能時會再提</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="pitfalls">6. 優缺點 &amp; 常見坑</h2>
+<h3>優點</h3>
+<ul>
+  <li>用 C# 型別寫查詢，打錯欄位名稱編譯時就會發現</li>
+  <li>自動參數化，預設就能防 SQL Injection</li>
+  <li>Migration 讓資料庫結構有版本紀錄，換電腦一個指令就能重建</li>
+</ul>
+<h3>缺點</h3>
+<ul>
+  <li>產生的 SQL 不一定是最佳寫法，要養成<strong>看 SQL log</strong> 的習慣</li>
+  <li>多了一層抽象，出問題時要同時懂 C# 和 SQL 才好排查</li>
+</ul>
+
+<h3>常見坑</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>症狀</th><th>原因</th><th>解法</th></tr>
+  <tr><td><code>The Entity Framework tools version '9.x' is older than that of the runtime '10.x'</code></td><td>dotnet-ef 工具版本比 EF Core 舊</td><td><code>dotnet tool update --global dotnet-ef</code></td></tr>
+  <tr><td>build 出現 <code>NU1902</code> / <code>NU1903</code></td><td>間接相依的套件有已知漏洞</td><td>見題 2 答案：<code>dotnet nuget why</code> 找來源，直接安裝新版</td></tr>
+  <tr><td><code>Your startup project 'BlogApi' doesn't reference Microsoft.EntityFrameworkCore.Design</code></td><td>沒裝 Design 套件</td><td>安裝 <code>Microsoft.EntityFrameworkCore.Design</code></td></tr>
+  <tr><td><code>No project was found</code></td><td>在 solution 資料夾執行 <code>dotnet ef</code></td><td>切到有 .csproj 的資料夾，或加 <code>--project BlogApi</code></td></tr>
+  <tr><td><code>Value cannot be null. (Parameter 'connectionString')</code></td><td>讀不到連線字串：User Secrets 沒設定、名稱打錯，或不是在 Development 環境執行</td><td><code>dotnet user-secrets list</code> 檢查；確認 <code>launchSettings.json</code> 的 <code>ASPNETCORE_ENVIRONMENT</code> 是 <code>Development</code></td></tr>
+  <tr><td>API 回 201，但資料庫沒有資料</td><td>忘了 <code>SaveChangesAsync()</code>，或忘了 <code>await</code></td><td>見 2-4</td></tr>
+  <tr><td>改了 Post.cs，資料表卻沒變</td><td>沒有新增 migration</td><td><code>migrations add</code> → <code>database update</code>。<strong>不要</strong>直接到資料庫手動改表</td></tr>
+  <tr><td>POST 後回傳的 <code>createdAt</code> 結尾有 <code>Z</code>，GET 查出來卻沒有</td><td>SQL Server 的 <code>datetime2</code> 不記錄時區，讀回來的 <code>DateTime.Kind</code> 是 Unspecified</td><td>先記得「資料庫存的都是 UTC」。之後可以改用 <code>DateTimeOffset</code> 或設定 ValueConverter</td></tr>
+  <tr><td>用 curl 送中文，API 回 400 <code>could not be converted</code></td><td>終端機的編碼不是 UTF-8，中文送出去就變成亂碼</td><td>用 Rider 的 <code>.http</code> 檔測試</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="next">7. 延伸問題（想想看，答案在後面的課會出現）</h2>
+<ol>
+  <li>為什麼都用 <code>ToListAsync</code>、<code>SaveChangesAsync</code> 這些 async 版本？用同步的 <code>ToList()</code> 會怎樣？</li>
+  <li>兩個人同時打開同一篇文章修改，後送出的人會蓋掉先送出的人的內容。要怎麼偵測這種衝突？（關鍵字：Concurrency Token、<code>RowVersion</code>）</li>
+  <li>現在 API 直接回傳 <code>Post</code> Entity。等第 2 課加上「作者」之後，直接回傳 Entity 會遇到什麼問題？（關鍵字：DTO、循環參考）</li>
+  <li>文章有一萬篇時，<code>GET /api/posts</code> 一次全部回傳會怎樣？（第 4 課：分頁）</li>
+</ol>
+
+<nav class="footer-nav">
+  <a href="00-docker-mssql.html">← 00 Docker 跑 MSSQL</a>
+  <a href="../index.html">回目錄</a>
+  <span>下一課：02a 一對多 → 尚未產出</span>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

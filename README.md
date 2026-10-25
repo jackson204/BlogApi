@@ -26,7 +26,7 @@ flowchart LR
 | 課程 | 主題 | 狀態 |
 |---|---|---|
 | [00 環境準備：用 Docker 跑 MSSQL](https://jackson204.github.io/BlogApi/lessons/00-docker-mssql.html) | Docker、image / container、port、volume、連線字串 | ✅ |
-| 01 文章 CRUD：EF Core 入門 | DbContext、Migration、LINQ ↔ SQL | ⏳ |
+| [01 文章 CRUD：EF Core 入門](https://jackson204.github.io/BlogApi/lessons/01-efcore-crud.html) | DbContext、Migration、LINQ ↔ SQL、User Secrets | ✅ |
 | 02a 作者與文章：一對多 | Foreign Key、`Include` | ⏳ |
 | 02b 使用者與個人檔案：一對一 | `HasOne` / `WithOne` | ⏳ |
 | 02c 文章與標籤：多對多 | 中介表 | ⏳ |
