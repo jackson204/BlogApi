@@ -63,9 +63,19 @@
 </div>
 
 <!-- ============================================================ -->
-<h2 id="concept">2. 原理</h2>
+<h2 id="concept">2. 原理：Docker 怎麼把 SQL Server 裝進一個盒子</h2>
+<p>這一節依序回答四個問題，看完就知道第 3 節的指令參數「為什麼要這樣下」：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>小節</th><th>標題</th><th>回答的問題</th></tr>
+  <tr><td><a href="#c-image">2-1</a></td><td>image 和 container：就像 class 和物件</td><td>image 和 container 差在哪？</td></tr>
+  <tr><td><a href="#c-port">2-2</a></td><td>port 對應：從 Windows 怎麼連進盒子裡？</td><td><code>-p 1433:1433</code> 兩個數字各代表什麼？</td></tr>
+  <tr><td><a href="#c-volume">2-3</a></td><td>volume：container 刪掉，資料要留著</td><td>盒子刪掉了，資料怎麼留下來？</td></tr>
+  <tr><td><a href="#c-lifecycle">2-4</a></td><td>container 的生命週期</td><td>停止、刪除 container 各會發生什麼事？</td></tr>
+</table>
+</div>
 
-<h3>2-1. image 和 container：就像 class 和物件</h3>
+<h3 id="c-image">2-1. image 和 container：就像 class 和物件</h3>
 <p>用你熟悉的 C# 來比喻最好懂：</p>
 <div class="table-wrap">
 <table>
@@ -86,7 +96,7 @@ flowchart LR
 <div class="diagram-caption">同一個 image 可以開出很多個互不干擾的 container</div>
 </div>
 
-<h3>2-2. port 對應：從 Windows 怎麼連進盒子裡？</h3>
+<h3 id="c-port">2-2. port 對應：從 Windows 怎麼連進盒子裡？</h3>
 <p>container 有自己獨立的網路，SQL Server 在<strong>盒子裡</strong>聽 1433 port。要讓 Windows 上的 Rider 或你的 API 連得到，必須把 Windows 的某個 port「接」到盒子裡的 1433。寫法是 <code>-p 主機port:容器port</code>。</p>
 
 <div class="callout">
@@ -118,7 +128,7 @@ flowchart LR
   <li>同時跑兩個專案的資料庫 → 一個 <code>1433:1433</code>，另一個 <code>1434:1433</code>。兩個容器內部都是 1433，互不衝突，因為每個容器有自己獨立的網路</li>
 </ul>
 
-<h3>2-3. volume：container 刪掉，資料要留著</h3>
+<h3 id="c-volume">2-3. volume：container 刪掉，資料要留著</h3>
 <p>container 被刪除時，裡面的檔案也會一起不見。資料庫檔案是最不能丟的東西，所以要把 SQL Server 存資料的資料夾 <code>/var/opt/mssql</code> 掛到 <strong>volume</strong> 上。volume 由 Docker 另外保管，跟 container 的生命週期分開。</p>
 
 <div class="diagram">
@@ -145,7 +155,7 @@ flowchart LR
 <div class="diagram-caption">實線：網路連線　虛線：資料實際存放的位置</div>
 </div>
 
-<h3>2-4. container 的生命週期</h3>
+<h3 id="c-lifecycle">2-4. container 的生命週期</h3>
 <div class="diagram">
 <div class="mermaid">
 stateDiagram-v2

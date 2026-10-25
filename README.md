@@ -6,6 +6,26 @@
 📖 **學習筆記（HTML 版）**：https://jackson204.github.io/BlogApi/
 > 筆記放在 [`docs/`](docs/)，透過 GitHub Pages 發布。每一課都有圖解和練習題，參考答案預設摺疊，寫完再打開對照。
 
+## 全景：發一篇文章，會經過哪些地方？
+
+> 做一個部落格平台的後端 API。明天主管打開網站發一篇文章，後天再打開，**那篇文章必須還在**。
+
+「後天還要在」這句話，會把你從前端一路帶到資料庫：
+
+![全景圖：前端送出 POST /api/posts，經過 Controller、EF Core、SqlClient 到 Docker 裡的 SQL Server，再把 201 Created 送回前端](docs/images/overview.svg)
+
+| 步驟 | 發生什麼 | 在哪一課學 |
+|---|---|---|
+| ① | 前端送出 HTTP Request：`POST /api/posts`，內容是文章的 JSON | 01 |
+| ② | `PostsController` 把 JSON 轉成 `PostRequest` 物件，交給 EF Core | 01；DbContext 怎麼傳進 Controller 是 03 DI |
+| ③ | EF Core 把「新增這個物件」翻成 `INSERT` SQL，透過 `Microsoft.Data.SqlClient` 送到資料庫 | 01；連線字串在 00 |
+| ④ | SQL Server 執行並寫入磁碟，回傳新文章的編號 | 00 Docker、volume；01 Migration 建表 |
+| ⑤ | 後端回傳 `201 Created` + 文章 JSON | 01 |
+
+後天主管再打開網站，前端送出 `GET /api/posts`，走的是同一條路：EF Core 送出 `SELECT`，SQL Server 把存著的文章拿回來，再包成 Response 回給前端。
+
+**要記住的一件事：** 不管中間疊了幾層（Controller、EF Core、SqlClient），最後跟資料庫溝通的永遠是 **SQL**。所以每一課都會「觀察 EF Core 產生的 SQL」。
+
 ## 技術
 
 - .NET 10 / ASP.NET Core Web API

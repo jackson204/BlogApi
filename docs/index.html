@@ -11,6 +11,43 @@
 <h1>📚 部落格 Web API 學習筆記</h1>
 <p class="subtitle">以部落格當主線，每個階段遇到問題時再學對應主題。先自己寫，寫完再打開 🔒 參考答案。</p>
 
+<h2 id="overview">開始之前：發一篇文章，會經過哪些地方？</h2>
+<div class="callout">
+<p>📋 <strong>情境</strong>：做一個部落格平台的後端 API。明天主管打開網站發一篇文章，後天再打開，<strong>那篇文章必須還在</strong>。</p>
+</div>
+<p>「發一篇文章」看起來很簡單：前端送來標題和內容，後端收下來就好。但「後天還要在」這句話，會把你從前端一路帶到資料庫。先看全景：</p>
+
+<div class="diagram">
+<img src="images/overview.svg" alt="全景圖：前端送出 POST /api/posts，經過 Controller、EF Core、SqlClient 到 Docker 裡的 SQL Server，再把 201 Created 送回前端" style="width:100%;height:auto">
+<div class="diagram-caption">按下「送出」後，一篇文章從前端到資料庫、再把結果送回前端的完整來回</div>
+</div>
+
+<div class="table-wrap">
+<table>
+  <tr><th>步驟</th><th>發生什麼</th><th>在哪一課學</th></tr>
+  <tr><td>①</td><td>前端送出 HTTP Request：<code>POST /api/posts</code>，內容是文章的 JSON</td><td><a href="lessons/01-efcore-crud.html#usage">01</a>（3-7 Controller、題 7 <code>.http</code> 檔）</td></tr>
+  <tr><td>②</td><td><code>PostsController</code> 把 JSON 轉成 <code>PostRequest</code> 物件，交給 EF Core</td><td><a href="lessons/01-efcore-crud.html#flow">01</a>（2-2 請求流程、題 6）；DbContext 怎麼傳進 Controller 是 03 DI</td></tr>
+  <tr><td>③</td><td>EF Core 把「新增這個物件」翻成 <code>INSERT</code> SQL，透過 <code>Microsoft.Data.SqlClient</code> 送到資料庫</td><td><a href="lessons/01-efcore-crud.html#sql">01</a>（第 5 節 SQL 對照）；連線字串在 <a href="lessons/00-docker-mssql.html#connstr">00</a></td></tr>
+  <tr><td>④</td><td>SQL Server 執行並寫入磁碟，回傳新文章的編號</td><td><a href="lessons/00-docker-mssql.html#concept">00</a>（Docker、volume）；<a href="lessons/01-efcore-crud.html#exercise">01</a>（題 5 Migration 建表）</td></tr>
+  <tr><td>⑤</td><td>後端回傳 <code>201 Created</code> + 文章 JSON</td><td><a href="lessons/01-efcore-crud.html#usage">01</a>（3-7 狀態碼表）</td></tr>
+</table>
+</div>
+
+<p>後天主管再打開網站，前端送出 <code>GET /api/posts</code>，走的是同一條路：EF Core 送出 <code>SELECT</code>，SQL Server 把存著的文章拿回來，再包成 Response 回給前端。</p>
+
+<div class="callout warn">
+<p>💡 <strong>「後天還要在」的兩個條件</strong></p>
+<ol>
+  <li>資料要<strong>寫進資料庫</strong>，不能只放在程式的記憶體裡。API 重新啟動，記憶體裡的東西就沒了</li>
+  <li>資料庫的檔案<strong>不能跟著 container 一起被刪掉</strong>，這就是第 0 課 <a href="lessons/00-docker-mssql.html#concept">volume</a> 要解決的問題</li>
+</ol>
+</div>
+
+<div class="callout ok">
+<p>📌 <strong>要記住的一件事</strong>：不管中間疊了幾層（Controller、EF Core、SqlClient），最後跟資料庫溝通的永遠是 <strong>SQL</strong>，資料庫回傳的永遠是結果表。所以每一課都會「觀察 EF Core 產生的 SQL」。</p>
+</div>
+
+<h2 id="lessons">課程清單</h2>
 <input id="q" class="search" type="search" placeholder="搜尋主題，例如：Include、多對多、DI、N+1、volume…" autocomplete="off">
 
 <div id="list" class="lesson-list"></div>
@@ -23,7 +60,7 @@ var lessons = [
   { stage: "階段 0", title: "00｜環境準備：用 Docker 跑 MSSQL", file: "lessons/00-docker-mssql.html",
     tags: ["Docker", "image", "container", "volume", "port", "docker compose", "MSSQL", "連線字串", "sqlcmd", "Rider Database"] },
   { stage: "階段 1", title: "01｜文章 CRUD：EF Core 入門", file: "lessons/01-efcore-crud.html",
-    tags: ["Web API", "Controller", "EF Core", "DbContext", "Migration", "LINQ", "SQL", "ToQueryString", "User Secrets", "Change Tracking", ".http"] },
+    tags: ["Web API", "Controller", "EF Core", "DbContext", "Migration", "LINQ", "SQL", "ToQueryString", "User Secrets", "Change Tracking", ".http", "ADO.NET", "Dapper", "ORM", "DbSet", "方法簽章", "擴充方法", "AddDbContext", "Action", "Func", "委派", "lambda", "生命週期", "Scoped", "NuGet", "Provider", "dotnet-ef", "Fluent API", "Data Annotations"] },
   { stage: "階段 2", title: "02a｜作者與文章：一對多", file: null,
     tags: ["一對多", "Foreign Key", "Include", "導覽屬性"] },
   { stage: "階段 2", title: "02b｜使用者與個人檔案：一對一", file: null,

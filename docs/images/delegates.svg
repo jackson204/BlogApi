@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" width="1000" height="470" role="img" aria-label="Action 和 Func 的差別：Action 收參數不回傳，Func 最後一個型別是回傳值；Action&lt;DbContextOptionsBuilder&gt; 就是收一個 options、不回傳的方法">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
+    --in: #ddf4ff; --in-b: #0969da; --out: #dcfce7; --out-b: #16a34a; --fn: #ede9fe; --fn-b: #7c3aed; --none: #f6f8fa; --orm: #ffe4e6; --orm-b: #e11d48;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23; --card: #151b23;
+      --in: #0c2d4a; --in-b: #58a6ff; --out: #12261b; --out-b: #3fb950; --fn: #231a3d; --fn-b: #a78bfa; --none: #151b23; --orm: #3b1520; --orm-b: #f472b6;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 17px; font-weight: 800; }
+  .b { font-size: 13.5px; font-weight: 700; }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .code { font-size: 13px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .codem { font-size: 12px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; fill: var(--muted); }
+  .in { fill: var(--in); stroke: var(--in-b); stroke-width: 2; }
+  .out { fill: var(--out); stroke: var(--out-b); stroke-width: 2; }
+  .fn { fill: var(--fn); stroke: var(--fn-b); stroke-width: 2; }
+  .none { fill: var(--none); stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .panel { fill: var(--card); stroke: var(--border); stroke-width: 1.5; }
+  .ours { fill: var(--orm); stroke: var(--orm-b); stroke-width: 2; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .f-muted { fill: var(--muted); }
+  .t-in { fill: var(--in-b); font-weight: 700; } .t-out { fill: var(--out-b); font-weight: 700; } .t-fn { fill: var(--fn-b); font-weight: 700; } .t-orm { fill: var(--orm-b); font-weight: 700; }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="470" rx="12"/>
+
+<!-- Action -->
+<rect class="panel" x="20" y="20" width="470" height="250" rx="12"/>
+<text class="h" x="40" y="52">Action&lt;…&gt;：做事，不回傳</text>
+<text class="xs" x="40" y="72">角括號裡全部都是「參數」的型別</text>
+<rect class="in" x="40" y="96" width="110" height="44" rx="8"/><text class="code" x="95" y="123" text-anchor="middle">string</text>
+<path class="arr" d="M152,118 H192" marker-end="url(#am)"/>
+<rect class="fn" x="195" y="88" width="130" height="60" rx="10"/><text class="b t-fn" x="260" y="114" text-anchor="middle">方法</text><text class="xs" x="260" y="133" text-anchor="middle">做一些事</text>
+<path class="arr" d="M327,118 H367" marker-end="url(#am)"/>
+<rect class="none" x="370" y="96" width="100" height="44" rx="8"/><text class="xs" x="420" y="123" text-anchor="middle">沒有回傳值</text>
+<text class="codem" x="40" y="176">Action                → () =&gt; Console.WriteLine("Hi")</text>
+<text class="codem" x="40" y="200">Action&lt;string&gt;        → name =&gt; Console.WriteLine(name)</text>
+<text class="codem" x="40" y="224">Action&lt;string, int&gt;   → (name, age) =&gt; …</text>
+<text class="xs" x="40" y="252">對應到方法：void 方法名稱(string name)</text>
+
+<!-- Func -->
+<rect class="panel" x="510" y="20" width="470" height="250" rx="12"/>
+<text class="h" x="530" y="52">Func&lt;…, TResult&gt;：算出一個值</text>
+<text class="xs" x="530" y="72"><tspan style="font-weight:700">最後一個</tspan>型別是「回傳值」，前面的是參數</text>
+<rect class="in" x="530" y="88" width="80" height="28" rx="6"/><text class="code" x="570" y="107" text-anchor="middle">int a</text>
+<rect class="in" x="530" y="120" width="80" height="28" rx="6"/><text class="code" x="570" y="139" text-anchor="middle">int b</text>
+<path class="arr" d="M612,118 H672" marker-end="url(#am)"/>
+<rect class="fn" x="675" y="88" width="130" height="60" rx="10"/><text class="b t-fn" x="740" y="114" text-anchor="middle">方法</text><text class="xs" x="740" y="133" text-anchor="middle">計算</text>
+<path class="arr" d="M807,118 H847" marker-end="url(#am)"/>
+<rect class="out" x="850" y="96" width="110" height="44" rx="8"/><text class="code" x="905" y="123" text-anchor="middle">int</text>
+<text class="codem" x="530" y="176">Func&lt;int&gt;             → () =&gt; 42</text>
+<text class="codem" x="530" y="200">Func&lt;int, int, int&gt;   → (a, b) =&gt; a + b</text>
+<text class="codem" x="530" y="224">Func&lt;Post, bool&gt;      → p =&gt; p.Title.Length &gt; 5</text>
+<text class="xs" x="530" y="252">對應到方法：int 方法名稱(int a, int b)</text>
+
+<!-- 我們那一行 -->
+<rect class="ours" x="20" y="290" width="960" height="160" rx="12"/>
+<text class="h" x="40" y="322">套回 AddDbContext：<tspan class="code" style="font-size:15px">Action&lt;DbContextOptionsBuilder&gt;</tspan></text>
+<rect class="in" x="40" y="342" width="220" height="44" rx="8"/><text class="code" x="150" y="361" text-anchor="middle">DbContextOptionsBuilder</text><text class="xs" x="150" y="378" text-anchor="middle">EF Core 會傳進來</text>
+<path class="arr" d="M262,364 H302" marker-end="url(#am)"/>
+<rect class="fn" x="305" y="336" width="440" height="56" rx="10"/>
+<text class="code" x="525" y="360" text-anchor="middle">options =&gt; options.UseSqlServer(…)</text>
+<text class="xs" x="525" y="380" text-anchor="middle">你寫的 lambda：拿到 options，設定「用 SQL Server、連這個字串」</text>
+<path class="arr" d="M747,364 H787" marker-end="url(#am)"/>
+<rect class="none" x="790" y="342" width="170" height="44" rx="8"/><text class="xs" x="875" y="369" text-anchor="middle">不用回傳（Action）</text>
+<text class="b" x="40" y="425">重點：你交出去的是「一個方法」，不是「一個值」。</text>
+<text class="xs" x="40" y="443">什麼時候執行、options 從哪來，都由 EF Core 決定 → 這就是它可以「晚一點才執行」的原因</text>
+</svg>

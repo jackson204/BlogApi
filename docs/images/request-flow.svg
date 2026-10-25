@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="1000" height="640" role="img" aria-label="GET /api/posts?keyword=Docker 從前端進來，經過 ASP.NET Core、PostsController、BlogDbContext 到 SQL Server，再一路回傳的步驟">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
+    --accent: #6d28d9; --tip: #1a7f37; --orange: #ea580c; --await: #fff4e5;
+    --app: #dcfce7; --app-b: #16a34a; --orm: #ffe4e6; --orm-b: #e11d48; --db: #fef9c3; --db-b: #ca8a04; --core: #e7f0ff; --core-b: #3b6fd8;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23; --card: #151b23;
+      --accent: #b58cff; --tip: #3fb950; --orange: #fb923c; --await: #2a1d0e;
+      --app: #12261b; --app-b: #3fb950; --orm: #3b1520; --orm-b: #f472b6; --db: #2b2408; --db-b: #facc15; --core: #10213d; --core-b: #6ea8ff;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .hd { font-size: 14px; font-weight: 700; }
+  .hs { font-size: 11px; fill: var(--muted); }
+  .lbl { font-size: 13px; paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round; }
+  .code { font-variant-ligatures: none; font-size: 12.5px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round; }
+  .num { font-size: 11.5px; font-weight: 800; fill: #ffffff; }
+  .t-req { fill: var(--accent); } .t-res { fill: var(--tip); } .t-db { fill: var(--orange); }
+  .h-front { fill: var(--card); stroke: var(--border); stroke-width: 2; }
+  .h-core { fill: var(--core); stroke: var(--core-b); stroke-width: 2; }
+  .h-app { fill: var(--app); stroke: var(--app-b); stroke-width: 2; }
+  .h-orm { fill: var(--orm); stroke: var(--orm-b); stroke-width: 2; }
+  .h-db { fill: var(--db); stroke: var(--db-b); stroke-width: 2; }
+  .life { stroke: var(--border); stroke-width: 2; stroke-dasharray: 4 5; }
+  .note { fill: var(--soft); stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  .await { fill: var(--await); }
+  .await-t { font-size: 12.5px; font-weight: 700; fill: var(--orange); }
+  .await-s { font-size: 11.5px; fill: var(--muted); }
+  .l-call { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .l-ret { fill: none; stroke: var(--muted); stroke-width: 2; stroke-dasharray: 6 4; }
+  .l-req { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+  .l-res { fill: none; stroke: var(--tip); stroke-width: 2.5; }
+  .l-db { fill: none; stroke: var(--orange); stroke-width: 2.5; }
+  .l-dbr { fill: none; stroke: var(--orange); stroke-width: 2.5; stroke-dasharray: 6 4; }
+  .c-req { fill: var(--accent); } .c-res { fill: var(--tip); } .c-db { fill: var(--orange); } .c-mid { fill: var(--muted); }
+  .f-muted { fill: var(--muted); } .f-req { fill: var(--accent); } .f-res { fill: var(--tip); } .f-db { fill: var(--orange); }
+  .legend { font-size: 12px; fill: var(--muted); }
+</style>
+<defs>
+  <marker id="a-mid" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="a-req" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-req" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="a-res" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-res" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="a-db" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-db" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="640" rx="12"/>
+
+<!-- await 區段底色 -->
+<rect class="await" x="10" y="318" width="980" height="78" rx="8"/>
+<text class="await-t" x="30" y="350">⏳ await 等待中</text>
+<text class="await-s" x="30" y="370">等資料庫回應時，執行緒先去處理</text>
+<text class="await-s" x="30" y="386">別的請求，不會卡住</text>
+
+<!-- 參與者 -->
+<rect class="h-front" x="20" y="20" width="160" height="54" rx="10"/>
+<text class="hd" x="100" y="44" text-anchor="middle">前端</text><text class="hs" x="100" y="62" text-anchor="middle">瀏覽器 / .http 檔</text>
+<rect class="h-core" x="220" y="20" width="160" height="54" rx="10"/>
+<text class="hd" x="300" y="44" text-anchor="middle">ASP.NET Core</text><text class="hs" x="300" y="62" text-anchor="middle">接請求、找路由</text>
+<rect class="h-app" x="420" y="20" width="160" height="54" rx="10"/>
+<text class="hd" x="500" y="44" text-anchor="middle">PostsController</text><text class="hs" x="500" y="62" text-anchor="middle">你寫的 API</text>
+<rect class="h-orm" x="620" y="20" width="160" height="54" rx="10"/>
+<text class="hd" x="700" y="44" text-anchor="middle">BlogDbContext</text><text class="hs" x="700" y="62" text-anchor="middle">EF Core</text>
+<rect class="h-db" x="820" y="20" width="160" height="54" rx="10"/>
+<text class="hd" x="900" y="44" text-anchor="middle">SQL Server</text><text class="hs" x="900" y="62" text-anchor="middle">Docker 容器</text>
+
+<!-- 生命線 -->
+<path class="life" d="M100,76 V600"/><path class="life" d="M300,76 V600"/><path class="life" d="M500,76 V600"/><path class="life" d="M700,76 V600"/><path class="life" d="M900,76 V600"/>
+
+<!-- ① 請求 -->
+<path class="l-req" d="M100,112 H296" marker-end="url(#a-req)"/>
+<circle class="c-req" cx="112" cy="94" r="10"/><text class="num" x="112" y="98" text-anchor="middle">1</text>
+<text class="code t-req" x="128" y="99">GET /api/posts?keyword=Docker</text>
+
+<!-- ② 路由 -->
+<rect class="note" x="215" y="128" width="170" height="30" rx="6"/>
+<circle class="c-mid" cx="228" cy="143" r="10"/><text class="num" x="228" y="147" text-anchor="middle">2</text>
+<text class="lbl" x="244" y="148">Routing 找到 GetAll()</text>
+
+<!-- ③ 建立 Controller -->
+<path class="l-call" d="M300,192 H496" marker-end="url(#a-mid)"/>
+<circle class="c-mid" cx="312" cy="174" r="10"/><text class="num" x="312" y="178" text-anchor="middle">3</text>
+<text class="lbl" x="328" y="179">建立 Controller，傳入 DbContext</text>
+
+<!-- ④ 呼叫 LINQ -->
+<path class="l-call" d="M500,236 H696" marker-end="url(#a-mid)"/>
+<circle class="c-mid" cx="512" cy="218" r="10"/><text class="num" x="512" y="222" text-anchor="middle">4</text>
+<text class="code" x="528" y="223">Where(…).ToListAsync()</text>
+
+<!-- ⑤ 翻譯 -->
+<rect class="note" x="615" y="252" width="170" height="30" rx="6"/>
+<circle class="c-mid" cx="628" cy="267" r="10"/><text class="num" x="628" y="271" text-anchor="middle">5</text>
+<text class="lbl" x="644" y="272">把 LINQ 翻成 SQL</text>
+
+<!-- ⑥ 送 SQL -->
+<path class="l-db" d="M700,316 H896" marker-end="url(#a-db)"/>
+<circle class="c-db" cx="712" cy="298" r="10"/><text class="num" x="712" y="302" text-anchor="middle">6</text>
+<text class="code t-db" x="728" y="303">SELECT … LIKE …</text>
+
+<!-- ⑦ 資料列 -->
+<path class="l-dbr" d="M900,378 H704" marker-end="url(#a-db)"/>
+<circle class="c-db" cx="888" cy="360" r="10"/><text class="num" x="888" y="364" text-anchor="middle">7</text>
+<text class="lbl t-db" x="872" y="365" text-anchor="end">回傳資料列</text>
+
+<!-- ⑧ 轉物件 -->
+<rect class="note" x="615" y="412" width="170" height="30" rx="6"/>
+<circle class="c-mid" cx="628" cy="427" r="10"/><text class="num" x="628" y="431" text-anchor="middle">8</text>
+<text class="lbl" x="644" y="432">每一列 → Post 物件</text>
+
+<!-- ⑨ List<Post> -->
+<path class="l-ret" d="M700,478 H504" marker-end="url(#a-mid)"/>
+<circle class="c-mid" cx="688" cy="460" r="10"/><text class="num" x="688" y="464" text-anchor="middle">9</text>
+<text class="code" x="672" y="465" text-anchor="end">List&lt;Post&gt;</text>
+
+<!-- ⑩ return -->
+<path class="l-ret" d="M500,522 H304" marker-end="url(#a-mid)"/>
+<circle class="c-mid" cx="488" cy="504" r="10"/><text class="num" x="488" y="508" text-anchor="middle">10</text>
+<text class="code" x="472" y="509" text-anchor="end">return posts;</text>
+
+<!-- ⑪ 回應 -->
+<path class="l-res" d="M300,566 H104" marker-end="url(#a-res)"/>
+<circle class="c-res" cx="288" cy="548" r="10"/><text class="num" x="288" y="552" text-anchor="middle">11</text>
+<text class="lbl t-res" x="272" y="553" text-anchor="end" style="font-weight:700">200 OK + JSON</text>
+
+<text class="legend" x="500" y="626" text-anchor="middle">實線：呼叫　虛線：回傳　虛線框：自己內部做的事　紫色：HTTP 請求　橘色：和資料庫之間　綠色：HTTP 回應</text>
+</svg>

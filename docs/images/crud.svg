@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" width="1000" height="440" role="img" aria-label="部落格畫面上的五個動作，各自對應的 HTTP 請求、Controller 方法、SQL 和回應">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
+    --post: #6d28d9; --post-s: #ede9fe; --get: #0969da; --get-s: #ddf4ff; --put: #bc4c00; --put-s: #fff1e5; --del: #cf222e; --del-s: #ffebe9;
+    --app: #dcfce7; --app-b: #16a34a; --db: #fef9c3; --db-b: #ca8a04; --ok: #1a7f37;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23; --card: #151b23;
+      --post: #b58cff; --post-s: #231a3d; --get: #58a6ff; --get-s: #0c2d4a; --put: #ffa657; --put-s: #3d2410; --del: #ff7b72; --del-s: #3d1515;
+      --app: #12261b; --app-b: #3fb950; --db: #2b2408; --db-b: #facc15; --ok: #3fb950;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .th { font-size: 13px; font-weight: 700; fill: var(--muted); }
+  .act { font-size: 13.5px; }
+  .code { font-variant-ligatures: none; font-size: 12px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; }
+  .sub { font-size: 11px; font-family: "Cascadia Code", Consolas, monospace; fill: var(--muted); }
+  .verb { font-size: 11px; font-weight: 800; fill: #ffffff; font-family: "Cascadia Code", Consolas, monospace; }
+  .letter { font-size: 15px; font-weight: 800; fill: #ffffff; }
+  .card { fill: var(--card); stroke: var(--border); stroke-width: 1.5; }
+  .ctrl { fill: var(--app); stroke: var(--app-b); stroke-width: 1.5; }
+  .sql { fill: var(--db); stroke: var(--db-b); stroke-width: 1.5; }
+  .resp { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .ok { fill: var(--ok); font-weight: 700; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+  .f-muted { fill: var(--muted); }
+  .post { fill: var(--post); } .post-s { fill: var(--post-s); stroke: var(--post); stroke-width: 1.5; }
+  .get { fill: var(--get); } .get-s { fill: var(--get-s); stroke: var(--get); stroke-width: 1.5; }
+  .put { fill: var(--put); } .put-s { fill: var(--put-s); stroke: var(--put); stroke-width: 1.5; }
+  .del { fill: var(--del); } .del-s { fill: var(--del-s); stroke: var(--del); stroke-width: 1.5; }
+  .note { font-size: 12px; fill: var(--muted); }
+</style>
+<defs>
+  <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="440" rx="12"/>
+
+<!-- 標題列 -->
+<text class="th" x="130" y="36" text-anchor="middle">部落格畫面上的動作</text>
+<text class="th" x="340" y="36" text-anchor="middle">HTTP 請求</text>
+<text class="th" x="535" y="36" text-anchor="middle">Controller 方法</text>
+<text class="th" x="740" y="36" text-anchor="middle">EF Core 產生的 SQL</text>
+<text class="th" x="932" y="36" text-anchor="middle">成功回應</text>
+
+<!-- 第 1 列：Create -->
+<g transform="translate(0,52)">
+  <circle class="post" cx="26" cy="28" r="15"/><text class="letter" x="26" y="33" text-anchor="middle">C</text>
+  <rect class="card" x="50" y="4" width="160" height="48" rx="8"/>
+  <text class="act" x="130" y="33" text-anchor="middle">✍️ 寫好文章，按「發表」</text>
+  <path class="arr" d="M212,28 H232" marker-end="url(#ah)"/>
+  <rect class="post-s" x="235" y="4" width="210" height="48" rx="8"/>
+  <rect class="post" x="245" y="12" width="44" height="18" rx="4"/><text class="verb" x="267" y="25" text-anchor="middle">POST</text>
+  <text class="code" x="296" y="25">/api/posts</text>
+  <text class="sub" x="245" y="45">body: { title, content }</text>
+  <path class="arr" d="M447,28 H467" marker-end="url(#ah)"/>
+  <rect class="ctrl" x="470" y="4" width="130" height="48" rx="8"/>
+  <text class="code" x="535" y="33" text-anchor="middle">Create()</text>
+  <path class="arr" d="M602,28 H622" marker-end="url(#ah)"/>
+  <rect class="sql" x="625" y="4" width="230" height="48" rx="8"/>
+  <text class="code" x="740" y="33" text-anchor="middle">INSERT INTO Posts …</text>
+  <path class="arr" d="M857,28 H877" marker-end="url(#ah)"/>
+  <rect class="resp" x="880" y="4" width="105" height="48" rx="8"/>
+  <text class="code ok" x="932" y="33" text-anchor="middle">201 Created</text>
+</g>
+
+<!-- 第 2 列：Read 列表 -->
+<g transform="translate(0,122)">
+  <circle class="get" cx="26" cy="28" r="15"/><text class="letter" x="26" y="33" text-anchor="middle">R</text>
+  <rect class="card" x="50" y="4" width="160" height="48" rx="8"/>
+  <text class="act" x="130" y="33" text-anchor="middle">🏠 打開首頁、搜尋</text>
+  <path class="arr" d="M212,28 H232" marker-end="url(#ah)"/>
+  <rect class="get-s" x="235" y="4" width="210" height="48" rx="8"/>
+  <rect class="get" x="245" y="12" width="44" height="18" rx="4"/><text class="verb" x="267" y="25" text-anchor="middle">GET</text>
+  <text class="code" x="296" y="25">/api/posts</text>
+  <text class="sub" x="245" y="45">?keyword=Docker（可省略）</text>
+  <path class="arr" d="M447,28 H467" marker-end="url(#ah)"/>
+  <rect class="ctrl" x="470" y="4" width="130" height="48" rx="8"/>
+  <text class="code" x="535" y="33" text-anchor="middle">GetAll()</text>
+  <path class="arr" d="M602,28 H622" marker-end="url(#ah)"/>
+  <rect class="sql" x="625" y="4" width="230" height="48" rx="8"/>
+  <text class="code" x="740" y="25" text-anchor="middle">SELECT … FROM Posts</text>
+  <text class="sub" x="740" y="43" text-anchor="middle">WHERE Title LIKE … ORDER BY …</text>
+  <path class="arr" d="M857,28 H877" marker-end="url(#ah)"/>
+  <rect class="resp" x="880" y="4" width="105" height="48" rx="8"/>
+  <text class="code ok" x="932" y="33" text-anchor="middle">200 OK</text>
+</g>
+
+<!-- 第 3 列：Read 單篇 -->
+<g transform="translate(0,192)">
+  <circle class="get" cx="26" cy="28" r="15"/><text class="letter" x="26" y="33" text-anchor="middle">R</text>
+  <rect class="card" x="50" y="4" width="160" height="48" rx="8"/>
+  <text class="act" x="130" y="33" text-anchor="middle">📄 點進一篇文章</text>
+  <path class="arr" d="M212,28 H232" marker-end="url(#ah)"/>
+  <rect class="get-s" x="235" y="4" width="210" height="48" rx="8"/>
+  <rect class="get" x="245" y="12" width="44" height="18" rx="4"/><text class="verb" x="267" y="25" text-anchor="middle">GET</text>
+  <text class="code" x="296" y="25">/api/posts/{id}</text>
+  <text class="sub" x="245" y="45">例如 /api/posts/1</text>
+  <path class="arr" d="M447,28 H467" marker-end="url(#ah)"/>
+  <rect class="ctrl" x="470" y="4" width="130" height="48" rx="8"/>
+  <text class="code" x="535" y="33" text-anchor="middle">GetById()</text>
+  <path class="arr" d="M602,28 H622" marker-end="url(#ah)"/>
+  <rect class="sql" x="625" y="4" width="230" height="48" rx="8"/>
+  <text class="code" x="740" y="25" text-anchor="middle">SELECT TOP(1) …</text>
+  <text class="sub" x="740" y="43" text-anchor="middle">WHERE Id = @p</text>
+  <path class="arr" d="M857,28 H877" marker-end="url(#ah)"/>
+  <rect class="resp" x="880" y="4" width="105" height="48" rx="8"/>
+  <text class="code ok" x="932" y="25" text-anchor="middle">200 OK</text>
+  <text class="sub" x="932" y="43" text-anchor="middle">找不到 404</text>
+</g>
+
+<!-- 第 4 列：Update -->
+<g transform="translate(0,262)">
+  <circle class="put" cx="26" cy="28" r="15"/><text class="letter" x="26" y="33" text-anchor="middle">U</text>
+  <rect class="card" x="50" y="4" width="160" height="48" rx="8"/>
+  <text class="act" x="130" y="33" text-anchor="middle">✏️ 修改後按「儲存」</text>
+  <path class="arr" d="M212,28 H232" marker-end="url(#ah)"/>
+  <rect class="put-s" x="235" y="4" width="210" height="48" rx="8"/>
+  <rect class="put" x="245" y="12" width="44" height="18" rx="4"/><text class="verb" x="267" y="25" text-anchor="middle">PUT</text>
+  <text class="code" x="296" y="25">/api/posts/{id}</text>
+  <text class="sub" x="245" y="45">body: { title, content }</text>
+  <path class="arr" d="M447,28 H467" marker-end="url(#ah)"/>
+  <rect class="ctrl" x="470" y="4" width="130" height="48" rx="8"/>
+  <text class="code" x="535" y="33" text-anchor="middle">Update()</text>
+  <path class="arr" d="M602,28 H622" marker-end="url(#ah)"/>
+  <rect class="sql" x="625" y="4" width="230" height="48" rx="8"/>
+  <text class="code" x="740" y="25" text-anchor="middle">UPDATE Posts SET …</text>
+  <text class="sub" x="740" y="43" text-anchor="middle">只更新有改的欄位</text>
+  <path class="arr" d="M857,28 H877" marker-end="url(#ah)"/>
+  <rect class="resp" x="880" y="4" width="105" height="48" rx="8"/>
+  <text class="code ok" x="932" y="25" text-anchor="middle">204</text>
+  <text class="sub" x="932" y="43" text-anchor="middle">No Content</text>
+</g>
+
+<!-- 第 5 列：Delete -->
+<g transform="translate(0,332)">
+  <circle class="del" cx="26" cy="28" r="15"/><text class="letter" x="26" y="33" text-anchor="middle">D</text>
+  <rect class="card" x="50" y="4" width="160" height="48" rx="8"/>
+  <text class="act" x="130" y="33" text-anchor="middle">🗑️ 按「刪除」</text>
+  <path class="arr" d="M212,28 H232" marker-end="url(#ah)"/>
+  <rect class="del-s" x="235" y="4" width="210" height="48" rx="8"/>
+  <rect class="del" x="245" y="12" width="56" height="18" rx="4"/><text class="verb" x="273" y="25" text-anchor="middle">DELETE</text>
+  <text class="code" x="308" y="25">/api/posts/{id}</text>
+  <text class="sub" x="245" y="45">不用 body</text>
+  <path class="arr" d="M447,28 H467" marker-end="url(#ah)"/>
+  <rect class="ctrl" x="470" y="4" width="130" height="48" rx="8"/>
+  <text class="code" x="535" y="33" text-anchor="middle">Delete()</text>
+  <path class="arr" d="M602,28 H622" marker-end="url(#ah)"/>
+  <rect class="sql" x="625" y="4" width="230" height="48" rx="8"/>
+  <text class="code" x="740" y="33" text-anchor="middle">DELETE FROM Posts …</text>
+  <path class="arr" d="M857,28 H877" marker-end="url(#ah)"/>
+  <rect class="resp" x="880" y="4" width="105" height="48" rx="8"/>
+  <text class="code ok" x="932" y="25" text-anchor="middle">204</text>
+  <text class="sub" x="932" y="43" text-anchor="middle">No Content</text>
+</g>
+
+<text class="note" x="500" y="418" text-anchor="middle">C = Create 新增　R = Read 讀取　U = Update 修改　D = Delete 刪除　｜　找不到 id 時，單篇、修改、刪除都回 404</text>
+</svg>

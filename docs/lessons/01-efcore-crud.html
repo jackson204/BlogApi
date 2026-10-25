@@ -35,7 +35,7 @@
   <strong>目錄</strong>
   <ol>
     <li><a href="#problem">這一課要解決的問題</a></li>
-    <li><a href="#concept">原理：Web API 請求流程、ORM、Migration、Change Tracking</a></li>
+    <li><a href="#concept">原理：EF Core 怎麼幫你跟資料庫溝通（ADO.NET → ORM、請求流程、DbContext / DbSet、Migration、Change Tracking）</a></li>
     <li><a href="#usage">用法：每一步的正式寫法</a></li>
     <li><a href="#exercise">練習題（答案摺疊）</a></li>
     <li><a href="#sql">觀察 SQL：LINQ 對照產生的 SQL</a></li>
@@ -57,38 +57,122 @@
   <tr><td>刪除文章</td><td><strong>D</strong>elete</td><td>DELETE</td><td><code>/api/posts/{id}</code></td></tr>
 </table>
 </div>
-<p>如果不用任何工具，C# 程式要自己開連線、組 SQL 字串、執行、再把每一列結果一欄一欄塞回物件。每多一張表就要重寫一次，還很容易寫出 SQL Injection 漏洞。</p>
-<p><strong>EF Core 的想法：</strong>你只寫 C# 的 class 和 LINQ，它負責翻譯成 SQL、執行、再把結果轉回物件。這類工具叫做 <strong>ORM</strong>（Object-Relational Mapping，物件關聯對應）。</p>
+
+<div class="diagram">
+<img src="../images/crud.svg" alt="五個 CRUD 動作：畫面上的操作、HTTP 請求、Controller 方法、EF Core 產生的 SQL、成功回應" style="width:100%;height:auto">
+<div class="diagram-caption">從畫面上的一個按鈕，到資料庫的一句 SQL：每個 CRUD 動作都是同樣的四段對應</div>
+</div>
+
+<p>這張圖的重點是<strong>對應關係</strong>：HTTP 方法和 SQL 指令幾乎一對一，POST → INSERT、GET → SELECT、PUT → UPDATE、DELETE → DELETE。中間的 Controller 方法和 EF Core，就是這一課要寫的部分。</p>
+<p>最右邊那一欄 SQL 要怎麼產生？下一節先看看「沒有 EF Core 的話要怎麼做」。</p>
 
 <!-- ============================================================ -->
-<h2 id="concept">2. 原理</h2>
+<h2 id="concept">2. 原理：EF Core 怎麼幫你跟資料庫溝通</h2>
+<p>這一節依序回答七個問題，看完就知道第 3 節每一行程式碼「為什麼要這樣寫」：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>小節</th><th>標題</th><th>回答的問題</th></tr>
+  <tr><td><a href="#no-orm">2-1</a></td><td>從 ADO.NET 推演到 ORM</td><td>不用 EF Core 要怎麼寫？會遇到什麼問題，才會有 ORM？</td></tr>
+  <tr><td><a href="#flow">2-2</a></td><td>一個 API 請求從進來到回應，經過哪些地方？</td><td>EF Core 在整個流程裡負責哪一段？</td></tr>
+  <tr><td><a href="#mapping">2-3</a></td><td>ORM：class 和資料表怎麼對應？</td><td>慣例不夠用時，要怎麼自己設定（Data Annotations / Fluent API）？</td></tr>
+  <tr><td><a href="#dbcontext">2-4</a></td><td>DbContext 和 DbSet 是什麼？</td><td>程式裡一直出現的 <code>_db</code> 和 <code>Posts</code> 是什麼？</td></tr>
+  <tr><td><a href="#migration">2-5</a></td><td>Migration：C# 改了，資料表怎麼跟著改？</td><td>Migration 檔案是什麼？什麼時候會改到資料庫？</td></tr>
+  <tr><td><a href="#tracking">2-6</a></td><td>Change Tracking：為什麼要呼叫 SaveChanges？</td><td>改完物件，什麼時候才真的寫進資料庫？</td></tr>
+  <tr><td><a href="#deferred">2-7</a></td><td>LINQ 什麼時候才真的查資料庫？</td><td>寫了 <code>Where</code>，為什麼還沒送出 SQL？</td></tr>
+</table>
+</div>
 
-<h3>2-1. 一個 API 請求從進來到回應，經過哪些地方？</h3>
+<h3 id="no-orm">2-1. 從 ADO.NET 推演到 ORM</h3>
+<p>.NET 內建的資料庫存取方式叫做 <strong>ADO.NET</strong>。連 SQL Server 用的是 <code>Microsoft.Data.SqlClient</code> 套件（第 0 課連線字串提到的就是它）。先用它寫「文章列表」和「新增文章」，感受一下：</p>
+
+<p class="file-label">第 1 步：純 ADO.NET（實際連到第 0 課的容器驗證過）</p>
+<pre><code class="language-csharp">public static async Task&lt;List&lt;Post&gt;&gt; GetAllAsync(string connectionString)
+{
+    var posts = new List&lt;Post&gt;();
+
+    await using var connection = new SqlConnection(connectionString);   // 1. 建立連線
+    await connection.OpenAsync();                                        // 2. 打開連線
+
+    var sql = "SELECT Id, Title, Content, CreatedAt, UpdatedAt FROM Posts ORDER BY CreatedAt DESC";
+    await using var command = new SqlCommand(sql, connection);           // 3. 準備 SQL
+    await using var reader = await command.ExecuteReaderAsync();         // 4. 執行
+
+    while (await reader.ReadAsync())                                     // 5. 一列一列讀
+    {
+        posts.Add(new Post                                               // 6. 一欄一欄塞回物件
+        {
+            Id = reader.GetInt32(0),
+            Title = reader.GetString(1),
+            Content = reader.GetString(2),
+            CreatedAt = reader.GetDateTime(3),
+            UpdatedAt = reader.IsDBNull(4) ? null : reader.GetDateTime(4)
+        });
+    }
+
+    return posts;
+}
+
+public static async Task&lt;int&gt; InsertAsync(string connectionString, string title, string content)
+{
+    await using var connection = new SqlConnection(connectionString);
+    await connection.OpenAsync();
+
+    var sql = """
+        INSERT INTO Posts (Title, Content, CreatedAt)
+        OUTPUT INSERTED.Id
+        VALUES (@title, @content, @createdAt)
+        """;
+    await using var command = new SqlCommand(sql, connection);
+    command.Parameters.AddWithValue("@title", title);                    // 參數化，防 SQL Injection
+    command.Parameters.AddWithValue("@content", content);
+    command.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+
+    return (int)(await command.ExecuteScalarAsync())!;
+}</code></pre>
+
+<p>能用，但問題很多：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>痛點</th><th>具體來說</th></tr>
+  <tr><td>重複的樣板程式</td><td>每個查詢都要「開連線 → 準備 SQL → 執行 → 讀取」，五支 API 就寫五次</td></tr>
+  <tr><td>SQL 是字串</td><td><code>"SELECT Titel ..."</code> 打錯字，編譯會過，<strong>執行時才爆</strong></td></tr>
+  <tr><td>手動對應欄位</td><td><code>reader.GetString(1)</code> 靠位置對應。SELECT 多加一個欄位，後面的編號全部要改</td></tr>
+  <tr><td>改表要改很多地方</td><td><code>Posts</code> 加一個欄位，所有相關的 SELECT、INSERT、對應程式都要找出來改</td></tr>
+  <tr><td>型別要自己顧</td><td>驗證時發現：<code>AddWithValue</code> 會<strong>猜</strong>型別，把 <code>DateTime</code> 當成舊的 <code>datetime</code>（精度只有約 3 毫秒），寫進 <code>datetime2</code> 欄位的時間被四捨五入了</td></tr>
+  <tr><td>安全靠自律</td><td>忘了用 <code>@參數</code>、改成字串相加，就有 SQL Injection 漏洞</td></tr>
+</table>
+</div>
+
+<p><strong>第 2 步：自然會想「把重複的部分抽出來」。</strong>把「讀取結果、依欄位名稱塞進物件」寫成共用函式，就是 <strong>Dapper</strong> 這類「微型 ORM」做的事。SQL 還是自己寫，但對應和參數化交給它：</p>
+<p class="file-label">Dapper 寫法示意（本課程不會安裝 Dapper）</p>
+<pre><code class="language-csharp">await using var connection = new SqlConnection(connectionString);
+var posts = await connection.QueryAsync&lt;Post&gt;(
+    "SELECT * FROM Posts WHERE Title LIKE @keyword",
+    new { keyword = $"%{keyword}%" });</code></pre>
+
+<p><strong>第 3 步：再往前一步，連 SQL 都不想手寫。</strong>如果工具知道「<code>Post</code> class 對應 <code>Posts</code> 表」，就能直接把 C# 的查詢翻成 SQL，還能記住哪些欄位改過、自動產生建表的 SQL。這就是完整的 <strong>ORM</strong>（Object-Relational Mapping，物件關聯對應），EF Core 就是其中一個：</p>
+<pre><code class="language-csharp">var posts = await _db.Posts.Where(p =&gt; p.Title.Contains(keyword)).ToListAsync();</code></pre>
+
 <div class="diagram">
-<div class="mermaid">
-sequenceDiagram
-    participant C as 前端 / .http 檔
-    participant K as ASP.NET Core
-    participant PC as PostsController
-    participant DB as BlogDbContext
-    participant SQL as SQL Server
-    C->>K: GET /api/posts?keyword=Docker
-    K->>K: Routing：找到對應的 Controller 和方法
-    K->>PC: 建立 PostsController，並把 BlogDbContext 傳進建構子
-    PC->>DB: _db.Posts.Where(...).ToListAsync()
-    DB->>DB: 把 LINQ 翻譯成 SQL
-    DB-)SQL: 送出 SELECT ... WHERE ... LIKE ...（await 等待中，不佔住執行緒）
-    SQL--)DB: 回傳資料列
-    DB->>DB: 每一列轉成 Post 物件
-    DB-->>PC: List of Post
-    PC-->>K: return posts
-    K-->>C: 200 OK + JSON
+<img src="../images/orm-evolution.svg" alt="ADO.NET、Dapper、EF Core 三種寫法中，哪些工作要你自己寫，哪些由工具代勞" style="width:100%;height:auto">
+<div class="diagram-caption">從 ADO.NET → Dapper → EF Core：工具幫你做的事越來越多</div>
 </div>
-<div class="diagram-caption">實線箭頭：同步呼叫　開口箭頭：非同步（await）　虛線：回傳</div>
-</div>
-<p>「把 BlogDbContext 傳進建構子」這件事叫做<strong>依賴注入（DI）</strong>，第 3 課會專門講。這一課先照著寫就好。</p>
 
-<h3>2-2. ORM：class 和資料表怎麼對應？</h3>
+<div class="callout">
+<p>💡 <strong>ORM 沒有讓 SQL 消失</strong>：EF Core 底下還是用 ADO.NET（SqlClient）把 SQL 送到資料庫。所以這一課最後會<a href="#sql">觀察它產生的 SQL</a>，確認它做的事跟你想的一樣。</p>
+</div>
+
+<h3 id="flow">2-2. 一個 API 請求從進來到回應，經過哪些地方？</h3>
+<div class="diagram">
+<img src="../images/request-flow.svg" alt="GET /api/posts?keyword=Docker 從前端進來，經過 ASP.NET Core、PostsController、BlogDbContext 到 SQL Server，再一路回傳的 11 個步驟" style="width:100%;height:auto">
+<div class="diagram-caption">以「關鍵字搜尋文章」為例，一個請求的 11 個步驟</div>
+</div>
+<ul>
+  <li><strong>③ 傳入 DbContext</strong>：把 BlogDbContext 傳進 Controller 的建構子，這件事叫做<strong>依賴注入（DI）</strong>，第 3 課會專門講。這一課先照著寫就好</li>
+  <li><strong>⑥～⑦ await</strong>：等資料庫回應的這段時間，執行緒不會空等，會先去處理其他請求。這是所有資料庫操作都用 <code>…Async</code> 方法的原因</li>
+</ul>
+
+<h3 id="mapping">2-3. ORM：class 和資料表怎麼對應？</h3>
 <div class="table-wrap">
 <table>
   <tr><th>C#（EF Core）</th><th>資料庫</th><th>說明</th></tr>
@@ -101,7 +185,68 @@ sequenceDiagram
 </table>
 </div>
 
-<h3>2-3. Migration：C# 改了，資料表怎麼跟著改？</h3>
+<h4 id="config">慣例不夠用時：Data Annotations 和 Fluent API</h4>
+<p>EF Core 會依照<strong>慣例</strong>決定欄位型別，例如 <code>string</code> 預設變成 <code>nvarchar(max)</code>。但部落格的標題只想要<strong>最多 200 字</strong>，慣例做不到，就要自己設定。設定的寫法有兩種：</p>
+
+<div class="diagram">
+<img src="../images/config-ways.svg" alt="設定欄位規則的兩種寫法：Data Annotations 寫在 Entity 屬性上，Fluent API 寫在 DbContext 的 OnModelCreating；兩者產生一樣的 SQL" style="width:100%;height:auto">
+<div class="diagram-caption">同一個規則「Title 最多 200 字」的兩種寫法，產生的資料表完全一樣</div>
+</div>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>① Data Annotations</th><th>② Fluent API（本課使用）</th></tr>
+  <tr><td>寫在哪</td><td>Entity class 的屬性上方，用 <code>[ ]</code> 標註</td><td>DbContext 覆寫 <code>OnModelCreating</code> 方法</td></tr>
+  <tr><td>從哪來</td><td>.NET 內建的 <code>System.ComponentModel.DataAnnotations</code> 命名空間，不是 EF Core 專屬的</td><td>EF Core 的 <code>ModelBuilder</code></td></tr>
+  <tr><td>最多 200 字</td><td><code>[MaxLength(200)]</code></td><td><code>.HasMaxLength(200)</code></td></tr>
+  <tr><td>能做的事</td><td>常見的：長度、必填、欄位名稱、主鍵</td><td><strong>全部</strong>：上面那些，再加上索引、複合主鍵、關聯、預設值……</td></tr>
+  <tr><td>兩邊都寫時</td><td colspan="2">Fluent API 優先</td></tr>
+</table>
+</div>
+
+<p><strong>本課程用 Fluent API。</strong>理由是：第 2 課的一對多、多對多關聯，有些設定只有 Fluent API 做得到。與其兩種混著用，不如一開始就統一用 Fluent API，Entity class 也能保持乾淨，只放資料。</p>
+<p>不過 Data Annotations 還是要認得，因為<strong>題 6 的 API 輸入驗證</strong>會用到它（<code>[Required]</code>、<code>[MaxLength]</code>）。那是另一個用途，到時候再說明。</p>
+<p>官方文件：<a href="https://learn.microsoft.com/ef/core/modeling/" target="_blank">建立和設定模型</a>（每個設定都會同時列出兩種寫法）</p>
+
+<h3 id="dbcontext">2-4. DbContext 和 DbSet 是什麼？</h3>
+<p>上面的表格裡，最重要的兩個角色是 <code>DbContext</code> 和 <code>DbSet</code>。你的程式<strong>只跟它們說話</strong>，不直接碰連線和 SQL。</p>
+
+<div class="diagram">
+<img src="../images/dbcontext.svg" alt="BlogDbContext 裡面有 DbSet Posts、ChangeTracker、資料庫連線；Controller 透過它查詢和寫入，最後由它送 SQL 給 SQL Server" style="width:100%;height:auto">
+<div class="diagram-caption">DbContext 是一個「工作階段」，裡面有查詢入口（DbSet）、記帳本（ChangeTracker）、連線</div>
+</div>
+
+<h4>DbContext：和資料庫的一次「工作階段」</h4>
+<ul>
+  <li>你寫的 <code>BlogDbContext</code> <strong>繼承</strong> EF Core 的 <code>DbContext</code>，所以免費得到查詢、追蹤、儲存這些能力</li>
+  <li><strong>一個請求用一個</strong>：請求開始時建立、結束時丟掉。不要把它存成 <code>static</code> 共用，它<strong>不是 thread-safe</strong>，多個請求同時用會出錯</li>
+  <li>它負責三件事：
+    <ol>
+      <li><strong>提供查詢入口</strong>：透過 <code>DbSet</code></li>
+      <li><strong>記帳</strong>：ChangeTracker 記住查出來或加進去的物件，以及它們被改了什麼（2-6 會詳細講）</li>
+      <li><strong>管理連線</strong>：需要時才開連線，用完還回連線池，你不用寫 <code>new SqlConnection</code></li>
+    </ol>
+  </li>
+</ul>
+
+<h4>DbSet&lt;T&gt;：代表一張資料表</h4>
+<ul>
+  <li><code>DbSet&lt;Post&gt; Posts</code> 代表 <code>Posts</code> 這張表。<strong>DbContext 裡有幾個 DbSet，資料庫就有幾張表</strong>（Migration 就是看這個決定要建哪些表）</li>
+  <li>它實作了 <code>IQueryable&lt;Post&gt;</code>，所以可以直接接 LINQ：<code>_db.Posts.Where(…)</code></li>
+</ul>
+
+<div class="table-wrap">
+<table>
+  <tr><th>常用寫法</th><th>做什麼</th><th>什麼時候送出 SQL</th></tr>
+  <tr><td><code>_db.Posts.Where(…).ToListAsync()</code></td><td>查詢多筆</td><td><code>ToListAsync()</code> 時</td></tr>
+  <tr><td><code>_db.Posts.FindAsync(id)</code></td><td>用主鍵查一筆。如果這個物件<strong>已經被追蹤</strong>，直接回傳，不查資料庫</td><td>呼叫時（必要時才查）</td></tr>
+  <tr><td><code>_db.Posts.Add(post)</code></td><td>標記成「要新增」</td><td>不會，要等 SaveChanges</td></tr>
+  <tr><td><code>_db.Posts.Remove(post)</code></td><td>標記成「要刪除」</td><td>不會，要等 SaveChanges</td></tr>
+  <tr><td><code>_db.SaveChangesAsync()</code></td><td>把所有記帳內容一次寫進資料庫。注意它在 <strong>DbContext</strong> 上，不在 DbSet 上</td><td>呼叫時</td></tr>
+</table>
+</div>
+
+<h3 id="migration">2-5. Migration：C# 改了，資料表怎麼跟著改？</h3>
 <p>你修改 Entity class 後，資料庫不會自己變。<strong>Migration</strong> 會比對「現在的 class」和「上一次的快照」，產生一份變更紀錄（C# 檔），再由它產生 SQL 去改資料庫。</p>
 <div class="diagram">
 <div class="mermaid">
@@ -114,7 +259,7 @@ flowchart LR
 <div class="diagram-caption">Migration 就像資料庫的 git commit，每一次變更都有紀錄，可以追蹤、也可以退回</div>
 </div>
 
-<h3>2-4. Change Tracking：為什麼要呼叫 SaveChanges？</h3>
+<h3 id="tracking">2-6. Change Tracking：為什麼要呼叫 SaveChanges？</h3>
 <p>DbContext 會<strong>追蹤</strong>透過它查出來或加進去的物件。你對物件做的事情只是在「記帳」，呼叫 <code>SaveChangesAsync()</code> 時才一次產生 SQL 寫進資料庫。</p>
 <div class="diagram">
 <div class="mermaid">
@@ -130,7 +275,7 @@ stateDiagram-v2
 <div class="diagram-caption">忘了呼叫 SaveChanges，資料就只停留在「記帳」階段，不會進資料庫</div>
 </div>
 
-<h3>2-5. LINQ 什麼時候才真的查資料庫？</h3>
+<h3 id="deferred">2-7. LINQ 什麼時候才真的查資料庫？</h3>
 <p><code>Where</code>、<code>OrderBy</code> 只是在<strong>組合查詢條件</strong>，還沒送出任何 SQL。要等到呼叫 <code>ToListAsync()</code>、<code>FirstOrDefaultAsync()</code>、<code>CountAsync()</code> 這類「要拿結果」的方法，才會真的執行。這叫做<strong>延遲執行（deferred execution）</strong>。</p>
 <div class="diagram">
 <div class="mermaid">
@@ -168,13 +313,59 @@ dotnet sln add 專案資料夾/專案名稱.csproj</code></pre>
 dotnet tool install --global dotnet-ef      # 第一次安裝
 dotnet tool update --global dotnet-ef       # 已經裝過，更新到最新版
 dotnet ef --version                         # 確認版本</code></pre>
+
+<h4 id="packages">為什麼要裝這兩個套件和一個工具？</h4>
+<p>EF Core 不是一個大套件，而是<strong>拆成好幾層</strong>，你只要挑「最上層」的那一個裝，下面的會自動帶進來。另外，<strong>執行時</strong>要用的和<strong>開發時</strong>產生 Migration 要用的，是分開的兩組：</p>
+
+<div class="diagram">
+<img src="../images/efcore-packages.svg" alt="EF Core 套件的分層：SqlServer 套件帶入 Relational、EF Core 本體和 SqlClient，負責執行時；Design 套件給 dotnet ef 工具在開發時產生 Migration 用" style="width:100%;height:auto">
+<div class="diagram-caption">左：API 執行時要用的（裝 SqlServer 一個就帶進四層）　右：開發時下 <code>dotnet ef</code> 指令要用的</div>
+</div>
+
 <div class="table-wrap">
 <table>
-  <tr><th>套件</th><th>用途</th></tr>
-  <tr><td><code>Microsoft.EntityFrameworkCore.SqlServer</code></td><td>EF Core 本體 + SQL Server 的翻譯器</td></tr>
-  <tr><td><code>Microsoft.EntityFrameworkCore.Design</code></td><td>讓 <code>dotnet ef</code> 工具可以讀你的專案、產生 Migration</td></tr>
-  <tr><td><code>dotnet-ef</code>（工具，不是套件）</td><td>提供 <code>dotnet ef migrations ...</code> 這些指令</td></tr>
+  <tr><th>要裝的東西</th><th>為什麼要裝</th><th>沒裝會怎樣</th></tr>
+  <tr>
+    <td><code>Microsoft.EntityFrameworkCore.SqlServer</code><br><span style="color:var(--muted)">NuGet 套件・執行時</span></td>
+    <td>
+      <strong>「SQL Server 專用的翻譯器」</strong>。EF Core 本體只懂 LINQ 和物件，不知道要產生哪一種資料庫的 SQL。每種資料庫的 SQL 寫法有差異，例如 SQL Server 取第一筆用 <code>TOP(1)</code>、PostgreSQL 用 <code>LIMIT 1</code>，所以每種資料庫各有一個 <strong>Provider</strong> 套件。<br>
+      裝了它才有 <code>UseSqlServer()</code> 可以呼叫，它也會自動帶進 EF Core 本體、Relational、SqlClient
+    </td>
+    <td><code>UseSqlServer</code> 會出現紅字：找不到這個方法；<code>DbContext</code> 也找不到</td>
+  </tr>
+  <tr>
+    <td><code>Microsoft.EntityFrameworkCore.Design</code><br><span style="color:var(--muted)">NuGet 套件・開發時</span></td>
+    <td>
+      <strong>給 <code>dotnet ef</code> 工具用的「設計階段」功能</strong>：找到你的 DbContext、比對模型和上次的快照、產生 <code>Migrations\*.cs</code> 程式碼。<br>
+      你的 API 執行時用不到它，所以 csproj 裡會標 <code>PrivateAssets="all"</code>，代表「只給這個專案自己用，不會傳給參考它的其他專案」
+    </td>
+    <td><code>dotnet ef migrations add</code> 報錯：<code>Your startup project 'BlogApi' doesn't reference Microsoft.EntityFrameworkCore.Design</code></td>
+  </tr>
+  <tr>
+    <td><code>dotnet-ef</code><br><span style="color:var(--muted)">.NET 工具（不是套件）・開發時</span></td>
+    <td>
+      提供 <code>dotnet ef …</code> 這些<strong>指令</strong>。它是裝在電腦上的命令列工具（<code>--global</code> 代表整台電腦共用），不是裝在專案裡。<br>
+      執行時會先 build 你的專案，再載入上面的 Design 套件來做事，所以<strong>工具和 Design 兩個都要有</strong>，版本也要一致
+    </td>
+    <td>終端機顯示找不到 <code>dotnet ef</code> 指令</td>
+  </tr>
 </table>
+</div>
+
+<p>從 <code>dotnet list package --include-transitive</code> 可以看到實際帶進來的套件（2026-10 驗證）：</p>
+<pre><code class="language-plaintext">Top-level（你裝的）
+   Microsoft.EntityFrameworkCore.Design         10.0.13
+   Microsoft.EntityFrameworkCore.SqlServer      10.0.13
+Transitive（自動帶進來的，節錄）
+   Microsoft.EntityFrameworkCore                10.0.13   ← EF Core 本體
+   Microsoft.EntityFrameworkCore.Relational     10.0.13   ← 關聯式資料庫共用
+   Microsoft.Data.SqlClient                     6.1.7     ← ADO.NET，真正連 SQL Server
+   Microsoft.CodeAnalysis.CSharp                5.0.0     ← Design 帶的：產生 C# 程式碼
+   Humanizer.Core                               2.14.1    ← Design 帶的：處理單複數命名</code></pre>
+
+<div class="callout">
+<p>💡 <strong>換資料庫只要換 Provider</strong>：如果哪天要改用 PostgreSQL，把 <code>Microsoft.EntityFrameworkCore.SqlServer</code> 換成 <code>Npgsql.EntityFrameworkCore.PostgreSQL</code>，<code>UseSqlServer</code> 改成 <code>UseNpgsql</code>。你寫的 LINQ、DbContext、Entity 幾乎不用改，產生的 SQL 會自動變成 PostgreSQL 的寫法。</p>
+<p>官方文件：<a href="https://learn.microsoft.com/ef/core/providers/" target="_blank">資料庫提供者（Providers）</a>、<a href="https://learn.microsoft.com/ef/core/cli/dotnet" target="_blank">EF Core 工具參考</a></p>
 </div>
 
 <h3>3-3. Entity 和 DbContext</h3>
@@ -190,7 +381,22 @@ public class 名稱DbContext : DbContext
     public 名稱DbContext(DbContextOptions&lt;名稱DbContext&gt; options) : base(options) { }
 
     public DbSet&lt;類別名稱&gt; 表名 =&gt; Set&lt;類別名稱&gt;();
+
+    // 慣例不夠用時，在這裡用 Fluent API 補充設定
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity&lt;類別名稱&gt;(entity =&gt;
+        {
+            entity.Property(x =&gt; x.欄位).設定方法(…);
+        });
+    }
 }</code></pre>
+<ul>
+  <li><code>protected override</code>：<code>OnModelCreating</code> 是父類別 <code>DbContext</code> 本來就有的方法，這裡<strong>覆寫</strong>它，加上自己的設定。EF Core 建立模型時會自動呼叫它</li>
+  <li><code>modelBuilder.Entity&lt;Post&gt;(entity =&gt; { … })</code>：又是一個 <code>Action</code>（見 <a href="#delegate">3-5 ①</a>），<code>entity</code> 代表「Post 的設定器」</li>
+  <li><code>entity.Property(x =&gt; x.Title)</code>：用 lambda 指定要設定哪個屬性，打錯字編譯就會發現</li>
+  <li>常用設定方法：<code>.HasMaxLength(200)</code>、<code>.IsRequired()</code>、<code>.HasColumnName("…")</code>、<code>.HasDefaultValueSql("…")</code></li>
+</ul>
 
 <h3>3-4. 連線字串：用 User Secrets，不要寫進 appsettings</h3>
 <div class="callout danger">
@@ -205,7 +411,167 @@ dotnet user-secrets list                       # 看目前存了什麼</code></p
 <h3>3-5. 註冊 DbContext</h3>
 <pre><code class="language-csharp">builder.Services.AddDbContext&lt;名稱DbContext&gt;(options =&gt;
     options.UseSqlServer(builder.Configuration.GetConnectionString("連線字串名稱")));</code></pre>
-<p>要寫在 <code>Program.cs</code> 的 <code>builder.Build()</code> <strong>之前</strong>。這行的意思是「之後有人需要 DbContext 時，用這個連線字串建立一個給它」，第 3 課講 DI 時會再細講。</p>
+<p>要寫在 <code>Program.cs</code> 的 <code>builder.Build()</code> <strong>之前</strong>。這行的意思是「之後有人需要 DbContext 時，用這個連線字串建立一個給它」。</p>
+
+<div class="callout ok">
+<p>📌 <strong>這一課要懂到哪裡？哪些留給第 3 課？</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>這一課（現在）</th><th>第 3 課 DI</th></tr>
+  <tr>
+    <td>
+      <ul>
+        <li>會寫這一行，知道它要放在 <code>builder.Build()</code> 之前</li>
+        <li>看得懂這一行的每個部分（下面的 Action / Func、方法簽章）</li>
+        <li>知道它只是<strong>「登記做法」</strong>，DbContext 是之後才建立的</li>
+        <li>知道 Controller 建構子寫 <code>BlogDbContext db</code>，就會拿到一個</li>
+      </ul>
+    </td>
+    <td>
+      <ul>
+        <li>沒有 DI 的話要怎麼寫？會遇到什麼問題？</li>
+        <li>「登記簿」（DI 容器）是怎麼運作的</li>
+        <li>生命週期：Transient、Scoped、Singleton 差在哪</li>
+        <li>自己的 Service 怎麼註冊、怎麼拿</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+</div>
+<p>下面三小節中，<strong>①、② 這一課就要看懂</strong>；③ 是第 3 課的預告，先看圖有個印象就好。</p>
+</div>
+
+<h4 id="delegate">① 先認識 Action 和 Func</h4>
+<p>看 <code>AddDbContext</code> 的簽章時，會看到參數型別是 <code>Action&lt;DbContextOptionsBuilder&gt;</code>。要看懂它，得先知道什麼是<strong>委派（delegate）</strong>。</p>
+<p><strong>委派就是「裝著一個方法的變數」</strong>。一般的變數裝的是值（數字、字串），委派裝的是「一段可以執行的程式」。.NET 內建兩種最常用的委派：</p>
+
+<div class="diagram">
+<img src="../images/delegates.svg" alt="Action 和 Func 的差別：Action 收參數不回傳，Func 最後一個型別是回傳值；Action&lt;DbContextOptionsBuilder&gt; 就是收一個 options、不回傳的方法" style="width:100%;height:auto">
+<div class="diagram-caption">Action 只做事、不回傳；Func 最後一個型別是回傳值</div>
+</div>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>Action</th><th>Func</th></tr>
+  <tr><td>回傳值</td><td>沒有（等於 <code>void</code> 方法）</td><td>有，<strong>角括號裡最後一個型別</strong>就是回傳型別</td></tr>
+  <tr><td>寫法</td><td><code>Action&lt;參數1, 參數2, …&gt;</code></td><td><code>Func&lt;參數1, 參數2, …, 回傳&gt;</code></td></tr>
+  <tr><td>例子</td><td><code>Action&lt;string&gt;</code>＝收一個 string、不回傳</td><td><code>Func&lt;int, int, int&gt;</code>＝收兩個 int、回傳 int</td></tr>
+</table>
+</div>
+
+<p class="file-label">簡單範例：先用具名方法，再改用 lambda（實際執行過）</p>
+<pre><code class="language-csharp">// 1. 先用具名方法
+void SayHello() =&gt; Console.WriteLine("Hello");
+int Add(int a, int b) =&gt; a + b;
+
+Action hello = SayHello;          // 把「方法」裝進變數（注意：SayHello 後面沒有括號）
+Func&lt;int, int, int&gt; add = Add;
+hello();                          // 執行變數裡的方法 → Hello
+Console.WriteLine(add(1, 2));     // → 3
+
+// 2. 改用 lambda，不用另外取名字
+Action&lt;string&gt; greet = name =&gt; Console.WriteLine($"Hi, {name}");
+Func&lt;int, int, int&gt; multiply = (a, b) =&gt; a * b;
+Func&lt;string, bool&gt; isLong = title =&gt; title.Length &gt; 5;
+greet("小明");                     // → Hi, 小明
+Console.WriteLine(multiply(3, 4)); // → 12
+Console.WriteLine(isLong("EF Core 入門")); // → True</code></pre>
+
+<p><strong>lambda 的讀法</strong>：<code>參數 =&gt; 要做的事</code>。<code>=&gt;</code> 念成「goes to」，左邊是參數，右邊是內容。只有一個參數時可以省略括號，像 <code>name =&gt; …</code>；兩個以上要加括號，像 <code>(a, b) =&gt; …</code>。</p>
+
+<p class="file-label">進階範例：把方法當參數傳給別人，由別人決定什麼時候執行（實際執行過）</p>
+<pre><code class="language-csharp">void RunLater(Action&lt;string&gt; action)
+{
+    Console.WriteLine("RunLater 開始，還沒執行 action");
+    action("由 RunLater 傳進來的值");   // 由 RunLater 決定什麼時候執行、傳什麼值
+}
+
+RunLater(text =&gt; Console.WriteLine($"action 執行了：{text}"));
+
+// 輸出：
+// RunLater 開始，還沒執行 action
+// action 執行了：由 RunLater 傳進來的值</code></pre>
+
+<p><strong>這就是 <code>AddDbContext</code> 的模式</strong>：</p>
+<ul>
+  <li>你傳進去的 <code>options =&gt; options.UseSqlServer(…)</code> 是一個 <code>Action&lt;DbContextOptionsBuilder&gt;</code></li>
+  <li><code>options</code> 是 EF Core 之後會傳進來的，就像上面的 <code>text</code> 是 <code>RunLater</code> 傳進來的</li>
+  <li>什麼時候執行，由 EF Core 決定，見 ③</li>
+</ul>
+<p>你其實早就用過 Func 了：<code>_db.Posts.Where(p =&gt; p.Title.Contains(keyword))</code> 裡的 <code>p =&gt; …</code>，寫法就是一個「收 <code>Post</code>、回傳 <code>bool</code>」的 lambda。（細節：EF Core 實際收的型別是 <code>Expression&lt;Func&lt;Post, bool&gt;&gt;</code>，它會把這段 lambda 當成「資料」拆開，才能翻成 SQL；後面的課再細講。）</p>
+
+<h4 id="signature">② 這一行是怎麼來的？學會看方法簽章</h4>
+<p>這行其實是<strong>三個方法</strong>一層包一層。括號最裡面的先執行，所以要<strong>由內往外讀</strong>：</p>
+
+<div class="diagram">
+<img src="../images/adddbcontext.svg" alt="拆解 AddDbContext、UseSqlServer、GetConnectionString 三個方法：由內往外讀" style="width:100%;height:auto">
+<div class="diagram-caption">③ 的回傳值餵給 ②，② 所在的整段 lambda 再餵給 ①</div>
+</div>
+
+<p>下面是這三個方法在 EF Core 10 / .NET 10 的<strong>真正簽章</strong>（用反射從套件讀出來的，只列出這一行用到的那個多載）：</p>
+
+<p class="file-label">③ Microsoft.Extensions.Configuration.ConfigurationExtensions</p>
+<pre><code class="language-csharp">public static string? GetConnectionString(
+    this IConfiguration configuration,
+    string name)</code></pre>
+
+<p class="file-label">② Microsoft.EntityFrameworkCore.SqlServerDbContextOptionsExtensions</p>
+<pre><code class="language-csharp">public static DbContextOptionsBuilder UseSqlServer(
+    this DbContextOptionsBuilder optionsBuilder,
+    string? connectionString,
+    Action&lt;SqlServerDbContextOptionsBuilder&gt;? sqlServerOptionsAction = null)</code></pre>
+
+<p class="file-label">① Microsoft.Extensions.DependencyInjection.EntityFrameworkServiceCollectionExtensions</p>
+<pre><code class="language-csharp">public static IServiceCollection AddDbContext&lt;TContext&gt;(
+    this IServiceCollection serviceCollection,
+    Action&lt;DbContextOptionsBuilder&gt;? optionsAction = null,
+    ServiceLifetime contextLifetime = ServiceLifetime.Scoped,
+    ServiceLifetime optionsLifetime = ServiceLifetime.Scoped)
+    where TContext : DbContext</code></pre>
+
+<h4>簽章怎麼讀：逐一對照</h4>
+<div class="table-wrap">
+<table>
+  <tr><th>看到什麼</th><th>代表什麼</th><th>對應到我們那一行</th></tr>
+  <tr><td><code>static</code> + 第一個參數有 <code>this</code></td><td><strong>擴充方法</strong>（extension method）。可以像「那個型別本來就有的方法」一樣，用 <code>.</code> 呼叫</td><td><code>this IServiceCollection</code> → 所以寫成 <code>builder.Services.AddDbContext(…)</code>，<code>builder.Services</code> 的型別就是 <code>IServiceCollection</code></td></tr>
+  <tr><td>方法名稱後面的 <code>&lt;TContext&gt;</code></td><td><strong>泛型參數</strong>，呼叫時填入型別</td><td><code>AddDbContext&lt;BlogDbContext&gt;</code></td></tr>
+  <tr><td><code>where TContext : DbContext</code></td><td><strong>泛型限制</strong>：填進去的型別必須繼承 <code>DbContext</code></td><td><code>BlogDbContext : DbContext</code>，所以可以；填 <code>string</code> 會編譯錯誤</td></tr>
+  <tr><td><code>Action&lt;DbContextOptionsBuilder&gt;</code></td><td><strong>委派</strong>：「一個收 <code>DbContextOptionsBuilder</code>、沒有回傳值的方法」。可以用 lambda 寫</td><td><code>options =&gt; options.UseSqlServer(…)</code>，這裡的 <code>options</code> 型別就是 <code>DbContextOptionsBuilder</code></td></tr>
+  <tr><td><code>= null</code>、<code>= ServiceLifetime.Scoped</code></td><td><strong>選擇性參數</strong>：沒傳就用預設值</td><td>我們只傳了 lambda，所以生命週期都是 <code>Scoped</code>（一個請求一個，第 3 課講）</td></tr>
+  <tr><td><code>string?</code></td><td>可能是 <code>null</code></td><td>連線字串名稱打錯時，<code>GetConnectionString</code> 回傳 <code>null</code>，啟動後會出現常見坑裡的 <code>Value cannot be null</code></td></tr>
+  <tr><td>回傳型別和 <code>this</code> 參數型別相同</td><td>可以<strong>串接</strong>呼叫（Fluent API）</td><td><code>UseSqlServer</code> 回傳 <code>DbContextOptionsBuilder</code>，後面還能再接 <code>.LogTo(…)</code> 這類設定</td></tr>
+</table>
+</div>
+
+<div class="callout">
+<p>🔍 <strong>在 Rider 裡自己查簽章</strong></p>
+<ul>
+  <li><strong>滑鼠停在方法名稱上</strong>：跳出說明視窗，顯示簽章和文件註解</li>
+  <li><strong>Ctrl + 滑鼠左鍵</strong>（Go to Declaration）：跳到方法的定義。套件的程式碼會顯示反編譯或 SourceLink 下載的原始碼</li>
+  <li><strong>游標放在括號裡，叫出 Parameter Info</strong>：顯示所有<strong>多載</strong>，例如 <code>AddDbContext</code> 有 6 個多載。快捷鍵依 keymap 不同：Visual Studio keymap 是 <kbd>Ctrl+Shift+Space</kbd>，IntelliJ keymap 是 <kbd>Ctrl+P</kbd></li>
+  <li>官方 API 文件：<a href="https://learn.microsoft.com/dotnet/api/microsoft.extensions.dependencyinjection.entityframeworkservicecollectionextensions.adddbcontext" target="_blank">AddDbContext</a>、<a href="https://learn.microsoft.com/dotnet/api/microsoft.entityframeworkcore.sqlserverdbcontextoptionsextensions.usesqlserver" target="_blank">UseSqlServer</a>、<a href="https://learn.microsoft.com/dotnet/api/microsoft.extensions.configuration.configurationextensions.getconnectionstring" target="_blank">GetConnectionString</a></li>
+</ul>
+</div>
+
+<h4 id="lifetime">③ lambda 什麼時候執行？（第 3 課預告）</h4>
+<p>① 說過：lambda 交出去之後，<strong>什麼時候執行由 EF Core 決定</strong>。那到底是什麼時候？我寫了一個小程式實測：在 lambda 裡印一行字，看它在什麼時候出現。測試程式用的 DbContext 叫 <code>DemoDb</code>，「scope」可以先想成「一個請求」。</p>
+
+<div class="diagram">
+<img src="../images/dbcontext-lifetime.svg" alt="程式啟動時只登記 DbContext 的做法；每個請求第一次需要 BlogDbContext 時才執行 lambda 建立一個，同一個請求共用，請求結束就丟掉，下一個請求再建立新的" style="width:100%;height:auto">
+<div class="diagram-caption">左邊是實測輸出，右邊是在真正的 API 裡代表什麼。紅色的「執行了」只出現在請求第一次需要 DbContext 的時候</div>
+</div>
+
+<div class="table-wrap">
+<table>
+  <tr><th>輸出</th><th>發生什麼事</th><th>在 BlogApi 裡代表</th></tr>
+  <tr><td><code>AddDbContext 呼叫完畢</code><br><code>BuildServiceProvider 完畢</code></td><td>兩行之間<strong>沒有</strong>「執行了」，代表 lambda 還沒跑</td><td><code>Program.cs</code> 跑完 <code>AddDbContext</code> 和 <code>builder.Build()</code>，程式啟動了，但一個 DbContext 都還沒建立</td></tr>
+  <tr><td><code>取得 DemoDb 之前</code><br><code>-&gt; optionsAction 執行了</code><br><code>取得 DemoDb 之後</code></td><td>第一次<strong>要</strong> DbContext 時，lambda 才執行，用它的設定建立 DbContext</td><td>第一個請求進來，ASP.NET Core 建立 <code>PostsController</code>，建構子需要 <code>BlogDbContext</code>，這時候才建立 #1</td></tr>
+  <tr><td><code>同一個 scope 拿兩次是同一個物件？True</code></td><td>同一個 scope 第二次要，<strong>不會</strong>再執行 lambda，直接給同一個</td><td>同一個請求裡，不管幾個地方要 DbContext，拿到的都是 #1</td></tr>
+  <tr><td><code>第二個 scope 取得 DemoDb 之前</code><br><code>-&gt; optionsAction 執行了</code></td><td>換一個 scope，lambda <strong>再執行一次</strong>，建立新的</td><td>第二個請求有自己的 DbContext #2，和 #1 互不影響</td></tr>
+</table>
+</div>
+
+<p><strong>結論：</strong><code>AddDbContext</code> 的意思是<strong>「登記一份做法」</strong>，不是「現在就建立 DbContext」。每個請求各自建立一個、用完就丟，這叫做 <strong>Scoped 生命週期</strong>。為什麼要這樣設計？如果全部請求共用一個會怎樣？這些是第 3 課的主題。</p>
 
 <h3>3-6. Migration 指令</h3>
 <pre><code class="language-plaintext">dotnet ef migrations add 名稱          # 產生變更紀錄（名稱自己取，例如 InitialCreate、AddPostSummary）
@@ -294,7 +660,7 @@ dotnet sln add BlogApi/BlogApi.csproj</code></pre>
   <li>確認 <code>dotnet ef --version</code> 是 <strong>10.x</strong>；如果是 9.x 或更舊，就更新它</li>
   <li><code>dotnet build</code> 沒有錯誤，也<strong>沒有警告</strong></li>
 </ul>
-<p><strong>💡 提示</strong>：語法在 3-2。安裝完 build 一次，看看會不會出現 <code>NU1902</code> / <code>NU1903</code> 警告，出現的話先自己讀讀看它在說什麼。</p>
+<p><strong>💡 提示</strong>：語法在 3-2。這兩個套件和一個工具<strong>各自是做什麼用的</strong>，先看 3-2 的「<a href="#packages">為什麼要裝這兩個套件和一個工具？</a>」再動手。安裝完 build 一次，看看會不會出現 <code>NU1902</code> / <code>NU1903</code> 警告，出現的話先自己讀讀看它在說什麼。</p>
 <p class="accept">✅ 驗收：<code>dotnet ef --version</code> 顯示 10.x；<code>dotnet build</code> 顯示 0 個警告、0 個錯誤</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
@@ -336,13 +702,15 @@ dotnet build</code></pre>
 <ul>
   <li><code>Models/Post.cs</code>：欄位有 <code>Id</code>、<code>Title</code>（最多 200 字）、<code>Content</code>、<code>CreatedAt</code>、<code>UpdatedAt</code>（可以是 null，因為新文章還沒被修改過）</li>
   <li><code>Data/BlogDbContext.cs</code>：有一個 <code>Posts</code> 代表文章表</li>
+  <li>「Title 最多 200 字」用 <strong>Fluent API</strong> 設定，<code>Post.cs</code> 裡不要有任何 <code>[ ]</code> 標註</li>
 </ul>
 <p><strong>💡 提示</strong></p>
 <div class="table-wrap">
 <table>
   <tr><th>需求</th><th>用什麼</th></tr>
   <tr><td>主鍵、自動編號</td><td>屬性名稱叫 <code>Id</code>、型別 <code>int</code>，靠慣例自動設定</td></tr>
-  <tr><td>最多 200 字</td><td><code>[MaxLength(200)]</code>，在 <code>System.ComponentModel.DataAnnotations</code> 命名空間</td></tr>
+  <tr><td>最多 200 字</td><td>在 <code>OnModelCreating</code> 裡用 <code>.HasMaxLength(200)</code>（<a href="#config">2-3</a> 的 Fluent API、3-3 的骨架）</td></tr>
+  <tr><td>不可以是 null 的字串</td><td><code>string</code>（不加 <code>?</code>），慣例會產生 <code>NOT NULL</code>，不用另外設定</td></tr>
   <tr><td>可以是 null 的時間</td><td><code>DateTime?</code></td></tr>
   <tr><td>DbContext 骨架</td><td>3-3 的語法</td></tr>
 </table>
@@ -352,15 +720,12 @@ dotnet build</code></pre>
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
 <p class="file-label">BlogApi/Models/Post.cs</p>
-<pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
-
-namespace BlogApi.Models;
+<pre><code class="language-csharp">namespace BlogApi.Models;
 
 public class Post
 {
     public int Id { get; set; }
 
-    [MaxLength(200)]
     public string Title { get; set; } = string.Empty;
 
     public string Content { get; set; } = string.Empty;
@@ -382,8 +747,17 @@ public class BlogDbContext : DbContext
     }
 
     public DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity&lt;Post&gt;(entity =&gt;
+        {
+            entity.Property(p =&gt; p.Title).HasMaxLength(200);
+        });
+    }
 }</code></pre>
 <ul>
+  <li><code>Post.cs</code> 只有屬性，沒有任何資料庫設定；「最多 200 字」集中寫在 <code>BlogDbContext</code></li>
   <li><code>= string.Empty</code>：專案有開 <code>Nullable</code>，<code>string</code> 代表「不可以是 null」，所以要給預設值，不然編譯器會警告</li>
   <li><code>DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();</code>：官方文件也常見 <code>public DbSet&lt;Post&gt; Posts { get; set; }</code>，兩種都可以。用 <code>=&gt; Set&lt;Post&gt;()</code> 的好處是不會有 nullable 警告</li>
 </ul>
@@ -480,7 +854,7 @@ GO</code></pre>
 <table>
   <tr><th>C#</th><th>產生的 SQL</th><th>原因</th></tr>
   <tr><td><code>int Id</code></td><td><code>int NOT NULL IDENTITY</code> + PRIMARY KEY</td><td>慣例：叫 Id 的 int 就是自動編號主鍵</td></tr>
-  <tr><td><code>[MaxLength(200)] string Title</code></td><td><code>nvarchar(200) NOT NULL</code></td><td>有 MaxLength；<code>string</code> 不是 <code>string?</code>，所以 NOT NULL</td></tr>
+  <tr><td><code>string Title</code> + <code>HasMaxLength(200)</code></td><td><code>nvarchar(200) NOT NULL</code></td><td>Fluent API 設了長度；<code>string</code> 不是 <code>string?</code>，所以 NOT NULL</td></tr>
   <tr><td><code>string Content</code></td><td><code>nvarchar(max)</code></td><td>沒設定長度，預設是 max</td></tr>
   <tr><td><code>DateTime?</code></td><td><code>datetime2 NULL</code></td><td><code>?</code> 代表可以是 null</td></tr>
 </table>
@@ -512,7 +886,17 @@ GO</code></pre>
   <tr><td>DELETE</td><td><code>FindAsync</code> → <code>Remove</code> → <code>SaveChangesAsync</code></td><td>204 <code>NoContent</code></td></tr>
 </table>
 </div>
-<p>「前端只能傳 title 和 content」：另外寫一個只有這兩個屬性的 <code>record</code> 當參數型別，不要直接用 <code>Post</code>。驗證可以用 <code>[Required]</code>、<code>[MaxLength]</code>。</p>
+<p>「前端只能傳 title 和 content」：另外寫一個只有這兩個屬性的 <code>record</code> 當參數型別，不要直接用 <code>Post</code>。</p>
+<p>「必填、最多 200 字，不符合回 400」：在 record 的參數上加 <strong>Data Annotations</strong> 的 <code>[Required]</code>、<code>[MaxLength(200)]</code>（<code>using System.ComponentModel.DataAnnotations;</code>）。<code>[ApiController]</code> 收到請求時會自動檢查，不符合就直接回 400，連你的方法都不會進去。</p>
+<div class="callout warn">
+<p>🤔 <strong>題 3 不是說用 Fluent API 嗎？為什麼這裡又用 Data Annotations？</strong></p>
+<p>因為管的是<strong>兩件不同的事</strong>：</p>
+<ul>
+  <li><strong>題 3 的 <code>HasMaxLength(200)</code></strong>：管<strong>資料庫</strong>，決定欄位是 <code>nvarchar(200)</code>。只有 EF Core 看得懂</li>
+  <li><strong>這裡的 <code>[MaxLength(200)]</code></strong>：管 <strong>API 的輸入</strong>，前端送來的資料太長就回 400。是 ASP.NET Core 在看，Fluent API 做不到這件事</li>
+</ul>
+<p>如果只有資料庫限制、沒有輸入驗證，前端送 300 字的標題，要等到寫進資料庫時才出錯，前端拿到的會是 500，而不是清楚的 400。</p>
+</div>
 <p class="accept">✅ 驗收：用題 7 的 <code>.http</code> 檔，每支 API 都回傳正確的狀態碼</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
@@ -628,7 +1012,7 @@ public class PostsController : ControllerBase
 }</code></pre>
 <ul>
   <li><strong>為什麼不用 <code>Post</code> 當參數？</strong>如果前端傳 <code>{"id": 999, "createdAt": "1999-01-01"}</code>，這些值會被直接寫進去。這叫做 <em>over-posting</em>。用 <code>PostRequest</code> 就只收得到兩個欄位</li>
-  <li><strong>PUT 為什麼沒有呼叫 <code>Update()</code>？</strong><code>FindAsync</code> 查出來的物件已經被追蹤（Unchanged），改屬性後會自動變成 Modified，<code>SaveChangesAsync</code> 就會送出 UPDATE（見 2-4）</li>
+  <li><strong>PUT 為什麼沒有呼叫 <code>Update()</code>？</strong><code>FindAsync</code> 查出來的物件已經被追蹤（Unchanged），改屬性後會自動變成 Modified，<code>SaveChangesAsync</code> 就會送出 UPDATE（見 <a href="#tracking">2-6</a>）</li>
   <li><strong><code>CreatedAt</code> 用 <code>DateTime.UtcNow</code></strong>：存 UTC 時間，前端再依照使用者的時區顯示，避免伺服器搬到其他時區時時間錯亂</li>
 </ul>
 </div>
@@ -822,7 +1206,7 @@ WHERE [Id] = @p0;</code></pre></td>
   <tr><td><code>Your startup project 'BlogApi' doesn't reference Microsoft.EntityFrameworkCore.Design</code></td><td>沒裝 Design 套件</td><td>安裝 <code>Microsoft.EntityFrameworkCore.Design</code></td></tr>
   <tr><td><code>No project was found</code></td><td>在 solution 資料夾執行 <code>dotnet ef</code></td><td>切到有 .csproj 的資料夾，或加 <code>--project BlogApi</code></td></tr>
   <tr><td><code>Value cannot be null. (Parameter 'connectionString')</code></td><td>讀不到連線字串：User Secrets 沒設定、名稱打錯，或不是在 Development 環境執行</td><td><code>dotnet user-secrets list</code> 檢查；確認 <code>launchSettings.json</code> 的 <code>ASPNETCORE_ENVIRONMENT</code> 是 <code>Development</code></td></tr>
-  <tr><td>API 回 201，但資料庫沒有資料</td><td>忘了 <code>SaveChangesAsync()</code>，或忘了 <code>await</code></td><td>見 2-4</td></tr>
+  <tr><td>API 回 201，但資料庫沒有資料</td><td>忘了 <code>SaveChangesAsync()</code>，或忘了 <code>await</code></td><td>見 <a href="#tracking">2-6</a></td></tr>
   <tr><td>改了 Post.cs，資料表卻沒變</td><td>沒有新增 migration</td><td><code>migrations add</code> → <code>database update</code>。<strong>不要</strong>直接到資料庫手動改表</td></tr>
   <tr><td>POST 後回傳的 <code>createdAt</code> 結尾有 <code>Z</code>，GET 查出來卻沒有</td><td>SQL Server 的 <code>datetime2</code> 不記錄時區，讀回來的 <code>DateTime.Kind</code> 是 Unspecified</td><td>先記得「資料庫存的都是 UTC」。之後可以改用 <code>DateTimeOffset</code> 或設定 ValueConverter</td></tr>
   <tr><td>用 curl 送中文，API 回 400 <code>could not be converted</code></td><td>終端機的編碼不是 UTF-8，中文送出去就變成亂碼</td><td>用 Rider 的 <code>.http</code> 檔測試</td></tr>

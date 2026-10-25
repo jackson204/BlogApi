@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" width="1000" height="400" role="img" aria-label="設定欄位規則的兩種寫法：Data Annotations 寫在 Entity 屬性上，Fluent API 寫在 DbContext 的 OnModelCreating；兩者產生一樣的 SQL">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
+    --a: #0969da; --a-s: #ddf4ff; --f: #e11d48; --f-s: #ffe4e6; --db: #fef9c3; --db-b: #ca8a04; --conv: #f6f8fa;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23; --card: #151b23;
+      --a: #58a6ff; --a-s: #0c2d4a; --f: #f472b6; --f-s: #3b1520; --db: #2b2408; --db-b: #facc15; --conv: #151b23;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 15px; font-weight: 800; }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-size: 12.5px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .hi-a { fill: var(--a); font-weight: 700; } .hi-f { fill: var(--f); font-weight: 700; }
+  .pa { fill: var(--a-s); stroke: var(--a); stroke-width: 2; }
+  .pf { fill: var(--f-s); stroke: var(--f); stroke-width: 2; }
+  .conv { fill: var(--conv); stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .db { fill: var(--db); stroke: var(--db-b); stroke-width: 2; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .f-muted { fill: var(--muted); }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="400" rx="12"/>
+
+<!-- 慣例 -->
+<rect class="conv" x="20" y="20" width="620" height="64" rx="10"/>
+<text class="h" x="40" y="46">⓪ 慣例（什麼都不寫）</text>
+<text class="xs" x="40" y="68">Id → 主鍵；string → nvarchar(max) NOT NULL；DateTime? → 可為 NULL。慣例不夠用時，才用下面兩種寫法補充</text>
+
+<!-- Data Annotations -->
+<rect class="pa" x="20" y="100" width="300" height="200" rx="10"/>
+<text class="h hi-a" x="40" y="128">① Data Annotations</text>
+<text class="xs" x="40" y="148">寫在 Entity 的屬性上面（[ ] 屬性標籤）</text>
+<text class="code" x="40" y="180">// Models/Post.cs</text>
+<text class="code" x="40" y="202">using System.ComponentModel</text>
+<text class="code" x="40" y="220">      .DataAnnotations;</text>
+<text class="code" x="40" y="246"><tspan class="hi-a">[MaxLength(200)]</tspan></text>
+<text class="code" x="40" y="266">public string Title { get; set; }</text>
+<text class="xs" x="40" y="290">優點：一眼看到規則；缺點：Entity 混進資料庫設定</text>
+
+<!-- Fluent API -->
+<rect class="pf" x="340" y="100" width="300" height="200" rx="10"/>
+<text class="h hi-f" x="360" y="128">② Fluent API ← 本課使用</text>
+<text class="xs" x="360" y="148">寫在 DbContext 的 OnModelCreating</text>
+<text class="code" x="360" y="180">// Data/BlogDbContext.cs</text>
+<text class="code" x="360" y="202">modelBuilder.Entity&lt;Post&gt;(e =&gt;</text>
+<text class="code" x="360" y="222">  e.Property(p =&gt; p.Title)</text>
+<text class="code" x="360" y="242">   <tspan class="hi-f">.HasMaxLength(200)</tspan>);</text>
+<text class="xs" x="360" y="276">優點：Entity 保持乾淨，設定集中一處；</text>
+<text class="xs" x="360" y="290">功能最完整。缺點：要多跳一個檔案看</text>
+
+<!-- 結果 -->
+<path class="arr" d="M320,200 C360,330 600,330 700,200" style="opacity:0"/>
+<path class="arr" d="M170,302 V340 H690" marker-end="url(#am)"/>
+<path class="arr" d="M490,302 V340"/>
+<rect class="db" x="694" y="100" width="286" height="280" rx="10"/>
+<text class="h" x="714" y="128">兩種寫法 → 一樣的 SQL</text>
+<text class="xs" x="714" y="148">實測：改寫法後新增 migration，內容是空的</text>
+<text class="code" x="714" y="186">CREATE TABLE [Posts] (</text>
+<text class="code" x="714" y="206">  [Id] int NOT NULL IDENTITY,</text>
+<text class="code" x="714" y="226">  <tspan style="font-weight:700">[Title] nvarchar(200)</tspan></text>
+<text class="code" x="714" y="244">          NOT NULL,</text>
+<text class="code" x="714" y="264">  [Content] nvarchar(max) …</text>
+<text class="code" x="714" y="284">  …</text>
+<text class="code" x="714" y="304">);</text>
+<text class="xs" x="714" y="340">同一個規則兩邊都寫時，</text>
+<text class="xs" x="714" y="358">Fluent API 優先</text>
+<text class="xs" x="40" y="370">⚠️ 這兩種都是「資料庫結構」的設定。API 收到的資料要不要擋（回 400），是另一件事，見題 6 的 PostRequest</text>
+</svg>

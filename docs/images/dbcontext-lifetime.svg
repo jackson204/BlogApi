@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" role="img" aria-label="程式啟動時只登記 DbContext 的做法；每個請求第一次需要 BlogDbContext 時才執行 lambda 建立一個，同一個請求共用，請求結束就丟掉，下一個請求再建立新的">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
+    --start: #e7f0ff; --start-b: #3b6fd8; --req: #fff4e5; --req-b: #bc4c00; --req2: #f3e8ff; --req2-b: #7c3aed;
+    --ctx: #ffe4e6; --ctx-b: #e11d48; --app: #dcfce7; --app-b: #16a34a; --run: #cf222e; --term: #1f2328; --term-fg: #e6edf3;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23; --card: #151b23;
+      --start: #10213d; --start-b: #6ea8ff; --req: #2a1d0e; --req-b: #ffa657; --req2: #231a3d; --req2-b: #a78bfa;
+      --ctx: #3b1520; --ctx-b: #f472b6; --app: #12261b; --app-b: #3fb950; --run: #ff7b72; --term: #010409; --term-fg: #e6edf3;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 15px; font-weight: 800; }
+  .b { font-size: 13px; font-weight: 700; }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .code { font-size: 12px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .term { fill: var(--term); }
+  .tt { font-size: 11.5px; font-family: "Cascadia Code", Consolas, monospace; fill: var(--term-fg); font-variant-ligatures: none; }
+  .tt-hi { font-size: 11.5px; font-family: "Cascadia Code", Consolas, monospace; fill: #ff7b72; font-weight: 700; }
+  .lane-s { fill: var(--start); stroke: var(--start-b); stroke-width: 2; }
+  .lane-r { fill: var(--req); stroke: var(--req-b); stroke-width: 2; stroke-dasharray: 7 4; }
+  .lane-r2 { fill: var(--req2); stroke: var(--req2-b); stroke-width: 2; stroke-dasharray: 7 4; }
+  .t-s { fill: var(--start-b); } .t-r { fill: var(--req-b); } .t-r2 { fill: var(--req2-b); }
+  .card { fill: var(--card); stroke: var(--border); stroke-width: 1.5; }
+  .ctx { fill: var(--ctx); stroke: var(--ctx-b); stroke-width: 2; }
+  .ctx-x { fill: var(--soft); stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 3; }
+  .app { fill: var(--app); stroke: var(--app-b); stroke-width: 1.5; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .arr-run { fill: none; stroke: var(--run); stroke-width: 2.5; }
+  .f-muted { fill: var(--muted); } .f-run { fill: var(--run); }
+  .run { fill: var(--run); font-weight: 700; font-size: 12px; }
+  .link { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 3; }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-run" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="600" rx="12"/>
+
+<!-- 左：實際輸出 -->
+<text class="h" x="20" y="34">實測輸出</text>
+<rect class="term" x="20" y="46" width="330" height="534" rx="10"/>
+<text class="tt" x="34" y="100">AddDbContext 呼叫完畢</text>
+<text class="tt" x="34" y="124">BuildServiceProvider 完畢</text>
+<text class="tt" x="34" y="232">取得 DemoDb 之前</text>
+<text class="tt-hi" x="34" y="262">  -&gt; optionsAction 執行了</text>
+<text class="tt" x="34" y="292">取得 DemoDb 之後</text>
+<text class="tt" x="34" y="342">同一個 scope 拿兩次</text>
+<text class="tt" x="34" y="358">是同一個物件？True</text>
+<text class="tt" x="34" y="462">第二個 scope 取得 DemoDb 之前</text>
+<text class="tt-hi" x="34" y="492">  -&gt; optionsAction 執行了</text>
+
+<!-- 右：真正的 API 裡代表什麼 -->
+<text class="h" x="380" y="34">在真正的 API 裡代表什麼</text>
+
+<!-- 啟動 -->
+<rect class="lane-s" x="380" y="50" width="600" height="110" rx="12"/>
+<text class="b t-s" x="398" y="74">① 程式啟動（Program.cs）</text>
+<rect class="card" x="398" y="86" width="290" height="62" rx="8"/>
+<text class="b" x="412" y="108">服務登記簿</text>
+<text class="code" x="412" y="128">BlogDbContext → 做法：lambda</text>
+<text class="xs" x="412" y="143">只是登記，lambda 還沒執行</text>
+<text class="xs" x="706" y="104">AddDbContext＝把做法寫進登記簿</text>
+<text class="xs" x="706" y="124">builder.Build()＝登記簿定案</text>
+<text class="xs" x="706" y="144">這時候一個 DbContext 都還沒有</text>
+
+<!-- 請求 1 -->
+<rect class="lane-r" x="380" y="180" width="600" height="220" rx="12"/>
+<text class="b t-r" x="398" y="204">② 第一個請求：GET /api/posts（一個 scope）</text>
+<rect class="app" x="398" y="218" width="170" height="46" rx="8"/>
+<text class="b" x="483" y="238" text-anchor="middle">PostsController</text>
+<text class="xs" x="483" y="255" text-anchor="middle">建構子需要 BlogDbContext</text>
+<path class="arr-run" d="M570,241 H640" marker-end="url(#ar)"/>
+<text class="run" x="605" y="232" text-anchor="middle">執行 lambda</text>
+<rect class="ctx" x="643" y="218" width="160" height="46" rx="8"/>
+<text class="b" x="723" y="238" text-anchor="middle">DbContext #1</text>
+<text class="xs" x="723" y="255" text-anchor="middle">剛建立</text>
+<text class="xs" x="818" y="246">第一次需要，才建立</text>
+
+<rect class="app" x="398" y="300" width="170" height="46" rx="8"/>
+<text class="b" x="483" y="320" text-anchor="middle">同一個請求裡</text>
+<text class="xs" x="483" y="337" text-anchor="middle">其他地方也要 DbContext</text>
+<path class="arr" d="M570,323 H720 V268" marker-end="url(#am)"/>
+<text class="xs" x="580" y="342">不執行 lambda，直接給 #1</text>
+<text class="xs" x="740" y="320">同一個請求共用同一個</text>
+
+<text class="xs" x="398" y="384">請求結束 → DbContext #1 被釋放（Dispose），連線還回連線池</text>
+
+<!-- 請求 2 -->
+<rect class="lane-r2" x="380" y="420" width="600" height="160" rx="12"/>
+<text class="b t-r2" x="398" y="444">③ 第二個請求：POST /api/posts（新的 scope）</text>
+<rect class="app" x="398" y="460" width="170" height="46" rx="8"/>
+<text class="b" x="483" y="480" text-anchor="middle">PostsController</text>
+<text class="xs" x="483" y="497" text-anchor="middle">新的 Controller 物件</text>
+<path class="arr-run" d="M570,483 H640" marker-end="url(#ar)"/>
+<text class="run" x="605" y="474" text-anchor="middle">再執行一次</text>
+<rect class="ctx" x="643" y="460" width="160" height="46" rx="8"/>
+<text class="b" x="723" y="480" text-anchor="middle">DbContext #2</text>
+<text class="xs" x="723" y="497" text-anchor="middle">全新的一個</text>
+<text class="xs" x="818" y="488">和 #1 互不相干</text>
+<text class="xs" x="398" y="548">每個請求都有自己的 DbContext＝生命週期 Scoped</text>
+<text class="xs" x="398" y="566">（為什麼這樣設計、還有哪些生命週期，第 3 課 DI 會講）</text>
+
+<!-- 連結線 -->
+<path class="link" d="M352,112 H378"/>
+<path class="link" d="M352,258 H396"/>
+<path class="link" d="M352,350 H396"/>
+<path class="link" d="M352,488 H396"/>
+</svg>

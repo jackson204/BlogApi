@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 430" width="1000" height="430" role="img" aria-label="拆解 AddDbContext、UseSqlServer、GetConnectionString 三個方法：由內往外讀">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
+    --c1: #1a7f37; --c1-s: #dcfce7; --c2: #cf222e; --c2-s: #ffebe9; --c3: #0969da; --c3-s: #ddf4ff; --codebg: #f6f8fa;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23; --card: #151b23;
+      --c1: #3fb950; --c1-s: #12261b; --c2: #ff7b72; --c2-s: #3d1515; --c3: #58a6ff; --c3-s: #0c2d4a; --codebg: #151b23;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .code { white-space: pre; font-variant-ligatures: none; font-size: 15px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; }
+  .mono { font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 12px; }
+  .codebox { fill: var(--codebg); stroke: var(--border); stroke-width: 1.5; }
+  .k1 { fill: var(--c1); font-weight: 700; } .k2 { fill: var(--c2); font-weight: 700; } .k3 { fill: var(--c3); font-weight: 700; }
+  .card1 { fill: var(--c1-s); stroke: var(--c1); stroke-width: 2; }
+  .card2 { fill: var(--c2-s); stroke: var(--c2); stroke-width: 2; }
+  .card3 { fill: var(--c3-s); stroke: var(--c3); stroke-width: 2; }
+  .title { font-size: 15px; font-weight: 700; }
+  .k { font-size: 11.5px; fill: var(--muted); }
+  .v { font-size: 12.5px; }
+  .hint { font-size: 13px; font-weight: 700; fill: var(--muted); }
+  .lbl { font-size: 11.5px; fill: var(--muted); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .f-muted { fill: var(--muted); }
+  .chip { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .num { font-size: 12px; font-weight: 800; fill: #ffffff; }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="430" rx="12"/>
+
+<!-- 程式碼 -->
+<rect class="codebox" x="20" y="18" width="960" height="76" rx="10"/>
+<text class="code" x="40" y="49">builder.Services.<tspan class="k1">AddDbContext&lt;BlogDbContext&gt;</tspan>(<tspan class="k2">options =&gt;</tspan></text>
+<text class="code" x="40" y="77">    <tspan class="k2">options.UseSqlServer(</tspan><tspan class="k3">builder.Configuration.GetConnectionString("BlogDb")</tspan><tspan class="k2">)</tspan>);</text>
+
+<text class="hint" x="500" y="122" text-anchor="middle">括號一層包一層，所以「由內往外」讀：③ → ② → ①</text>
+
+<!-- ③ -->
+<rect class="card3" x="20" y="140" width="300" height="210" rx="10"/>
+<circle cx="44" cy="166" r="12" style="fill:var(--c3)"/><text class="num" x="44" y="170" text-anchor="middle">3</text>
+<text class="title k3" x="64" y="171">GetConnectionString</text>
+<text class="k" x="40" y="200">擴充誰（this 參數）</text>
+<text class="v mono" x="40" y="217">IConfiguration</text>
+<text class="k" x="40" y="241">參數</text>
+<text class="v mono" x="40" y="258">string name  ← "BlogDb"</text>
+<text class="k" x="40" y="282">回傳</text>
+<text class="v mono" x="40" y="299">string?（找不到是 null）</text>
+<text class="k" x="40" y="323">做什麼</text>
+<text class="v" x="40" y="340">讀設定裡的 ConnectionStrings:BlogDb</text>
+
+<!-- ② -->
+<rect class="card2" x="350" y="140" width="300" height="210" rx="10"/>
+<circle cx="374" cy="166" r="12" style="fill:var(--c2)"/><text class="num" x="374" y="170" text-anchor="middle">2</text>
+<text class="title k2" x="394" y="171">UseSqlServer</text>
+<text class="k" x="370" y="200">擴充誰（this 參數）</text>
+<text class="v mono" x="370" y="217">DbContextOptionsBuilder</text>
+<text class="k" x="370" y="241">參數</text>
+<text class="v mono" x="370" y="258">string? connectionString</text>
+<text class="k" x="370" y="282">回傳</text>
+<text class="v mono" x="370" y="299">DbContextOptionsBuilder</text>
+<text class="k" x="370" y="323">做什麼</text>
+<text class="v" x="370" y="340">設定：用 SQL Server，連這個字串</text>
+
+<!-- ① -->
+<rect class="card1" x="680" y="140" width="300" height="210" rx="10"/>
+<circle cx="704" cy="166" r="12" style="fill:var(--c1)"/><text class="num" x="704" y="170" text-anchor="middle">1</text>
+<text class="title k1" x="724" y="171">AddDbContext&lt;TContext&gt;</text>
+<text class="k" x="700" y="200">擴充誰（this 參數）</text>
+<text class="v mono" x="700" y="217">IServiceCollection</text>
+<text class="k" x="700" y="241">參數</text>
+<text class="v mono" x="700" y="258">Action&lt;DbContextOptionsBuilder&gt;</text>
+<text class="k" x="700" y="282">回傳</text>
+<text class="v mono" x="700" y="299">IServiceCollection</text>
+<text class="k" x="700" y="323">做什麼</text>
+<text class="v" x="700" y="340">登記「需要 BlogDbContext 時怎麼建立」</text>
+
+<!-- 型別流向 -->
+<path class="arr" d="M220,304 C240,380 330,380 360,262" marker-end="url(#am)"/>
+<text class="lbl" x="268" y="392">string? 傳進 connectionString</text>
+<path class="arr" d="M560,350 C600,400 650,400 690,262" marker-end="url(#am)"/>
+<text class="lbl" x="556" y="406">整段 options =&gt; … 就是一個 Action</text>
+
+</svg>

@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 460" width="1000" height="460" role="img" aria-label="BlogDbContext 裡面有 DbSet Posts、ChangeTracker、資料庫連線；Controller 透過它查詢和寫入，最後由它送 SQL 給 SQL Server">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
+    --accent: #6d28d9; --tip: #1a7f37; --orange: #ea580c; --blue: #0969da;
+    --app: #dcfce7; --app-b: #16a34a; --orm: #ffe4e6; --orm-b: #e11d48; --ado: #ede9fe; --ado-b: #7c3aed; --db: #fef9c3; --db-b: #ca8a04; --set: #ddf4ff; --set-b: #0969da;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23; --card: #151b23;
+      --accent: #b58cff; --tip: #3fb950; --orange: #fb923c; --blue: #58a6ff;
+      --app: #12261b; --app-b: #3fb950; --orm: #3b1520; --orm-b: #f472b6; --ado: #231a3d; --ado-b: #a78bfa; --db: #2b2408; --db-b: #facc15; --set: #0c2d4a; --set-b: #58a6ff;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 15px; font-weight: 700; }
+  .b { font-size: 14px; font-weight: 700; }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .code { font-variant-ligatures: none; font-size: 12px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; }
+  .codem { font-size: 12px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; fill: var(--muted); }
+  .lbl { font-size: 12px; fill: var(--muted); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+  .ctx { fill: var(--orm); stroke: var(--orm-b); stroke-width: 2; stroke-dasharray: 7 4; }
+  .app { fill: var(--app); stroke: var(--app-b); stroke-width: 2; }
+  .set { fill: var(--set); stroke: var(--set-b); stroke-width: 2; }
+  .trk { fill: var(--card); stroke: var(--orm-b); stroke-width: 2; }
+  .ado { fill: var(--ado); stroke: var(--ado-b); stroke-width: 2; }
+  .db { fill: var(--db); stroke: var(--db-b); stroke-width: 2; }
+  .row { fill: var(--soft); }
+  .st-u { fill: var(--muted); font-weight: 700; font-size: 11.5px; }
+  .st-m { fill: var(--orange); font-weight: 700; font-size: 11.5px; }
+  .st-a { fill: var(--tip); font-weight: 700; font-size: 11.5px; }
+  .l { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .l-db { fill: none; stroke: var(--orange); stroke-width: 3; }
+  .f-muted { fill: var(--muted); } .f-db { fill: var(--orange); }
+  .num { font-size: 11.5px; font-weight: 800; fill: #ffffff; }
+  .c { fill: var(--muted); }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="f-db" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="460" rx="12"/>
+
+<!-- Controller -->
+<rect class="app" x="20" y="90" width="230" height="230" rx="10"/>
+<text class="b" x="135" y="116" text-anchor="middle">PostsController</text>
+<text class="xs" x="135" y="134" text-anchor="middle">你只跟 _db 說話</text>
+<circle class="c" cx="40" cy="168" r="10"/><text class="num" x="40" y="172" text-anchor="middle">1</text>
+<text class="code" x="56" y="172">_db.Posts.Where(…)</text>
+<text class="xs" x="56" y="190">查詢</text>
+<circle class="c" cx="40" cy="228" r="10"/><text class="num" x="40" y="232" text-anchor="middle">2</text>
+<text class="code" x="56" y="232">_db.Posts.Add(post)</text>
+<text class="xs" x="56" y="250">只是記帳，還沒寫入</text>
+<circle class="c" cx="40" cy="288" r="10"/><text class="num" x="40" y="292" text-anchor="middle">3</text>
+<text class="code" x="56" y="292">_db.SaveChangesAsync()</text>
+<text class="xs" x="56" y="310">照記帳內容一次寫入</text>
+
+<!-- DbContext -->
+<rect class="ctx" x="300" y="30" width="430" height="400" rx="14"/>
+<text class="h" x="515" y="56" text-anchor="middle">BlogDbContext（每個請求一個）</text>
+<text class="xs" x="515" y="74" text-anchor="middle">繼承 DbContext：和資料庫的一次「工作階段」</text>
+
+<rect class="set" x="325" y="90" width="380" height="76" rx="9"/>
+<text class="b" x="345" y="114">DbSet&lt;Post&gt; Posts</text>
+<text class="xs" x="345" y="134">代表整張 Posts 表，是查詢和新增的入口</text>
+<text class="xs" x="345" y="152">對它寫 LINQ ＝ 對 Posts 表查詢</text>
+
+<rect class="trk" x="325" y="182" width="380" height="140" rx="9"/>
+<text class="b" x="345" y="206">ChangeTracker（記帳本）</text>
+<text class="xs" x="345" y="224">記住每個物件現在的狀態</text>
+<rect class="row" x="345" y="234" width="340" height="24" rx="4"/>
+<text class="code" x="355" y="251">Post #1</text><text class="st-u" x="470" y="251">Unchanged</text><text class="xs" x="560" y="251">查出來沒動過</text>
+<rect class="row" x="345" y="262" width="340" height="24" rx="4"/>
+<text class="code" x="355" y="279">Post #3</text><text class="st-m" x="470" y="279">Modified</text><text class="xs" x="560" y="279">Title 被改了</text>
+<rect class="row" x="345" y="290" width="340" height="24" rx="4"/>
+<text class="code" x="355" y="307">Post（新）</text><text class="st-a" x="470" y="307">Added</text><text class="xs" x="560" y="307">剛 Add，還沒 Id</text>
+
+<rect class="ado" x="325" y="338" width="380" height="72" rx="9"/>
+<text class="b" x="345" y="362">Database 連線（SqlClient）</text>
+<text class="xs" x="345" y="382">連線字串來自 Program.cs 的 AddDbContext</text>
+<text class="xs" x="345" y="399">需要時才開連線，用完就還回連線池</text>
+
+<!-- Controller → DbContext -->
+<path class="l" d="M252,168 H322" marker-end="url(#am)"/>
+<path class="l" d="M252,228 H322" marker-end="url(#am)"/>
+<path class="l" d="M252,288 H322" marker-end="url(#am)"/>
+
+<!-- 內部 → 連線 -->
+<path class="l" d="M718,128 H740 V370 H708" marker-end="url(#am)"/>
+<path class="l" d="M708,252 H740"/>
+
+<!-- SQL Server -->
+<path class="db" d="M870,190 v120 a55,16 0 0 0 110,0 v-120"/>
+<ellipse class="db" cx="925" cy="190" rx="55" ry="16"/>
+<text class="b" x="925" y="255" text-anchor="middle">SQL Server</text>
+<text class="xs" x="925" y="275" text-anchor="middle">BlogDb．Posts 表</text>
+
+<path class="l-db" d="M708,394 H850 V300 H866" marker-end="url(#ad)"/>
+<text class="lbl" x="812" y="386" style="fill:var(--orange);font-weight:700">SQL</text>
+
+<text class="lbl" x="748" y="118">① ToListAsync() 時</text>
+<text class="lbl" x="748" y="134">翻成 SELECT</text>
+<text class="lbl" x="748" y="230">③ SaveChanges 時</text>
+<text class="lbl" x="748" y="246">記帳 → INSERT /</text>
+<text class="lbl" x="748" y="262">UPDATE / DELETE</text>
+</svg>

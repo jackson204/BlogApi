@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" width="1000" height="470" role="img" aria-label="ADO.NET、Dapper、EF Core 三種寫法中，哪些工作要你自己寫，哪些由工具代勞">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
+    --you: #fff1e5; --you-b: #bc4c00; --tool: #dcfce7; --tool-b: #16a34a;
+    --ado: #ede9fe; --ado-b: #7c3aed; --dap: #ddf4ff; --dap-b: #0969da; --orm: #ffe4e6; --orm-b: #e11d48;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23; --card: #151b23;
+      --you: #3d2410; --you-b: #ffa657; --tool: #12261b; --tool-b: #3fb950;
+      --ado: #231a3d; --ado-b: #a78bfa; --dap: #0c2d4a; --dap-b: #58a6ff; --orm: #3b1520; --orm-b: #f472b6;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .task { font-size: 13.5px; font-weight: 600; }
+  .b { font-size: 15px; font-weight: 700; }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .cell-t { font-size: 12.5px; font-weight: 700; }
+  .cell-d { font-size: 11px; fill: var(--muted); font-family: "Cascadia Code", Consolas, "Microsoft JhengHei", monospace; }
+  .you { fill: var(--you); stroke: var(--you-b); stroke-width: 1.5; }
+  .tool { fill: var(--tool); stroke: var(--tool-b); stroke-width: 1.5; }
+  .you-t { fill: var(--you-b); } .tool-t { fill: var(--tool-b); }
+  .h-ado { fill: var(--ado); stroke: var(--ado-b); stroke-width: 2; }
+  .h-dap { fill: var(--dap); stroke: var(--dap-b); stroke-width: 2; }
+  .h-orm { fill: var(--orm); stroke: var(--orm-b); stroke-width: 2; }
+  .grid { stroke: var(--border); stroke-width: 1; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .f-muted { fill: var(--muted); }
+  .note { font-size: 12.5px; fill: var(--muted); }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="470" rx="12"/>
+
+<!-- 欄位標題 -->
+<text class="xs" x="30" y="50">每次存取資料庫要做的事</text>
+<rect class="h-ado" x="250" y="18" width="230" height="58" rx="10"/>
+<text class="b" x="365" y="42" text-anchor="middle">① ADO.NET 手寫</text>
+<text class="xs" x="365" y="62" text-anchor="middle">一個查詢約 25 行</text>
+<rect class="h-dap" x="500" y="18" width="230" height="58" rx="10"/>
+<text class="b" x="615" y="42" text-anchor="middle">② Dapper（微型 ORM）</text>
+<text class="xs" x="615" y="62" text-anchor="middle">一個查詢約 3 行</text>
+<rect class="h-orm" x="750" y="18" width="230" height="58" rx="10"/>
+<text class="b" x="865" y="42" text-anchor="middle">③ EF Core（完整 ORM）</text>
+<text class="xs" x="865" y="62" text-anchor="middle">一行 LINQ</text>
+<path class="arr" d="M482,47 H498" marker-end="url(#am)"/>
+<path class="arr" d="M732,47 H748" marker-end="url(#am)"/>
+
+<!-- 列 -->
+<g font-size="13">
+<!-- 1 連線 -->
+<text class="task" x="30" y="116">建立、打開連線</text>
+<rect class="you" x="250" y="92" width="230" height="44" rx="7"/><text class="cell-t you-t" x="262" y="110">✋ 你寫</text><text class="cell-d" x="262" y="127">new SqlConnection / Open</text>
+<rect class="you" x="500" y="92" width="230" height="44" rx="7"/><text class="cell-t you-t" x="512" y="110">✋ 你寫</text><text class="cell-d" x="512" y="127">new SqlConnection</text>
+<rect class="tool" x="750" y="92" width="230" height="44" rx="7"/><text class="cell-t tool-t" x="762" y="110">⚙ 工具做</text><text class="cell-d" x="762" y="127">DbContext 自己管理</text>
+
+<!-- 2 SQL -->
+<text class="task" x="30" y="168">寫 SQL</text>
+<rect class="you" x="250" y="144" width="230" height="44" rx="7"/><text class="cell-t you-t" x="262" y="162">✋ 你寫</text><text class="cell-d" x="262" y="179">字串，打錯執行時才知道</text>
+<rect class="you" x="500" y="144" width="230" height="44" rx="7"/><text class="cell-t you-t" x="512" y="162">✋ 你寫</text><text class="cell-d" x="512" y="179">還是寫 SQL 字串</text>
+<rect class="tool" x="750" y="144" width="230" height="44" rx="7"/><text class="cell-t tool-t" x="762" y="162">⚙ 工具做</text><text class="cell-d" x="762" y="179">LINQ 翻成 SQL</text>
+
+<!-- 3 參數 -->
+<text class="task" x="30" y="220">參數化（防 SQL Injection）</text>
+<rect class="you" x="250" y="196" width="230" height="44" rx="7"/><text class="cell-t you-t" x="262" y="214">✋ 你寫</text><text class="cell-d" x="262" y="231">Parameters.AddWithValue…</text>
+<rect class="tool" x="500" y="196" width="230" height="44" rx="7"/><text class="cell-t tool-t" x="512" y="214">⚙ 工具做</text><text class="cell-d" x="512" y="231">傳 new { title } 就好</text>
+<rect class="tool" x="750" y="196" width="230" height="44" rx="7"/><text class="cell-t tool-t" x="762" y="214">⚙ 工具做</text><text class="cell-d" x="762" y="231">自動參數化</text>
+
+<!-- 4 對應 -->
+<text class="task" x="30" y="272">結果一欄一欄塞回物件</text>
+<rect class="you" x="250" y="248" width="230" height="44" rx="7"/><text class="cell-t you-t" x="262" y="266">✋ 你寫</text><text class="cell-d" x="262" y="283">reader.GetString(1)…</text>
+<rect class="tool" x="500" y="248" width="230" height="44" rx="7"/><text class="cell-t tool-t" x="512" y="266">⚙ 工具做</text><text class="cell-d" x="512" y="283">QueryAsync&lt;Post&gt;(…)</text>
+<rect class="tool" x="750" y="248" width="230" height="44" rx="7"/><text class="cell-t tool-t" x="762" y="266">⚙ 工具做</text><text class="cell-d" x="762" y="283">自動對應</text>
+
+<!-- 5 追蹤 -->
+<text class="task" x="30" y="324">記住哪些欄位被改過</text>
+<rect class="you" x="250" y="300" width="230" height="44" rx="7"/><text class="cell-t you-t" x="262" y="318">✋ 你寫</text><text class="cell-d" x="262" y="335">自己組 UPDATE 的欄位</text>
+<rect class="you" x="500" y="300" width="230" height="44" rx="7"/><text class="cell-t you-t" x="512" y="318">✋ 你寫</text><text class="cell-d" x="512" y="335">自己組 UPDATE 的欄位</text>
+<rect class="tool" x="750" y="300" width="230" height="44" rx="7"/><text class="cell-t tool-t" x="762" y="318">⚙ 工具做</text><text class="cell-d" x="762" y="335">Change Tracking</text>
+
+<!-- 6 建表 -->
+<text class="task" x="30" y="376">建表、改表（版本紀錄）</text>
+<rect class="you" x="250" y="352" width="230" height="44" rx="7"/><text class="cell-t you-t" x="262" y="370">✋ 你寫</text><text class="cell-d" x="262" y="387">手寫 SQL 腳本</text>
+<rect class="you" x="500" y="352" width="230" height="44" rx="7"/><text class="cell-t you-t" x="512" y="370">✋ 你寫</text><text class="cell-d" x="512" y="387">手寫 SQL 腳本</text>
+<rect class="tool" x="750" y="352" width="230" height="44" rx="7"/><text class="cell-t tool-t" x="762" y="370">⚙ 工具做</text><text class="cell-d" x="762" y="387">Migration</text>
+</g>
+
+<text class="note" x="500" y="432" text-anchor="middle">越往右，你要寫的越少；但工具做的事你看不到，所以更要養成「看它產生的 SQL」的習慣</text>
+<text class="note" x="500" y="452" text-anchor="middle">三者最後都是透過 ADO.NET（Microsoft.Data.SqlClient）把 SQL 送到資料庫</text>
+</svg>
