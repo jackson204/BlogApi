@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 380" width="1000" height="380" role="img" aria-label="兩個資料庫各用一個 DbContext：BlogDbContext 連到 BlogDb，AnalyticsDbContext 連到 AnalyticsDb，各自有連線字串和 Migrations 資料夾">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c0: #7c3aed; --c0-s: #f5f0ff; --c4: #0e7490; --c4-s: #e6f7fb; --db: #fef9c3; --db-b: #ca8a04;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c0: #a78bfa; --c0-s: #1c1530; --c4: #22d3ee; --c4-s: #0b2530; --db: #2b2408; --db-b: #facc15;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 14px; font-weight: 800; fill: var(--muted); }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .t { white-space: pre; font-size: 13px; font-weight: 700; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .code { white-space: pre; font-size: 12px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .ba { fill: var(--c0-s); stroke: var(--c0); stroke-width: 2; }
+  .bb { fill: var(--c4-s); stroke: var(--c4); stroke-width: 2; }
+  .mid { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .db { fill: var(--db); stroke: var(--db-b); stroke-width: 2; }
+  .ka { fill: var(--c0); } .kb { fill: var(--c4); }
+  .aa { fill: none; stroke: var(--c0); stroke-width: 2; }
+  .ab { fill: none; stroke: var(--c4); stroke-width: 2; }
+  .note { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+</style>
+<defs>
+  <marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ka" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="mb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="kb" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="380" rx="12"/>
+
+<text class="h" x="30" y="30">DbContext class</text>
+<text class="h" x="380" y="30">各自的設定</text>
+<text class="h" x="760" y="30">各自的資料庫</text>
+
+<!-- 第一組 -->
+<rect class="ba" x="20" y="44" width="300" height="104" rx="10"/>
+<text class="t ka" x="36" y="70">BlogDbContext</text>
+<text class="code" x="36" y="96">DbSet&lt;Post&gt; Posts</text>
+<text class="code" x="36" y="116">DbSet&lt;Tag&gt;  Tags</text>
+<text class="xs" x="36" y="138">部落格本身的資料</text>
+<path class="aa" d="M320,96 H366" marker-end="url(#ma)"/>
+<rect class="mid" x="370" y="52" width="320" height="88" rx="10"/>
+<text class="xs" x="386" y="74">連線字串</text>
+<text class="code" x="386" y="92">ConnectionStrings:BlogDb</text>
+<text class="xs" x="386" y="114">Migration 檔案</text>
+<text class="code" x="386" y="132">Migrations/</text>
+<path class="aa" d="M690,96 H736" marker-end="url(#ma)"/>
+<path class="db" d="M740,62 V128 A100,12 0 0 0 940,128 V62"/><ellipse class="db" cx="840" cy="62" rx="100" ry="12"/>
+<text class="t" x="840" y="94" text-anchor="middle">BlogDb</text>
+<text class="xs" x="840" y="114" text-anchor="middle">Posts、Tags</text>
+
+<!-- 第二組 -->
+<rect class="bb" x="20" y="176" width="300" height="104" rx="10"/>
+<text class="t kb" x="36" y="202">AnalyticsDbContext</text>
+<text class="code" x="36" y="228">DbSet&lt;PageView&gt; PageViews</text>
+<text class="xs" x="36" y="270">另一個資料庫：例如瀏覽紀錄</text>
+<path class="ab" d="M320,228 H366" marker-end="url(#mb)"/>
+<rect class="mid" x="370" y="184" width="320" height="88" rx="10"/>
+<text class="xs" x="386" y="206">連線字串</text>
+<text class="code" x="386" y="224">ConnectionStrings:AnalyticsDb</text>
+<text class="xs" x="386" y="246">Migration 檔案（用 --output-dir 分開）</text>
+<text class="code" x="386" y="264">Migrations/Analytics/</text>
+<path class="ab" d="M690,228 H736" marker-end="url(#mb)"/>
+<path class="db" d="M740,194 V260 A100,12 0 0 0 940,260 V194"/><ellipse class="db" cx="840" cy="194" rx="100" ry="12"/>
+<text class="t" x="840" y="226" text-anchor="middle">AnalyticsDb</text>
+<text class="xs" x="840" y="246" text-anchor="middle">PageViews</text>
+
+<!-- 底部 -->
+<rect class="note" x="20" y="300" width="960" height="64" rx="10"/>
+<text x="36" y="324">Program.cs 各註冊一次：<tspan class="code ka">AddDbContext&lt;BlogDbContext&gt;(…)</tspan>、<tspan class="code kb">AddDbContext&lt;AnalyticsDbContext&gt;(…)</tspan></text>
+<text class="xs" x="36" y="348">dotnet ef 指令要加 --context 指定是哪一個；兩個 DbContext 互不相干，不能在同一句 LINQ 裡 JOIN 兩個資料庫的表</text>
+</svg>

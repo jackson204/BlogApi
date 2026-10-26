@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" width="1000" height="440" role="img" aria-label="部落格畫面上的五個動作，各自對應的 HTTP 請求、Controller 方法、SQL 和回應">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 440" width="1160" height="440" role="img" aria-label="部落格畫面上的五個動作，各自對應的 HTTP 請求、Controller 方法、SQL、資料庫裡發生的事和回應">
 <style>
   svg {
     --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
@@ -33,18 +33,21 @@
   .put { fill: var(--put); } .put-s { fill: var(--put-s); stroke: var(--put); stroke-width: 1.5; }
   .del { fill: var(--del); } .del-s { fill: var(--del-s); stroke: var(--del); stroke-width: 1.5; }
   .note { font-size: 12px; fill: var(--muted); }
+  .dbt { font-size: 12.5px; font-weight: 700; }
+  .dbi { fill: var(--db); stroke: var(--db-b); stroke-width: 1.5; }
 </style>
 <defs>
   <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
 </defs>
-<rect class="bg" x="0" y="0" width="1000" height="440" rx="12"/>
+<rect class="bg" x="0" y="0" width="1160" height="440" rx="12"/>
 
 <!-- 標題列 -->
 <text class="th" x="130" y="36" text-anchor="middle">部落格畫面上的動作</text>
 <text class="th" x="340" y="36" text-anchor="middle">HTTP 請求</text>
 <text class="th" x="535" y="36" text-anchor="middle">Controller 方法</text>
 <text class="th" x="740" y="36" text-anchor="middle">EF Core 產生的 SQL</text>
-<text class="th" x="932" y="36" text-anchor="middle">成功回應</text>
+<text class="th" x="945" y="36" text-anchor="middle">SQL Server（Posts 表）</text>
+<text class="th" x="1092" y="36" text-anchor="middle">成功回應</text>
 
 <!-- 第 1 列：Create -->
 <g transform="translate(0,52)">
@@ -63,8 +66,13 @@
   <rect class="sql" x="625" y="4" width="230" height="48" rx="8"/>
   <text class="code" x="740" y="33" text-anchor="middle">INSERT INTO Posts …</text>
   <path class="arr" d="M857,28 H877" marker-end="url(#ah)"/>
-  <rect class="resp" x="880" y="4" width="105" height="48" rx="8"/>
-  <text class="code ok" x="932" y="33" text-anchor="middle">201 Created</text>
+  <rect class="sql" x="880" y="4" width="130" height="48" rx="8"/>
+  <path class="dbi" d="M890,16 V38 A11,4 0 0 0 912,38 V16"/><ellipse class="dbi" cx="901" cy="16" rx="11" ry="4"/>
+  <text class="dbt" x="920" y="25">新增 1 列</text>
+  <text class="sub" x="920" y="43">Id 自動產生</text>
+  <path class="arr" d="M1012,28 H1037" marker-end="url(#ah)"/>
+  <rect class="resp" x="1040" y="4" width="105" height="48" rx="8"/>
+  <text class="code ok" x="1092" y="33" text-anchor="middle">201 Created</text>
 </g>
 
 <!-- 第 2 列：Read 列表 -->
@@ -85,8 +93,12 @@
   <text class="code" x="740" y="25" text-anchor="middle">SELECT … FROM Posts</text>
   <text class="sub" x="740" y="43" text-anchor="middle">WHERE Title LIKE … ORDER BY …</text>
   <path class="arr" d="M857,28 H877" marker-end="url(#ah)"/>
-  <rect class="resp" x="880" y="4" width="105" height="48" rx="8"/>
-  <text class="code ok" x="932" y="33" text-anchor="middle">200 OK</text>
+  <rect class="sql" x="880" y="4" width="130" height="48" rx="8"/>
+  <path class="dbi" d="M890,16 V38 A11,4 0 0 0 912,38 V16"/><ellipse class="dbi" cx="901" cy="16" rx="11" ry="4"/>
+  <text class="dbt" x="920" y="33">讀出多列</text>
+  <path class="arr" d="M1012,28 H1037" marker-end="url(#ah)"/>
+  <rect class="resp" x="1040" y="4" width="105" height="48" rx="8"/>
+  <text class="code ok" x="1092" y="33" text-anchor="middle">200 OK</text>
 </g>
 
 <!-- 第 3 列：Read 單篇 -->
@@ -107,9 +119,13 @@
   <text class="code" x="740" y="25" text-anchor="middle">SELECT TOP(1) …</text>
   <text class="sub" x="740" y="43" text-anchor="middle">WHERE Id = @p</text>
   <path class="arr" d="M857,28 H877" marker-end="url(#ah)"/>
-  <rect class="resp" x="880" y="4" width="105" height="48" rx="8"/>
-  <text class="code ok" x="932" y="25" text-anchor="middle">200 OK</text>
-  <text class="sub" x="932" y="43" text-anchor="middle">找不到 404</text>
+  <rect class="sql" x="880" y="4" width="130" height="48" rx="8"/>
+  <path class="dbi" d="M890,16 V38 A11,4 0 0 0 912,38 V16"/><ellipse class="dbi" cx="901" cy="16" rx="11" ry="4"/>
+  <text class="dbt" x="920" y="33">讀出 0 或 1 列</text>
+  <path class="arr" d="M1012,28 H1037" marker-end="url(#ah)"/>
+  <rect class="resp" x="1040" y="4" width="105" height="48" rx="8"/>
+  <text class="code ok" x="1092" y="25" text-anchor="middle">200 OK</text>
+  <text class="sub" x="1092" y="43" text-anchor="middle">找不到 404</text>
 </g>
 
 <!-- 第 4 列：Update -->
@@ -130,9 +146,13 @@
   <text class="code" x="740" y="25" text-anchor="middle">UPDATE Posts SET …</text>
   <text class="sub" x="740" y="43" text-anchor="middle">只更新有改的欄位</text>
   <path class="arr" d="M857,28 H877" marker-end="url(#ah)"/>
-  <rect class="resp" x="880" y="4" width="105" height="48" rx="8"/>
-  <text class="code ok" x="932" y="25" text-anchor="middle">204</text>
-  <text class="sub" x="932" y="43" text-anchor="middle">No Content</text>
+  <rect class="sql" x="880" y="4" width="130" height="48" rx="8"/>
+  <path class="dbi" d="M890,16 V38 A11,4 0 0 0 912,38 V16"/><ellipse class="dbi" cx="901" cy="16" rx="11" ry="4"/>
+  <text class="dbt" x="920" y="33">改掉 1 列</text>
+  <path class="arr" d="M1012,28 H1037" marker-end="url(#ah)"/>
+  <rect class="resp" x="1040" y="4" width="105" height="48" rx="8"/>
+  <text class="code ok" x="1092" y="25" text-anchor="middle">204</text>
+  <text class="sub" x="1092" y="43" text-anchor="middle">No Content</text>
 </g>
 
 <!-- 第 5 列：Delete -->
@@ -152,10 +172,15 @@
   <rect class="sql" x="625" y="4" width="230" height="48" rx="8"/>
   <text class="code" x="740" y="33" text-anchor="middle">DELETE FROM Posts …</text>
   <path class="arr" d="M857,28 H877" marker-end="url(#ah)"/>
-  <rect class="resp" x="880" y="4" width="105" height="48" rx="8"/>
-  <text class="code ok" x="932" y="25" text-anchor="middle">204</text>
-  <text class="sub" x="932" y="43" text-anchor="middle">No Content</text>
+  <rect class="sql" x="880" y="4" width="130" height="48" rx="8"/>
+  <path class="dbi" d="M890,16 V38 A11,4 0 0 0 912,38 V16"/><ellipse class="dbi" cx="901" cy="16" rx="11" ry="4"/>
+  <text class="dbt" x="920" y="33">刪掉 1 列</text>
+  <path class="arr" d="M1012,28 H1037" marker-end="url(#ah)"/>
+  <rect class="resp" x="1040" y="4" width="105" height="48" rx="8"/>
+  <text class="code ok" x="1092" y="25" text-anchor="middle">204</text>
+  <text class="sub" x="1092" y="43" text-anchor="middle">No Content</text>
 </g>
 
-<text class="note" x="500" y="418" text-anchor="middle">C = Create 新增　R = Read 讀取　U = Update 修改　D = Delete 刪除　｜　找不到 id 時，單篇、修改、刪除都回 404</text>
+<text class="note" x="580" y="410" text-anchor="middle">C = Create 新增　R = Read 讀取　U = Update 修改　D = Delete 刪除　｜　找不到 id 時，單篇、修改、刪除都回 404</text>
+<text class="note" x="580" y="430" text-anchor="middle">回應是 Controller 拿到資料庫的執行結果之後才送出的；這裡畫成一排，方便左右對照</text>
 </svg>

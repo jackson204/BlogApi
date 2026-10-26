@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" role="img" aria-label="ORM 對應：DbSet 屬性名稱對應表名，class Post 的屬性對應欄位，一個 Post 物件對應一列資料，Id 屬性依慣例成為主鍵">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
+    --c1: #e11d48; --c1-s: #ffe4e6; --c2: #0969da; --c2-s: #ddf4ff; --c3: #16a34a; --c3-s: #dcfce7; --c4: #bc4c00; --c4-s: #fff1e5;
+    --db: #fef9c3; --db-b: #ca8a04; --cs: #f6f8fa;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23; --card: #151b23;
+      --c1: #f472b6; --c1-s: #3b1520; --c2: #58a6ff; --c2-s: #0c2d4a; --c3: #3fb950; --c3-s: #12261b; --c4: #ffa657; --c4-s: #3d2410;
+      --db: #2b2408; --db-b: #facc15; --cs: #151b23;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 15px; font-weight: 800; }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-size: 12.5px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .cell { white-space: pre; font-size: 12px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .ty { white-space: pre; font-size: 11px; font-family: "Cascadia Code", Consolas, monospace; fill: var(--muted); font-variant-ligatures: none; }
+  .file { font-size: 11.5px; font-weight: 700; fill: var(--muted); font-family: "Cascadia Code", Consolas, monospace; }
+  .cs { fill: var(--cs); stroke: var(--border); stroke-width: 1.5; }
+  .dbz { fill: var(--db); stroke: var(--db-b); stroke-width: 1.5; }
+  .grid { fill: var(--card); stroke: var(--border); stroke-width: 1; }
+  .hd { fill: var(--c2-s); stroke: var(--border); stroke-width: 1; }
+  .r1 { fill: var(--c3-s); stroke: var(--c3); stroke-width: 2; }
+  .k1 { fill: var(--c1); font-weight: 700; } .k2 { fill: var(--c2); font-weight: 700; } .k3 { fill: var(--c3); font-weight: 700; } .k4 { fill: var(--c4); font-weight: 700; }
+  .hl1 { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .hl2 { fill: none; stroke: var(--c2); stroke-width: 2; }
+  .hl3 { fill: var(--c3-s); stroke: var(--c3); stroke-width: 1.5; }
+  .hl4 { fill: var(--c4-s); stroke: var(--c4); stroke-width: 1.5; }
+  .a1 { fill: none; stroke: var(--c1); stroke-width: 2; stroke-dasharray: 6 4; }
+  .a2 { fill: none; stroke: var(--c2); stroke-width: 2; }
+  .a3 { fill: none; stroke: var(--c3); stroke-width: 2; }
+  .a4 { fill: none; stroke: var(--c4); stroke-width: 2; }
+  .n1 { fill: var(--c1); } .n2 { fill: var(--c2); } .n3 { fill: var(--c3); } .n4 { fill: var(--c4); }
+  .num { font-size: 12px; font-weight: 800; fill: #ffffff; }
+</style>
+<defs>
+  <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="n1" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="n2" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="n3" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="n4" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="560" rx="12"/>
+
+<text class="h" x="30" y="34">C#（你寫的程式）</text>
+<text class="h" x="560" y="34">SQL Server（BlogDb 資料庫）</text>
+
+<!-- Post.cs -->
+<rect class="cs" x="20" y="48" width="440" height="186" rx="10"/>
+<text class="file" x="36" y="68">Models/Post.cs（Entity class）</text>
+<text class="code" x="36" y="94">public class Post</text>
+<text class="code" x="36" y="112">{</text>
+<rect class="hl4" x="142" y="120" width="20" height="19" rx="4"/>
+<text class="code" x="36" y="134">    public int <tspan class="k4">Id</tspan> { get; set; }</text>
+<text class="code" x="36" y="154">    public string Title { get; set; } = "";</text>
+<text class="code" x="36" y="174">    public string Content { get; set; } = "";</text>
+<text class="code" x="36" y="194">    public DateTime CreatedAt { get; set; }</text>
+<text class="code" x="36" y="214">    public DateTime? UpdatedAt { get; set; }</text>
+<rect class="hl2" x="44" y="120" width="404" height="100" rx="6"/>
+<text class="code" x="36" y="230"> </text>
+
+<!-- 物件 -->
+<rect class="cs" x="20" y="252" width="440" height="122" rx="10"/>
+<text class="file" x="36" y="272">程式執行時的一個 Post 物件</text>
+<rect class="hl3" x="30" y="282" width="420" height="82" rx="6"/>
+<text class="code" x="42" y="302">new Post</text>
+<text class="code" x="42" y="320">{</text>
+<text class="code" x="42" y="338">    Id = 1, Title = "Docker 入門",</text>
+<text class="code" x="42" y="356">    Content = "…", CreatedAt = …  }</text>
+
+<!-- DbContext -->
+<rect class="cs" x="20" y="392" width="440" height="110" rx="10"/>
+<text class="file" x="36" y="412">Data/BlogDbContext.cs</text>
+<text class="code" x="36" y="438">public class BlogDbContext : DbContext</text>
+<text class="code" x="36" y="456">{</text>
+<rect class="hl1" x="201" y="464" width="42" height="19" rx="4"/>
+<text class="code" x="36" y="478">    public DbSet&lt;Post&gt; <tspan class="k1">Posts</tspan> =&gt; Set&lt;Post&gt;();</text>
+<text class="code" x="36" y="496">}</text>
+
+<!-- 資料庫 -->
+<rect class="dbz" x="520" y="48" width="460" height="230" rx="10"/>
+<rect class="hl1" x="540" y="60" width="84" height="26" rx="5"/>
+<text class="code k1" x="550" y="78">dbo.Posts</text>
+<text class="xs" x="636" y="78">資料表</text>
+
+<!-- 欄寬：Id 70 / Title 100 / Content 100 / CreatedAt 95 / UpdatedAt 85，x 從 540 -->
+<rect class="hd" x="540" y="96" width="70" height="28"/><rect class="hd" x="610" y="96" width="95" height="28"/><rect class="hd" x="705" y="96" width="95" height="28"/><rect class="hd" x="800" y="96" width="90" height="28"/><rect class="hd" x="890" y="96" width="80" height="28"/>
+<text class="cell k4" x="550" y="115">Id</text><text class="cell" x="620" y="115">Title</text><text class="cell" x="715" y="115">Content</text><text class="cell" x="808" y="115">CreatedAt</text><text class="cell" x="897" y="115">UpdatedAt</text>
+<rect class="grid" x="540" y="124" width="70" height="40"/><rect class="grid" x="610" y="124" width="95" height="40"/><rect class="grid" x="705" y="124" width="95" height="40"/><rect class="grid" x="800" y="124" width="90" height="40"/><rect class="grid" x="890" y="124" width="80" height="40"/>
+<text class="ty" x="548" y="140">int PK</text><text class="ty" x="548" y="156">IDENTITY</text>
+<text class="ty" x="616" y="148">nvarchar(max)</text>
+<text class="ty" x="711" y="148">nvarchar(max)</text>
+<text class="ty" x="808" y="148">datetime2</text>
+<text class="ty" x="897" y="140">datetime2</text><text class="ty" x="897" y="156">NULL</text>
+<rect class="r1" x="540" y="164" width="430" height="30"/>
+<text class="cell" x="550" y="184">1</text><text class="cell" x="618" y="184">Docker 入門</text><text class="cell" x="715" y="184">…</text><text class="cell" x="808" y="184">2026-10-25</text><text class="cell" x="897" y="184">NULL</text>
+<rect class="grid" x="540" y="194" width="70" height="30"/><rect class="grid" x="610" y="194" width="95" height="30"/><rect class="grid" x="705" y="194" width="95" height="30"/><rect class="grid" x="800" y="194" width="90" height="30"/><rect class="grid" x="890" y="194" width="80" height="30"/>
+<text class="cell" x="550" y="214">2</text><text class="cell" x="618" y="214">EF Core</text><text class="cell" x="715" y="214">…</text><text class="cell" x="808" y="214">2026-10-26</text><text class="cell" x="897" y="214">NULL</text>
+<text class="xs" x="540" y="250">欄位型別由 C# 型別依慣例決定：int → int、string → nvarchar(max)、</text>
+<text class="xs" x="540" y="266">DateTime → datetime2、DateTime? → 可以是 NULL</text>
+
+<!-- 連線 -->
+<!-- ① DbSet 屬性名 → 表名 -->
+<path class="a1" d="M222,484 V490 H482 Q490,490 490,482 V81 Q490,73 498,73 H536" marker-end="url(#m1)"/>
+<!-- ② 屬性 → 欄位 -->
+<path class="a2" d="M448,170 C505,170 505,110 536,110" marker-end="url(#m2)"/>
+<!-- ③ 物件 → 一列 -->
+<path class="a3" d="M450,322 C495,322 495,179 536,179" marker-end="url(#m3)"/>
+<!-- ④ Id → 主鍵：用顏色對應，不畫線 -->
+
+<!-- 圖例 -->
+<rect class="cs" x="520" y="296" width="460" height="206" rx="10"/>
+<circle class="n1" cx="544" cy="324" r="11"/><text class="num" x="544" y="328" text-anchor="middle">1</text>
+<text x="564" y="322"><tspan class="k1">DbSet 的屬性名稱 Posts</tspan> → 表名 Posts</text>
+<text class="xs" x="564" y="340">表名照屬性名稱取，所以 class 單數、表名複數</text>
+<circle class="n2" cx="544" cy="370" r="11"/><text class="num" x="544" y="374" text-anchor="middle">2</text>
+<text x="564" y="368"><tspan class="k2">class Post 的每個屬性</tspan> → 一個欄位</text>
+<text class="xs" x="564" y="386">名稱一樣；class 長什麼樣，表就有哪些欄位</text>
+<circle class="n3" cx="544" cy="416" r="11"/><text class="num" x="544" y="420" text-anchor="middle">3</text>
+<text x="564" y="414"><tspan class="k3">一個 Post 物件</tspan> → 一列資料</text>
+<text class="xs" x="564" y="432">查出來的每一列，都會變成一個 Post 物件</text>
+<circle class="n4" cx="544" cy="462" r="11"/><text class="num" x="544" y="466" text-anchor="middle">4</text>
+<text x="564" y="460"><tspan class="k4">屬性名稱叫 Id</tspan> → 主鍵 + 自動編號</text>
+<text class="xs" x="564" y="478">EF Core 的慣例，不用另外設定（圖中橘色的 Id）</text>
+
+<text class="xs" x="20" y="532">DbContext 本身則代表「跟這個資料庫的一次工作階段」，負責連線和寫入，2-4 會詳細說明</text>
+</svg>

@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500" width="1000" height="500" role="img" aria-label="三層對應：BlogDbContext 對應 BlogDb 資料庫，DbSet Posts 對應 Posts 表，一個 Post 物件對應一列資料，物件的屬性對應欄位">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c0: #7c3aed; --c0-s: #f5f0ff; --c1: #e11d48; --c1-s: #fff1f3; --c3: #16a34a; --c3-s: #effcf3; --c2: #0969da; --c2-s: #ddf4ff;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c0: #a78bfa; --c0-s: #1c1530; --c1: #f472b6; --c1-s: #2a1420; --c3: #3fb950; --c3-s: #10221a; --c2: #58a6ff; --c2-s: #0c2d4a;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 15px; font-weight: 800; }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .t { white-space: pre; font-size: 13px; font-weight: 700; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .chip-t { white-space: pre; font-size: 11px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .b0 { fill: var(--c0-s); stroke: var(--c0); stroke-width: 2; }
+  .b1 { fill: var(--c1-s); stroke: var(--c1); stroke-width: 2; }
+  .b3 { fill: var(--c3-s); stroke: var(--c3); stroke-width: 2; }
+  .chip { fill: var(--bg); stroke: var(--c2); stroke-width: 1.5; }
+  .later { fill: none; stroke: var(--c1); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .k0 { fill: var(--c0); } .k1 { fill: var(--c1); } .k2 { fill: var(--c2); } .k3 { fill: var(--c3); }
+  .l0 { stroke: var(--c0); stroke-width: 2; } .l1 { stroke: var(--c1); stroke-width: 2; } .l2 { stroke: var(--c2); stroke-width: 2; } .l3 { stroke: var(--c3); stroke-width: 2; }
+  .pill-t { font-size: 12px; font-weight: 800; fill: #ffffff; }
+  .note { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+</style>
+<rect class="bg" x="0" y="0" width="1000" height="500" rx="12"/>
+
+<text class="h" x="24" y="30">C#（程式裡）</text>
+<text class="h" x="564" y="30">SQL Server（資料庫裡）</text>
+
+<!-- ===== 左：C# ===== -->
+<rect class="b0" x="20" y="44" width="420" height="376" rx="12"/>
+<text class="t k0" x="36" y="68">BlogDbContext</text><text class="xs" x="160" y="68">繼承 DbContext：代表整個資料庫</text>
+
+<rect class="b1" x="36" y="84" width="388" height="236" rx="10"/>
+<text class="t k1" x="50" y="106">DbSet&lt;Post&gt; Posts</text><text class="xs" x="196" y="106">代表一張表</text>
+
+<rect class="b3" x="52" y="118" width="356" height="94" rx="8"/>
+<text class="xs" x="64" y="136"><tspan class="k3" style="font-weight:700">一個 Post 物件</tspan>（new Post）</text>
+<rect class="chip" x="64" y="148" width="70" height="24" rx="5"/><text class="chip-t" x="72" y="165">Id = 1</text>
+<rect class="chip" x="140" y="148" width="160" height="24" rx="5"/><text class="chip-t" x="148" y="165">Title = "Docker 入門"</text>
+<rect class="chip" x="306" y="148" width="92" height="24" rx="5"/><text class="chip-t" x="314" y="165">Content = …</text>
+<rect class="chip" x="64" y="178" width="120" height="24" rx="5"/><text class="chip-t" x="72" y="195">CreatedAt = …</text>
+<rect class="chip" x="190" y="178" width="134" height="24" rx="5"/><text class="chip-t" x="198" y="195">UpdatedAt = null</text>
+
+<rect class="b3" x="52" y="220" width="356" height="92" rx="8"/>
+<text class="xs" x="64" y="238"><tspan class="k3" style="font-weight:700">另一個 Post 物件</tspan></text>
+<rect class="chip" x="64" y="250" width="70" height="24" rx="5"/><text class="chip-t" x="72" y="267">Id = 2</text>
+<rect class="chip" x="140" y="250" width="160" height="24" rx="5"/><text class="chip-t" x="148" y="267">Title = "EF Core"</text>
+<rect class="chip" x="306" y="250" width="92" height="24" rx="5"/><text class="chip-t" x="314" y="267">Content = …</text>
+<text class="xs" x="64" y="298">……查出幾列，就有幾個 Post 物件</text>
+
+<rect class="later" x="36" y="332" width="388" height="40" rx="10"/>
+<text class="t" x="50" y="357" style="opacity:.7">DbSet&lt;Tag&gt; Tags</text><text class="xs" x="186" y="357">第 2 課會再加：幾個 DbSet，就幾張表</text>
+<text class="xs" x="36" y="404">DbContext 物件還負責連線、記錄改了什麼、SaveChanges（2-4）</text>
+
+<!-- ===== 右：SQL Server ===== -->
+<rect class="b0" x="560" y="44" width="420" height="376" rx="12"/>
+<text class="t k0" x="576" y="68">BlogDb</text><text class="xs" x="640" y="68">資料庫</text>
+
+<rect class="b1" x="576" y="84" width="388" height="236" rx="10"/>
+<text class="t k1" x="590" y="106">dbo.Posts</text><text class="xs" x="676" y="106">資料表</text>
+
+<rect class="b3" x="592" y="118" width="356" height="94" rx="8"/>
+<text class="xs" x="604" y="136"><tspan class="k3" style="font-weight:700">一列資料</tspan></text>
+<rect class="chip" x="604" y="148" width="70" height="24" rx="5"/><text class="chip-t" x="612" y="165">[Id] 1</text>
+<rect class="chip" x="680" y="148" width="160" height="24" rx="5"/><text class="chip-t" x="688" y="165">[Title] Docker 入門</text>
+<rect class="chip" x="846" y="148" width="92" height="24" rx="5"/><text class="chip-t" x="854" y="165">[Content]…</text>
+<rect class="chip" x="604" y="178" width="120" height="24" rx="5"/><text class="chip-t" x="612" y="195">[CreatedAt]…</text>
+<rect class="chip" x="730" y="178" width="134" height="24" rx="5"/><text class="chip-t" x="738" y="195">[UpdatedAt] NULL</text>
+
+<rect class="b3" x="592" y="220" width="356" height="92" rx="8"/>
+<text class="xs" x="604" y="238"><tspan class="k3" style="font-weight:700">另一列資料</tspan></text>
+<rect class="chip" x="604" y="250" width="70" height="24" rx="5"/><text class="chip-t" x="612" y="267">[Id] 2</text>
+<rect class="chip" x="680" y="250" width="160" height="24" rx="5"/><text class="chip-t" x="688" y="267">[Title] EF Core</text>
+<rect class="chip" x="846" y="250" width="92" height="24" rx="5"/><text class="chip-t" x="854" y="267">[Content]…</text>
+
+<rect class="later" x="576" y="332" width="388" height="40" rx="10"/>
+<text class="t" x="590" y="357" style="opacity:.7">dbo.Tags</text><text class="xs" x="670" y="357">第 2 課會再加</text>
+<text class="xs" x="576" y="404">資料本身一直存在這裡，程式結束也不會消失</text>
+
+<!-- ===== 中間：對應線 ===== -->
+<line class="l0" x1="440" y1="58" x2="560" y2="58"/>
+<rect class="k0" x="470" y="48" width="60" height="20" rx="10"/><text class="pill-t" x="500" y="62" text-anchor="middle">資料庫</text>
+<line class="l1" x1="424" y1="96" x2="576" y2="96"/>
+<rect class="k1" x="478" y="86" width="44" height="20" rx="10"/><text class="pill-t" x="500" y="100" text-anchor="middle">表</text>
+<line class="l3" x1="408" y1="124" x2="592" y2="124"/>
+<rect class="k3" x="478" y="114" width="44" height="19" rx="9"/><text class="pill-t" x="500" y="128" text-anchor="middle">列</text>
+<path class="l2" d="M220,148 V143 H760 V148" fill="none"/>
+<rect class="k2" x="474" y="134" width="52" height="18" rx="9"/><text class="pill-t" x="500" y="147" text-anchor="middle">欄位</text>
+
+<!-- ===== 底部說明 ===== -->
+<rect class="note" x="20" y="434" width="960" height="52" rx="10"/>
+<text x="36" y="456">📐 <tspan style="font-weight:700">class Post</tspan>（Models/Post.cs）是「一列的設計圖」：它有哪些屬性，每個 Post 物件就有哪些值，Posts 表也就有哪些欄位</text>
+<text class="xs" x="36" y="476">由外往內一層對一層：DbContext ↔ 資料庫、DbSet ↔ 表、物件 ↔ 列、屬性 ↔ 欄位</text>
+</svg>
