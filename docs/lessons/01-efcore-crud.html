@@ -17,7 +17,7 @@
 <div class="tags">
   <span class="tag">Web API</span><span class="tag">Controller</span><span class="tag">EF Core</span>
   <span class="tag">DbContext</span><span class="tag">Migration</span><span class="tag">LINQ</span>
-  <span class="tag">SQL</span><span class="tag">ToQueryString</span><span class="tag">User Secrets</span>
+  <span class="tag">SQL</span><span class="tag">ToQueryString</span><span class="tag">User Secrets</span><span class="tag">appsettings</span>
 </div>
 
 <div class="callout">
@@ -530,6 +530,7 @@ public class 名稱DbContext : DbContext
     }
 }</code></pre>
 <ul>
+  <li><code>名稱DbContext(DbContextOptions&lt;名稱DbContext&gt; options) : base(options)</code>：建構子，<strong>接收</strong>「要連哪種資料庫、連線字串是什麼」這包設定（<code>options</code>），再用 <code>: base(options)</code> 轉交給父類別 <code>DbContext</code>。設定本身是 3-5 的 <code>AddDbContext</code> 準備的，但<strong>沒有這個建構子，就沒有地方收</strong>，所以一定要自己寫</li>
   <li><code>protected override</code>：<code>OnModelCreating</code> 是父類別 <code>DbContext</code> 本來就有的方法，這裡<strong>覆寫</strong>它，加上自己的設定。EF Core 建立模型時會自動呼叫它</li>
   <li><code>modelBuilder.Entity&lt;Post&gt;(entity =&gt; { … })</code>：又是一個 <code>Action</code>（見 <a href="#delegate">3-5 ①</a>），<code>entity</code> 代表「Post 的設定器」</li>
   <li><code>entity.Property(x =&gt; x.Title)</code>：用 lambda 指定要設定哪個屬性，打錯字編譯就會發現</li>
@@ -565,15 +566,37 @@ public class 名稱DbContext : DbContext
 <p>不過 Data Annotations 還是要認得，因為<strong>題 6 的 API 輸入驗證</strong>會用到它（<code>[Required]</code>、<code>[MaxLength]</code>）。那是另一個用途，到時候再說明。</p>
 <p>官方文件：<a href="https://learn.microsoft.com/ef/core/modeling/" target="_blank">建立和設定模型</a>（每個設定都會同時列出兩種寫法）</p>
 
-<h3>3-4. 連線字串：用 User Secrets，不要寫進 appsettings</h3>
-<div class="callout danger">
-<p>⚠️ 你的 repo 是 <strong>public</strong> 的。<code>appsettings.Development.json</code> 會被 commit，裡面的密碼全世界都看得到。</p>
-<p>User Secrets 把機密存在<strong>專案資料夾以外</strong>（Windows 的 <code>%APPDATA%\Microsoft\UserSecrets\</code>），所以不會被 commit。開發環境（Development）執行時，.NET 會自動讀它。</p>
+<h3>3-4. 連線字串：放 appsettings 或 User Secrets</h3>
+<p>連線字串要放在程式讀得到的地方。開發時常見兩種做法，<strong>內容都是同一段 JSON</strong>，差別只在「檔案放在哪」：</p>
+<pre><code class="language-json">{
+  "ConnectionStrings": {
+    "BlogDb": "Server=localhost,1433;Database=BlogDb;User Id=sa;Password=…;TrustServerCertificate=True"
+  }
+}</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>① <code>appsettings.Development.json</code></th><th>② User Secrets（<code>secrets.json</code>）</th></tr>
+  <tr><td>檔案在哪</td><td>專案資料夾裡</td><td>專案資料夾<strong>以外</strong>：<code>%APPDATA%\Microsoft\UserSecrets\&lt;GUID&gt;\secrets.json</code></td></tr>
+  <tr><td>會被 commit 嗎</td><td><strong>會</strong>，密碼跟著上 GitHub</td><td><strong>不會</strong></td></tr>
+  <tr><td>怎麼寫</td><td>直接編輯 JSON 檔</td><td><code>dotnet user-secrets set</code>，或在 Rider 裡直接編輯 JSON</td></tr>
+  <tr><td>適合</td><td>本機練習用的資料庫，密碼外洩也無所謂</td><td>真正的密碼、API 金鑰；多人協作的專案</td></tr>
+</table>
 </div>
+
+<h4>① 寫在 appsettings.Development.json</h4>
+<p>在原本的檔案裡加上 <code>ConnectionStrings</code> 區段（和 <code>Logging</code> 同一層）。檔名有 <code>Development</code>，只有在開發環境執行時才會讀取。</p>
+
+<h4>② 用 User Secrets</h4>
 <pre><code class="language-plaintext">dotnet user-secrets init                       # 在 csproj 加上 UserSecretsId
 dotnet user-secrets set "區段:鍵" "值"           # 冒號代表 JSON 的階層
 dotnet user-secrets list                       # 看目前存了什麼</code></pre>
-<p><code>"ConnectionStrings:BlogDb"</code> 等同 JSON 的 <code>{ "ConnectionStrings": { "BlogDb": "..." } }</code>。Rider 也可以對專案按右鍵 → <strong>Tools → .NET User Secrets</strong> 直接編輯。</p>
+<p><code>"ConnectionStrings:BlogDb"</code> 等同 JSON 的 <code>{ "ConnectionStrings": { "BlogDb": "..." } }</code>。Rider 也可以對專案按右鍵 → <strong>Tools → .NET User Secrets</strong>，打開 <code>secrets.json</code> 直接貼上 JSON。開發環境（Development）執行時，.NET 會自動讀它。</p>
+
+<div class="callout warn">
+<p>⚠️ <strong>選 ① 之前要知道的事</strong>：這個 repo 是 <strong>public</strong> 的，commit 進去的密碼全世界都看得到，而且<strong>留在 git 歷史裡刪不掉</strong>。之後把檔案改掉也沒用，舊的 commit 還是查得到；公開 repo 也有機器人專門在掃帳號密碼。</p>
+<p>本課程的 <code>Blog_Dev_2026!</code> 只是本機 Docker 的練習密碼，課程筆記裡本來就寫出來了，所以用 ① 沒有實際風險。但<strong>真正的密碼一定要用 ②</strong>，而且這組練習密碼不要拿去別的地方用。</p>
+</div>
+<p>💡 兩邊都有設定時，<strong>User Secrets 會蓋過 appsettings</strong>。讀取順序是 <code>appsettings.json</code> → <code>appsettings.Development.json</code> → User Secrets，後讀的會覆蓋先讀的。</p>
 
 <h3>3-5. 註冊 DbContext</h3>
 <pre><code class="language-csharp">builder.Services.AddDbContext&lt;名稱DbContext&gt;(options =&gt;
@@ -906,10 +929,6 @@ namespace BlogApi.Data;
 
 public class BlogDbContext : DbContext
 {
-    public BlogDbContext(DbContextOptions&lt;BlogDbContext&gt; options) : base(options)
-    {
-    }
-
     public DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -931,17 +950,33 @@ public class BlogDbContext : DbContext
 
 <!-- 題 4 -->
 <div class="exercise">
-<h3>題 4：設定連線字串（User Secrets）並註冊 DbContext</h3>
+<h3>題 4：設定連線字串並註冊 DbContext</h3>
 <p>需求：</p>
 <ul>
-  <li>用 User Secrets 存連線字串，名稱叫 <code>BlogDb</code>，連到第 0 課的 <code>BlogDb</code></li>
+  <li>設定連線字串，名稱叫 <code>BlogDb</code>，連到第 0 課的 <code>BlogDb</code>。放 <code>appsettings.Development.json</code> 或 User Secrets 都可以，二選一</li>
   <li>在 <code>Program.cs</code> 註冊 <code>BlogDbContext</code>，讀取這個連線字串</li>
+  <li>在 <code>BlogDbContext</code> 加上建構子，接收註冊時準備好的設定</li>
 </ul>
-<p><strong>💡 提示</strong>：連線字串內容在<a href="00-docker-mssql.html#connstr">第 0 課第 5 節</a>；User Secrets 語法在 3-4；註冊語法在 3-5。</p>
-<p class="accept">✅ 驗收：<code>dotnet user-secrets list</code> 看得到 <code>ConnectionStrings:BlogDb</code>；<code>git status</code> 看不到任何含密碼的檔案</p>
+<p><strong>💡 提示</strong>：連線字串內容在<a href="00-docker-mssql.html#connstr">第 0 課第 5 節</a>；兩種放法的比較和語法在 3-4；建構子語法在 3-3 的骨架；註冊語法在 3-5。</p>
+<p>🧪 <strong>想體驗看看的話</strong>：先只在 <code>Program.cs</code> 加 <code>AddDbContext</code>、<strong>不寫建構子</strong>，build 一次、再按 ▶ 執行，比較兩者的結果，讀讀看錯誤訊息，再把建構子補上。</p>
+<p class="accept">✅ 驗收：執行後看得到 <code>Now listening on</code>，沒有當掉。選 User Secrets 的話，<code>dotnet user-secrets list</code> 看得到 <code>ConnectionStrings:BlogDb</code>，而且 <code>git status</code> 看不到任何含密碼的檔案</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
+<p><strong>連線字串（二選一）</strong></p>
+<p class="file-label">① BlogApi/appsettings.Development.json</p>
+<pre><code class="language-json">{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "ConnectionStrings": {
+    "BlogDb": "Server=localhost,1433;Database=BlogDb;User Id=sa;Password=Blog_Dev_2026!;TrustServerCertificate=True"
+  }
+}</code></pre>
+<p class="file-label">② User Secrets</p>
 <pre><code class="language-powershell">cd $HOME\RiderProjects\BlogApi\BlogApi
 dotnet user-secrets init
 dotnet user-secrets set "ConnectionStrings:BlogDb" "Server=localhost,1433;Database=BlogDb;User Id=sa;Password=Blog_Dev_2026!;TrustServerCertificate=True"
@@ -963,7 +998,32 @@ builder.Services.AddDbContext&lt;BlogDbContext&gt;(options =&gt;
 
 var app = builder.Build();
 // ...下面維持範本原樣</code></pre>
-<p><code>dotnet user-secrets init</code> 會在 csproj 加一行 <code>&lt;UserSecretsId&gt;一串 GUID&lt;/UserSecretsId&gt;</code>。這個 GUID 只是資料夾名稱，<strong>不是密碼</strong>，commit 沒關係。</p>
+<p class="file-label">BlogApi/Data/BlogDbContext.cs（加上建構子）</p>
+<pre><code class="language-csharp">public class BlogDbContext : DbContext
+{
+    public BlogDbContext(DbContextOptions&lt;BlogDbContext&gt; options) : base(options)
+    {
+    }
+
+    public DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();
+    // ...OnModelCreating 維持題 3 的寫法
+}</code></pre>
+<div class="callout warn">
+<p>❓ <strong>為什麼要寫建構子？<code>AddDbContext</code> 不會自動產生嗎？</strong>不行。<code>AddDbContext</code> 不會幫你產生任何程式碼，它只負責<strong>準備</strong>設定，再把設定<strong>送進</strong>建構子。方向是：</p>
+<pre><code class="nohighlight">Program.cs 的 AddDbContext        ← 準備 options（UseSqlServer、連線字串）
+        │
+        ▼
+BlogDbContext 的建構子             ← 收下 options
+        │  : base(options)
+        ▼
+EF Core 的 DbContext               ← 真正拿來連資料庫</code></pre>
+<p>只加 <code>AddDbContext</code>、沒寫建構子的話，<code>dotnet build</code> 還是會過，但<strong>程式一啟動就當掉</strong>（實測）：</p>
+<pre><code class="nohighlight">Unhandled exception. System.ArgumentException: 'AddDbContext' was called with configuration,
+but the context type 'BlogDbContext' only declares a parameterless constructor.
+This means that the configuration passed to 'AddDbContext' will never be used.</code></pre>
+<p>意思是：你在 <code>AddDbContext</code> 給了設定，但 <code>BlogDbContext</code> 只有「不收任何東西」的建構子，設定永遠送不進去。</p>
+</div>
+<p>選 ② 的話，<code>dotnet user-secrets init</code> 會在 csproj 加一行 <code>&lt;UserSecretsId&gt;一串 GUID&lt;/UserSecretsId&gt;</code>。這個 GUID 只是資料夾名稱，<strong>不是密碼</strong>，commit 沒關係。</p>
 </div>
 </details>
 </div>
@@ -1233,6 +1293,7 @@ public class PostsController : ControllerBase
     }
   }
 }</code></pre>
+<p>題 4 選了 ① 的話，這個檔案裡的 <code>ConnectionStrings</code> 區段要<strong>保留</strong>，只在 <code>LogLevel</code> 裡加那一行。</p>
 <p class="file-label">BlogApi/BlogApi.http（port 換成你 launchSettings.json 裡的）</p>
 <pre><code class="language-plaintext">@BlogApi_HostAddress = http://localhost:5068
 
@@ -1386,7 +1447,7 @@ WHERE [Id] = @p0;</code></pre></td>
   <tr><td>build 出現 <code>NU1902</code> / <code>NU1903</code></td><td>間接相依的套件有已知漏洞</td><td>見題 2 答案：<code>dotnet nuget why</code> 找來源，直接安裝新版</td></tr>
   <tr><td><code>Your startup project 'BlogApi' doesn't reference Microsoft.EntityFrameworkCore.Design</code></td><td>沒裝 Design 套件</td><td>安裝 <code>Microsoft.EntityFrameworkCore.Design</code>（見題 5 答案）</td></tr>
   <tr><td><code>No project was found</code></td><td>在 solution 資料夾執行 <code>dotnet ef</code></td><td>切到有 .csproj 的資料夾，或加 <code>--project BlogApi</code></td></tr>
-  <tr><td><code>Value cannot be null. (Parameter 'connectionString')</code></td><td>讀不到連線字串：User Secrets 沒設定、名稱打錯，或不是在 Development 環境執行</td><td><code>dotnet user-secrets list</code> 檢查；確認 <code>launchSettings.json</code> 的 <code>ASPNETCORE_ENVIRONMENT</code> 是 <code>Development</code></td></tr>
+  <tr><td><code>Value cannot be null. (Parameter 'connectionString')</code></td><td>讀不到連線字串：appsettings 或 User Secrets 沒設定、名稱打錯，或不是在 Development 環境執行</td><td>檢查 <code>appsettings.Development.json</code> 或 <code>dotnet user-secrets list</code>；確認 <code>launchSettings.json</code> 的 <code>ASPNETCORE_ENVIRONMENT</code> 是 <code>Development</code></td></tr>
   <tr><td>API 回 201，但資料庫沒有資料</td><td>忘了 <code>SaveChangesAsync()</code>，或忘了 <code>await</code></td><td>見 <a href="#tracking">2-6</a></td></tr>
   <tr><td>改了 Post.cs，資料表卻沒變</td><td>沒有新增 migration</td><td><code>migrations add</code> → <code>database update</code>。<strong>不要</strong>直接到資料庫手動改表</td></tr>
   <tr><td>POST 後回傳的 <code>createdAt</code> 結尾有 <code>Z</code>，GET 查出來卻沒有</td><td>SQL Server 的 <code>datetime2</code> 不記錄時區，讀回來的 <code>DateTime.Kind</code> 是 Unspecified</td><td>先記得「資料庫存的都是 UTC」。之後可以改用 <code>DateTimeOffset</code> 或設定 ValueConverter</td></tr>
