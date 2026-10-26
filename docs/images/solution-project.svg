@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" width="1000" height="400" role="img" aria-label="solution 是專案清單：BlogApi.sln 記錄 BlogApi.csproj 的路徑；Rider 新增專案會自動登記，dotnet new 要自己執行 dotnet sln add">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --sln: #7c3aed; --sln-s: #f5f0ff; --proj: #16a34a; --proj-s: #effcf3; --ok: #1a7f37; --warn: #bc4c00; --warn-s: #fff1e5;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --sln: #a78bfa; --sln-s: #1c1530; --proj: #3fb950; --proj-s: #10221a; --ok: #3fb950; --warn: #ffa657; --warn-s: #3d2410;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 14px; font-weight: 800; fill: var(--muted); }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .t { white-space: pre; font-size: 13px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .code { white-space: pre; font-size: 11.5px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; }
+  .panel { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .sln { fill: var(--sln-s); stroke: var(--sln); stroke-width: 2; }
+  .proj { fill: var(--proj-s); stroke: var(--proj); stroke-width: 2; }
+  .later { fill: none; stroke: var(--proj); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .ks { fill: var(--sln); font-weight: 700; } .kp { fill: var(--proj); font-weight: 700; }
+  .ok { fill: var(--ok); font-weight: 700; } .warn { fill: var(--warn); font-weight: 700; }
+  .wbox { fill: var(--warn-s); stroke: var(--warn); stroke-width: 1.5; }
+  .obox { fill: var(--proj-s); stroke: var(--ok); stroke-width: 1.5; }
+  .arr { fill: none; stroke: var(--sln); stroke-width: 2; }
+  .arr2 { fill: none; stroke: var(--sln); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .tree { stroke: var(--border); stroke-width: 1.5; fill: none; }
+</style>
+<defs>
+  <marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ks" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="400" rx="12"/>
+
+<text class="h" x="30" y="30">資料夾裡長這樣</text>
+<text class="h" x="580" y="30">清單裡寫了什麼？誰會幫你寫？</text>
+
+<!-- 左：資料夾 -->
+<rect class="panel" x="20" y="44" width="520" height="340" rx="12"/>
+<text class="t" x="40" y="74">📁 BlogApi\</text><text class="xs" x="160" y="74">solution 資料夾（也是 git repo）</text>
+<path class="tree" d="M52,82 V112 M52,112 H68 M52,82 V172 H68 M52,82 V214 H68 M52,82 V300 H68"/>
+
+<rect class="sln" x="70" y="96" width="250" height="32" rx="7"/>
+<text class="t ks" x="82" y="117">📋 BlogApi.sln</text>
+<text class="xs" x="336" y="110">solution：專案「清單」</text>
+<text class="xs" x="336" y="126">沒有程式碼，只記錄有哪些專案</text>
+
+<text class="t" x="74" y="177">📁 docs\</text><text class="xs" x="160" y="177">課程筆記</text>
+
+<text class="t" x="74" y="219">📁 BlogApi\</text>
+<path class="tree" d="M90,226 V250 H106"/>
+<rect class="proj" x="108" y="236" width="230" height="32" rx="7"/>
+<text class="t kp" x="120" y="257">📦 BlogApi.csproj</text>
+<text class="xs" x="350" y="250">project：真正的程式</text>
+<text class="xs" x="350" y="266">Program.cs、Controllers…</text>
+
+<text class="t" x="74" y="305" style="opacity:.75">📁 BlogApi.Tests\</text><text class="xs" x="236" y="305">第 5 課才會加</text>
+<path class="tree" d="M90,312 V336 H106"/>
+<rect class="later" x="108" y="322" width="230" height="32" rx="7"/>
+<text class="t" x="120" y="343" style="opacity:.75">📦 BlogApi.Tests.csproj</text>
+
+<!-- 清單指向專案 -->
+<path class="arr" d="M70,112 C30,112 30,252 104,252" marker-end="url(#ms)"/>
+<path class="arr2" d="M70,120 C14,140 14,338 104,338" marker-end="url(#ms)"/>
+<text class="xs" x="350" y="334">一份清單登記多個專案</text>
+<text class="xs" x="350" y="350">→ 一次開啟、一次 build</text>
+
+<!-- 右：清單內容 -->
+<rect class="sln" x="580" y="44" width="400" height="104" rx="10"/>
+<text class="xs" x="596" y="66">BlogApi.sln 裡多出來的兩行（你的 git diff）</text>
+<text class="code" x="596" y="92">Project("{FAE0…}") = "BlogApi",</text>
+<text class="code" x="596" y="110">        "BlogApi\BlogApi.csproj", "{773F…}"</text>
+<text class="code" x="596" y="128">EndProject</text>
+
+<rect class="obox" x="580" y="164" width="400" height="62" rx="10"/>
+<text x="596" y="188"><tspan class="ok">✅ Rider：</tspan>Add → New Project</text>
+<text class="xs" x="596" y="210">建立專案時<tspan style="font-weight:700">自動</tspan>寫進清單，不用再 sln add</text>
+
+<rect class="wbox" x="580" y="240" width="400" height="62" rx="10"/>
+<text x="596" y="264"><tspan class="warn">⚠️ 指令：</tspan>dotnet new webapi …</text>
+<text class="xs" x="596" y="286">只建資料夾和檔案，要自己執行 dotnet sln add</text>
+
+<rect class="panel" x="580" y="316" width="400" height="68" rx="10"/>
+<text x="596" y="340" style="font-weight:700">忘了加會怎樣？（實測）</text>
+<text class="xs" x="596" y="360">Rider 開 solution 看不到專案；在 solution 資料夾 dotnet build</text>
+<text class="xs" x="596" y="376">只出現 warning「Unable to find a project to restore!」，什麼都沒 build</text>
+</svg>

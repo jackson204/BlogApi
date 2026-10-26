@@ -404,7 +404,46 @@ dotnet sln add 專案資料夾/專案名稱.csproj</code></pre>
 <ul>
   <li><code>--use-controllers</code>：.NET 10 的 webapi 範本<strong>預設是 Minimal API</strong>，要加這個才會產生 Controller 版本</li>
   <li><code>-f net10.0</code>：指定 .NET 版本</li>
+  <li><code>dotnet sln add</code>：把剛建立的專案<strong>登記到 solution</strong>。用 Rider 建立的話會自動登記，可以略過，詳見下方</li>
 </ul>
+
+<h4 id="solution">solution 和 project：為什麼要 dotnet sln add？</h4>
+<p>第 0 課建立了一個空的 solution，這一步則是建立 project。兩個是不同的東西：</p>
+<div class="diagram">
+<img src="../images/solution-project.svg" alt="solution 是專案清單：BlogApi.sln 記錄 BlogApi.csproj 的路徑；Rider 新增專案會自動登記，dotnet new 要自己執行 dotnet sln add" style="width:100%;height:auto">
+<div class="diagram-caption">solution 是一份「專案清單」，<code>dotnet sln add</code> 就是把專案寫進這份清單</div>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>project（專案）</th><th>solution（方案）</th></tr>
+  <tr><td>是什麼</td><td>一個可以編譯、執行的程式</td><td>一份<strong>專案清單</strong></td></tr>
+  <tr><td>副檔名</td><td><code>.csproj</code></td><td><code>.sln</code>，或新格式 <code>.slnx</code></td></tr>
+  <tr><td>裡面有什麼</td><td>.NET 版本、NuGet 套件；同一個資料夾裡的 <code>.cs</code> 都屬於它</td><td><strong>沒有程式碼</strong>，只記錄有哪些專案、各自在哪個路徑</td></tr>
+  <tr><td>誰會讀它</td><td><code>dotnet build</code>、<code>dotnet run</code>、<code>dotnet ef</code></td><td>Rider 開啟時照清單載入專案；在 solution 資料夾執行 <code>dotnet build</code> 會 build 清單上的全部專案</td></tr>
+</table>
+</div>
+<p>現在只有一個專案，solution 看起來可有可無。第 5 課加上單元測試後，會多一個 <code>BlogApi.Tests</code> 專案，這時兩個專案登記在同一份清單裡，就能一次開啟、一次 build。</p>
+
+<div class="callout ok">
+<p>✅ <strong>用 Rider 的 Add → New Project 建立，不用再執行 <code>sln add</code></strong>：Rider 會自動寫進清單。用 <code>git diff BlogApi.sln</code> 可以看到多了這兩行，這就是「登記」：</p>
+<pre><code class="nohighlight">Project("{FAE04EC0-…}") = "BlogApi", "BlogApi\BlogApi.csproj", "{773F01BC-…}"
+EndProject</code></pre>
+<p>用指令 <code>dotnet new webapi</code> 建立的話，它只會產生資料夾和檔案，<strong>不會改 solution</strong>，所以才要自己執行 <code>dotnet sln add</code>。</p>
+</div>
+
+<p><strong>忘了加會怎樣？</strong>（實測：.NET 10 SDK，在空的 solution 旁邊用 <code>dotnet new webapi</code> 建立專案）</p>
+<ul>
+  <li>Rider 打開 solution，<strong>看不到這個專案</strong></li>
+  <li>在 solution 資料夾執行 <code>dotnet build</code>，<strong>不會報錯</strong>，只出現一個 warning，而且什麼都沒 build：
+<pre><code class="nohighlight">warning : Unable to find a project to restore!
+    1 Warning(s)
+    0 Error(s)</code></pre>
+  </li>
+  <li>執行 <code>dotnet sln add</code> 之後再 build，才會出現 <code>Demo -&gt; …\Demo.dll</code> 和 <code>Build succeeded.</code></li>
+</ul>
+<p>「0 Error(s)」很容易讓人以為成功了，看到 <code>Unable to find a project</code> 就要想到：專案沒有登記進 solution。</p>
+<p>💡 .NET 10 的 <code>dotnet new sln</code> 預設產生新格式 <code>.slnx</code>（XML，一個專案只佔一行 <code>&lt;Project Path="…" /&gt;</code>），Rider 可能產生舊格式 <code>.sln</code>。兩種都能用 <code>dotnet sln add</code>。</p>
+<p>官方文件：<a href="https://learn.microsoft.com/dotnet/core/tools/dotnet-sln" target="_blank">dotnet sln</a></p>
 
 <h3>3-2. 安裝套件和工具</h3>
 <pre><code class="language-plaintext">dotnet add package 套件名稱 [--version 版本]
@@ -759,7 +798,8 @@ public class PostsController : ControllerBase
 <div class="answer-body">
 <pre><code class="language-powershell">cd $HOME\RiderProjects\BlogApi
 dotnet new webapi -n BlogApi --use-controllers -f net10.0
-dotnet sln add BlogApi/BlogApi.csproj</code></pre>
+dotnet sln add BlogApi/BlogApi.csproj   # 用 Rider 建立的話可以略過（已自動登記）</code></pre>
+<p>為什麼要 <code>sln add</code>：見 <a href="#solution">3-1 的 solution 和 project</a>。</p>
 <p>Rider 的話，Type 選 <em>Web API</em>，Framework 選 <em>net10.0</em>，勾選 <em>Use controllers</em>（不同版本的 Rider 選項名稱可能略有不同）。</p>
 <p>執行：Rider 上方選 <code>BlogApi: http</code> 按 ▶，或 <code>dotnet run --project BlogApi</code>。打開 <code>BlogApi.http</code>，點 GET 那行左邊的 ▶ 送出。</p>
 <p>完成後的結構：</p>
