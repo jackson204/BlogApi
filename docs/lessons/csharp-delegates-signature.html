@@ -96,11 +96,11 @@ RunLater(text =&gt; Console.WriteLine($"action 執行了：{text}"));
 <p>你其實早就用過 Func 了：<code>_db.Posts.Where(p =&gt; p.Title.Contains(keyword))</code> 裡的 <code>p =&gt; …</code>，寫法就是一個「收 <code>Post</code>、回傳 <code>bool</code>」的 lambda。（細節：EF Core 實際收的型別是 <code>Expression&lt;Func&lt;Post, bool&gt;&gt;</code>，它會把這段 lambda 當成「資料」拆開，才能翻成 SQL；後面的課再細講。）</p>
 
 <h2 id="signature">2. 學會看方法簽章：拆解 AddDbContext 那一行</h2>
-<p>這行其實是<strong>三個方法</strong>一層包一層。括號最裡面的先執行，所以要<strong>由內往外讀</strong>：</p>
+<p>這行其實是<strong>三個方法</strong>一層包一層。要看懂它在寫什麼，<strong>由內往外讀</strong>最好懂。這是讀的順序，不是執行的順序：② ③ 寫在 lambda 裡面，程式啟動時只有 ① 執行，② ③ 要等 lambda 被呼叫才跑（見<a href="01-efcore-crud.html#register">第 1 課 3-5</a>）。</p>
 
 <div class="diagram">
 <img src="../images/adddbcontext.svg" alt="拆解 AddDbContext、UseSqlServer、GetConnectionString 三個方法：由內往外讀" style="width:100%;height:auto">
-<div class="diagram-caption">③ 的回傳值餵給 ②，② 所在的整段 lambda 再餵給 ①</div>
+<div class="diagram-caption">讀法：③ 的回傳值交給 ②；②③ 所在的整段 lambda 當成參數交給 ①（交出去時不執行）</div>
 </div>
 
 <p>下面是這三個方法在 EF Core 10 / .NET 10 的<strong>真正簽章</strong>（用反射從套件讀出來的，只列出這一行用到的那個多載）：</p>

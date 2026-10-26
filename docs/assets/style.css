@@ -178,6 +178,8 @@ details.aside > summary {
 }
 details.aside > .aside-body { padding: 0 16px 12px; }
 details.aside mark { background: var(--danger-soft); color: var(--danger); font-weight: 700; padding: 0 2px; border-radius: 3px; }
+details.aside.deep { border-left-color: var(--accent); }
+details.aside details.aside { margin: 8px 0 12px; }
 
 .footer-nav {
   display: flex;

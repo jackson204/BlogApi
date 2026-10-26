@@ -653,14 +653,27 @@ dotnet user-secrets list                       # 看目前存了什麼</code></p
 <p>DbContext 什麼時候被建立、怎麼送進 Controller，等 3-7 教完 Controller 之後，<a href="#wiring">3-8</a> 會把整條流程串起來。</p>
 </div>
 
-<p>這行其實是<strong>三個方法</strong>一層包一層，括號最裡面的先執行，所以要<strong>由內往外讀</strong>：</p>
+<p>這行其實是<strong>三個方法</strong>一層包一層。要<strong>看懂它在寫什麼</strong>，由內往外拆最好懂（注意：這是「讀的順序」，不是「執行的順序」，下面會說明）：</p>
 
 <div class="diagram">
 <img src="../images/adddbcontext.svg" alt="拆解 AddDbContext、UseSqlServer、GetConnectionString 三個方法：由內往外讀" style="width:100%;height:auto">
-<div class="diagram-caption">③ 讀出連線字串，交給 ② 設定成 SQL Server，② 所在的整段 lambda 再交給 ① 登記起來</div>
+<div class="diagram-caption">讀法：③ 讀出連線字串，交給 ② 設定成 SQL Server；②③ 所在的整段 lambda 當成參數交給 ①。執行時只有 ① 先跑，②③ 等 lambda 被呼叫才跑</div>
 </div>
 
-<p>其中 <code>options =&gt; options.UseSqlServer(…)</code> 是一個 <strong>lambda</strong>：你把「要怎麼設定」這段程式<strong>交給</strong> <code>AddDbContext</code>，它先收著，由 EF Core 決定什麼時候執行（<a href="#wiring">3-8</a> 會說明）。注意：這裡的 <code>options</code> 型別是 <code>DbContextOptionsBuilder</code>（一張「設定單」），和 3-3 建構子收到的 <code>DbContextOptions</code> 不是同一個東西，差在哪見 3-8 的「<a href="#builder">設定單</a>」。</p>
+<p>其中 <code>options =&gt; options.UseSqlServer(…)</code> 是一個 <strong>lambda</strong>：你把「要怎麼設定」這段程式<strong>當成參數交給</strong> <code>AddDbContext</code>，交出去時不會執行，由 EF Core 決定什麼時候執行（<a href="#wiring">3-8</a> 會說明）。注意：這裡的 <code>options</code> 型別是 <code>DbContextOptionsBuilder</code>（一張「設定單」），和 3-3 建構子收到的 <code>DbContextOptions</code> 不是同一個東西，差在哪見 3-8 的「<a href="#builder">設定單</a>」。</p>
+
+<div class="callout warn">
+<p>⚠️ <strong>讀的順序 ≠ 執行的順序</strong></p>
+<p>一般的巢狀呼叫，例如 <code>A(B(C()))</code>，確實是最裡面的 <code>C()</code> 先執行，算出結果再交給外層。但這一行的 ② 和 ③ 都寫在 lambda <code>options =&gt; …</code> <strong>裡面</strong>。lambda 只是把「這段程式」當成一個值交出去，<strong>交出去的時候不會執行</strong>。所以實際的時間順序是：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>什麼時候</th><th>執行了什麼</th><th>3-8 哪一段</th></tr>
+  <tr><td>程式啟動，跑到這一行</td><td>只有 ① <code>AddDbContext</code>：把 lambda 寫進登記簿，不執行它，② ③ 都還沒跑</td><td><a href="#flow-1">①</a></td></tr>
+  <tr><td>請求進來，需要 BlogDbContext</td><td>EF Core 執行你的 lambda，這時候才在 lambda 裡面由內往外：③ <code>GetConnectionString</code> → ② <code>UseSqlServer</code></td><td><a href="#builder">③-2 的 b</a></td></tr>
+</table>
+</div>
+<p>簡單說：看懂結構時「由內往外讀」；執行時是 <strong>① 先跑</strong>，③ → ② 等到之後 lambda 被呼叫才跑。</p>
+</div>
 
 <div class="callout">
 <p>📖 <strong>這行的語法看不懂？</strong><code>Action&lt;…&gt;</code>、<code>=&gt;</code>、第一個參數的 <code>this</code>（擴充方法）、<code>&lt;TContext&gt;</code>（泛型）、怎麼在 Rider 查方法簽章，都整理在「<a href="csharp-delegates-signature.html">C# 補充：委派（Action / Func）與方法簽章</a>」。這些是 C# 語法，之後每一課都會用到，建議找時間讀一次。</p>
@@ -698,7 +711,7 @@ public class PostsController : ControllerBase
 <h4 id="inject">Controller 怎麼拿到 BlogDbContext</h4>
 <pre><code class="language-csharp">public class PostsController : ControllerBase
 {
-    private readonly BlogDbContext _db;           // 存起來，給下面每個方法用
+    private readonly BlogDbContext _db;           // 欄位：建構子收到的 db 放這裡，下面每個方法都用它
 
     public PostsController(BlogDbContext db)      // 建構子參數寫「我需要一個 BlogDbContext」
     {
@@ -735,23 +748,83 @@ public class PostsController : ControllerBase
 </div>
 
 <div class="callout">
-<p>📖 <strong>每一段的讀法</strong>：小地圖 → 這一步在做什麼 → ✏️ 你寫的程式碼 → 🔎 框架原始碼 → 🔍 證據。</p>
+<p>📖 <strong>怎麼讀這一節</strong>：每一段都分兩層。</p>
 <ul>
-  <li><strong>框架原始碼</strong>：EF Core 10.0.13、ASP.NET Core 10.0.11，都附 GitHub 連結和行號，可以自己點進去對。<code>//</code> 後面的中文是我加的註解，跟主題無關的行用 <code>…（省略）</code> 標出來。原始碼寫給「任何 DbContext」用，看到 <code>TContext</code>、<code>TContextImplementation</code> 就換成 <code>BlogDbContext</code> 來讀。（你的專案裝的是 10.0.14，這幾個檔案和 10.0.13 逐字比對過，完全一樣）</li>
-  <li><strong>證據</strong>：我在 lambda、建構子，以及另外覆寫的 <code>DisposeAsync</code> 裡，印出型別和 <code>Environment.StackTrace</code>（堆疊追蹤），再打一次 <code>GET /api/posts</code>。那次資料庫沒開，API 回 500，但建立、丟掉 DbContext 的流程完全一樣</li>
-  <li><strong>堆疊追蹤怎麼讀</strong>：最上面一行是「印出的地方」，往下一行是「誰呼叫了上面那一行」，所以<strong>由下往上讀就是時間順序</strong>。<code>←</code> 後面是我加的說明，命名空間太長的地方用 <code>…</code> 縮短</li>
+  <li><strong>先讀打開的部分</strong>：小地圖 → 這一步在做什麼 → ✏️ 你寫的程式碼 → 簡化版（框架內部在做的事，一行一步，字母對應小地圖）。只讀這一層，就能把整條流程走完。</li>
+  <li><strong>想確認我沒騙你，再展開 🔎</strong>：裡面是框架的原始碼（EF Core 10.0.13、ASP.NET Core 10.0.11，附 GitHub 連結和行號）和實測印出來的堆疊追蹤。原始碼寫給「任何 DbContext」用，看到 <code>TContext</code>、<code>TContextImplementation</code> 就換成 <code>BlogDbContext</code> 來讀；<code>//</code> 後面的中文是我加的註解，跟主題無關的行用 <code>…（省略）</code> 標出來。堆疊追蹤最上面一行是「印出的地方」，往下一行是「誰呼叫了上面那一行」，所以<strong>由下往上讀就是時間順序</strong>；<code>←</code> 後面是我加的說明。</li>
+  <li><strong>遇到沒看過的詞，展開 📎 補充</strong>：登記簿、反射、scope、多載，都放在第一次用到的地方。</li>
 </ul>
+<p>（你的專案裝的是 EF Core 10.0.14，引用到的檔案和 10.0.13 逐字比對過，完全一樣。實測是在 lambda、建構子，以及另外覆寫的 <code>DisposeAsync</code> 裡印出型別和 <code>Environment.StackTrace</code>，再打一次 <code>GET /api/posts</code>；那次資料庫沒開，API 回 500，但建立、丟掉 DbContext 的流程完全一樣。）</p>
 </div>
+
+<details class="aside" id="registry">
+<summary>📎 補充：「登記簿」是什麼？（builder.Services 到底是什麼東西）</summary>
+<div class="aside-body">
+<p><strong>一句話：</strong><code>builder.Services</code> 是一張清單，每一筆寫著「<strong>有人要這個型別時 → 這樣做出來</strong>」。這一課叫它<strong>登記簿</strong>，正式名稱是 DI 容器，第 3 課的主題。</p>
+<pre><code class="nohighlight">builder.Services（型別 IServiceCollection）可以想成這樣的清單：
+
+要的型別                             做法
+IConfiguration                       …（專案範本已經登記好的）
+IDbContextOptionsConfiguration&lt;…&gt;    new 設定程序物件(你的 lambda)      ← 下面三筆是 AddDbContext 加的
+DbContextOptions&lt;BlogDbContext&gt;      CreateDbContextOptions()
+BlogDbContext                        new BlogDbContext(…)</code></pre>
+<ul>
+  <li><code>AddDbContext</code>、<code>AddControllers</code> 這些 <code>Add…</code> 方法，做的事都一樣：<strong>往清單加幾筆</strong>。</li>
+  <li><code>builder.Build()</code> 把清單整理成<strong>可以查的</strong>容器（型別 <code>IServiceProvider</code>）。</li>
+  <li>之後誰需要某個型別，就跟容器<strong>要</strong>（<code>GetService</code>），容器查清單、照做法做一個出來。</li>
+</ul>
+<p>重點：<strong>加筆的時候，做法不會執行</strong>。寫食譜不等於煮菜。</p>
+</div>
+</details>
 
 <h4 id="flow-1">① 程式啟動：AddDbContext 只登記，不建立</h4>
 <div class="diagram">
 <img src="../images/flow-map-1.svg" alt="流程小地圖：目前在 ① 程式啟動" style="width:100%;height:auto">
 </div>
-<p><strong>這一步在做什麼：</strong>執行到 <code>AddDbContext</code> 這一行時，EF Core 只做三件事：<strong>檢查</strong>你的建構子、把你的 lambda <strong>存起來</strong>、<strong>登記</strong>「之後有人要 options／要 BlogDbContext 時要怎麼做」。lambda 不會執行，也不會 new 任何東西。</p>
+<p><strong>這一步在做什麼：</strong>程式啟動，<code>Program.cs</code> 由上往下執行，跑到 <code>AddDbContext</code> 這一行。EF Core 在這裡只做兩件事：<strong>檢查</strong>你的 <code>BlogDbContext</code> 有沒有「收參數的建構子」；然後往登記簿<strong>加幾筆</strong>「要什麼 → 怎麼做」。你的 lambda <strong>沒有執行</strong>，<code>BlogDbContext</code> 也<strong>一個都沒 new</strong>。所以 3-5 圖裡的 ③ <code>GetConnectionString</code>、② <code>UseSqlServer</code> 這時候都還沒跑（見 3-5 的「<a href="#register">讀的順序 ≠ 執行的順序</a>」）。</p>
 <p class="file-label">✏️ 你寫的：Program.cs</p>
-<pre><code class="language-csharp">builder.Services.AddDbContext&lt;BlogDbContext&gt;(options =&gt;
+<pre><code class="language-csharp" data-user>builder.Services.AddDbContext&lt;BlogDbContext&gt;(options =&gt;
     options.UseSqlServer(builder.Configuration.GetConnectionString("BlogDb")));</code></pre>
-<p>你呼叫的 <code>AddDbContext</code> 會先轉兩手，才到真正做事的地方。注意第二手：你的 lambda 被包成 <code>(_, b) =&gt; optionsAction(b)</code>，③-2 的堆疊追蹤會看到這一層。</p>
+<details class="aside" id="reflection">
+<summary>📎 補充：「檢查建構子」是怎麼檢查的？（反射）</summary>
+<div class="aside-body">
+<p>C# 程式在<strong>執行的時候</strong>可以「查看」一個型別長什麼樣子：有哪些建構子、每個建構子收幾個參數、參數是什麼型別，甚至可以直接呼叫它。這個能力叫<strong>反射（Reflection）</strong>。</p>
+<pre><code class="language-csharp" data-pseudo>// 回傳 BlogDbContext 所有建構子的清單；每一筆可以再問它收哪些參數
+typeof(BlogDbContext).GetConstructors()</code></pre>
+<p>登記簿（DI 容器）整條流程都靠它：① 用它<strong>看</strong>你的建構子要什麼，③ 用它<strong>呼叫</strong>你的建構子。你不用自己寫反射，知道「框架是這樣知道我的建構子要什麼」就夠了。</p>
+</div>
+</details>
+<p class="file-label">簡化版：AddDbContext 內部在做的事（一行一步）</p>
+<pre><code class="language-csharp" data-pseudo>// 1. 用反射看 BlogDbContext 的建構子（只看，不呼叫）
+//    如果只有一個建構子、而且它不收參數 → 直接丟例外，程式啟動失敗
+CheckContextConstructors&lt;BlogDbContext&gt;();
+
+// 2. 往登記簿加這三筆「要這個型別時 → 這樣做」（還有幾筆跟這條流程無關，省略）。做法這時候都不會執行
+登記簿.Add(要: IDbContextOptionsConfiguration&lt;BlogDbContext&gt;,
+           做法: new 設定程序物件(你的 lambda));            // 把你的 lambda 傳進它的建構子
+登記簿.Add(要: DbContextOptions&lt;BlogDbContext&gt;,
+           做法: CreateDbContextOptions());
+登記簿.Add(要: BlogDbContext,
+           做法: new BlogDbContext(…), 每個請求一個);
+
+// 3. 結束。你的 lambda 一次都沒執行，BlogDbContext 一個都沒 new</code></pre>
+<p><strong>🔍 證據：</strong>在 lambda 和建構子裡各加一行 <code>Console.WriteLine</code>，程式啟動時<strong>什麼都沒印</strong>。</p>
+<details class="aside deep">
+<summary>🔎 原始碼與證據：想確認上面的簡化版沒騙你，再展開</summary>
+<div class="aside-body">
+<details class="aside" id="overload">
+<summary>📎 補充：為什麼有三個同名的 AddDbContext？（多載）</summary>
+<div class="aside-body">
+<p>C# 允許<strong>同一個名字的方法有好幾個版本</strong>，只要參數不一樣；呼叫時由你傳的參數決定用哪一個，這叫<strong>多載（overload）</strong>。<code>AddDbContext</code> 有好幾個版本，你呼叫的是「一個型別參數、收 <code>Action&lt;DbContextOptionsBuilder&gt;</code>」的那個；它會轉交給另一個版本，最後才到真正做事的版本。</p>
+</div>
+</details>
+<p>你呼叫的 <code>AddDbContext</code> 自己不做事，它把參數原封不動交給另一個 <code>AddDbContext</code>（多載），那一個再交給真正做事的 <code>AddDbContext</code>，一共經過三個方法。</p>
+<p>中間那一個有一行要注意：真正做事的 <code>AddDbContext</code> 要的 lambda 型別是 <code>Action&lt;IServiceProvider, DbContextOptionsBuilder&gt;</code>（<strong>收兩個參數</strong>），你寫的是 <code>Action&lt;DbContextOptionsBuilder&gt;</code>（<strong>只收一個</strong>），型別對不上。所以它<strong>另外寫了一個新的 lambda</strong> <code>(_, b) =&gt; optionsAction(b)</code>：</p>
+<ul>
+  <li>收兩個參數：<code>_</code> 和 <code>b</code>。<code>_</code> 是 C# 的寫法，代表「這個參數我不用」</li>
+  <li>執行時只做一件事：呼叫你的 lambda（<code>optionsAction</code>），把 <code>b</code>（設定單）傳給它</li>
+</ul>
+<p>從這裡開始，往下傳的都是這個新 lambda，不是你原本那個。</p>
 <p class="file-label">🔎 框架原始碼：EntityFrameworkServiceCollectionExtensions.cs（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/Extensions/EntityFrameworkServiceCollectionExtensions.cs#L58-L121" target="_blank">GitHub 第 58–121 行</a>）</p>
 <pre><code class="language-csharp">// 第 58–65 行：你呼叫的是這個（只有一個 TContext）
 // [DynamicallyAccessedMembers(…)] 是給編譯器看的標記，讀的時候可以先跳過
@@ -761,7 +834,7 @@ public static IServiceCollection AddDbContext
         Action&lt;DbContextOptionsBuilder&gt;? optionsAction = null, …)
     =&gt; AddDbContext&lt;TContext, TContext&gt;(serviceCollection, optionsAction, contextLifetime, optionsLifetime);
 
-// 第 110–121 行：轉到這個，把你的 lambda 再包一層
+// 第 110–121 行：交給這個。它另外寫一個收兩個參數的新 lambda，裡面呼叫你的 lambda
 public static IServiceCollection AddDbContext
     &lt;TContextService, [DynamicallyAccessedMembers(DbContext.DynamicallyAccessedMemberTypes)] TContextImplementation&gt;(
         this IServiceCollection serviceCollection,
@@ -770,7 +843,8 @@ public static IServiceCollection AddDbContext
         serviceCollection,
         optionsAction == null
             ? null
-            : (_, b) =&gt; optionsAction(b), contextLifetime, optionsLifetime);   // ← 包成「收兩個參數」的版本</code></pre>
+            // ↓ 新 lambda：第一個參數不用，把 b 交給你的 lambda
+            : (_, b) =&gt; optionsAction(b), contextLifetime, optionsLifetime);</code></pre>
 <p class="file-label">🔎 框架原始碼：同一個檔案，真正做事的 AddDbContext（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/Extensions/EntityFrameworkServiceCollectionExtensions.cs#L567-L597" target="_blank">GitHub 第 567–597 行</a>）</p>
 <pre><code class="language-csharp">// 第 567–597 行（只留相關的行）
 if (optionsAction != null)
@@ -780,41 +854,57 @@ if (optionsAction != null)
 
 AddCoreServices&lt;TContextImplementation&gt;(serviceCollection, optionsAction, optionsLifetime);
 // …（省略）
-serviceCollection.TryAdd(new ServiceDescriptor(typeof(TContextService), typeof(TContextImplementation), contextLifetime));
-                                                                // 登記：要 BlogDbContext 時，new 一個（Scoped）</code></pre>
+// 登記：要 BlogDbContext 時，new 一個（Scoped）
+serviceCollection.TryAdd(new ServiceDescriptor(typeof(TContextService), typeof(TContextImplementation), contextLifetime));</code></pre>
 <p class="file-label">🔎 框架原始碼：AddCoreServices（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/Extensions/EntityFrameworkServiceCollectionExtensions.cs#L1111-L1135" target="_blank">GitHub 第 1111–1135 行</a>）</p>
 <pre><code class="language-csharp">// 第 1119–1128 行（只留相關的行）
+// 呼叫 ConfigureDbContext，把新 lambda 傳進去（原始碼在下面）
 if (optionsAction != null)
 {
     serviceCollection.ConfigureDbContext&lt;TContextImplementation&gt;(optionsAction, optionsLifetime);
-}                                                               // 把你的 lambda 存起來（③-2 會用到）
+}
 
+// 登記：要 DbContextOptions&lt;BlogDbContext&gt; 時，呼叫 CreateDbContextOptions 來做
 serviceCollection.TryAdd(
     new ServiceDescriptor(
         typeof(DbContextOptions&lt;TContextImplementation&gt;),
-        CreateDbContextOptions&lt;TContextImplementation&gt;,         // 登記：要 options 時，用 CreateDbContextOptions 做（③-2）
+        CreateDbContextOptions&lt;TContextImplementation&gt;,
         optionsLifetime));</code></pre>
+<p class="file-label">🔎 框架原始碼：ConfigureDbContext（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/Extensions/EntityFrameworkServiceCollectionExtensions.cs#L1095-L1109" target="_blank">GitHub 第 1095–1109 行</a>）</p>
+<pre><code class="language-csharp">// 第 1102–1106 行（optionsAction 就是上面的新 lambda）
+// 登記：要 IDbContextOptionsConfiguration&lt;BlogDbContext&gt; 時，
+//       new 一個 DbContextOptionsConfiguration，把新 lambda 傳進它的建構子
+serviceCollection.Add(
+    new ServiceDescriptor(
+        typeof(IDbContextOptionsConfiguration&lt;TContext&gt;),
+        p =&gt; new DbContextOptionsConfiguration&lt;TContext&gt;(optionsAction),
+        optionsLifetime));</code></pre>
+<p><code>p =&gt; new …</code> 也是一個 lambda，這裡只是把它寫進登記簿，不會執行，所以 <code>DbContextOptionsConfiguration</code> 這時候還沒被 new 出來。</p>
 <p class="file-label">🔎 框架原始碼：CheckContextConstructors（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/Extensions/EntityFrameworkServiceCollectionExtensions.cs#L1154-L1163" target="_blank">GitHub 第 1154–1163 行</a>）</p>
 <pre><code class="language-csharp">// 第 1154–1163 行
 private static void CheckContextConstructors&lt;TContext&gt;()
     where TContext : DbContext
 {
-    var declaredConstructors = typeof(TContext).GetTypeInfo().DeclaredConstructors.ToList();   // 用反射列出建構子
+    // 用反射列出建構子
+    var declaredConstructors = typeof(TContext).GetTypeInfo().DeclaredConstructors.ToList();
+    // 只有一個建構子、而且它不收參數 → 丟例外
     if (declaredConstructors.Count == 1
         &amp;&amp; declaredConstructors[0].GetParameters().Length == 0)
     {
         throw new ArgumentException(CoreStrings.DbContextMissingConstructor(typeof(TContext).ShortDisplayName()));
-    }                                                           // 只有一個「不收參數」的建構子 → 丟錯
+    }
 }</code></pre>
-<p><strong>🔍 證據：</strong>整段原始碼裡沒有任何 <code>new BlogDbContext</code>，也沒有執行你的 lambda。實測時在 lambda 和建構子裡加 <code>Console.WriteLine</code>，程式啟動時<strong>什麼都沒印</strong>。</p>
+<p><strong>🔍 證據：</strong>上面整段原始碼裡沒有任何 <code>new BlogDbContext</code>，也沒有呼叫 <code>optionsAction</code>（你的 lambda）。</p>
+</div>
+</details>
 
 <h4 id="flow-2">② 程式跑起來：還沒有人要 BlogDbContext</h4>
 <div class="diagram">
 <img src="../images/flow-map-2.svg" alt="流程小地圖：目前在 ② 程式跑起來" style="width:100%;height:auto">
 </div>
-<p><strong>這一步在做什麼：</strong><code>builder.Build()</code> 把 ① 登記的東西整理成 DI 容器（登記簿），<code>app.Run()</code> 開始等請求。登記簿裡的東西<strong>一個都還沒做出來</strong>。</p>
+<p><strong>這一步在做什麼：</strong><code>builder.Build()</code> 把 ① 加好的登記簿整理成可以查的容器，<code>app.Run()</code> 開始等請求。登記簿裡的東西<strong>一個都還沒做出來</strong>。</p>
 <p class="file-label">✏️ 你寫的：Program.cs（專案範本就有）</p>
-<pre><code class="language-csharp">var app = builder.Build();
+<pre><code class="language-csharp" data-user>var app = builder.Build();
 // …（省略）
 app.Run();      // → Now listening on</code></pre>
 <p><strong>🔍 證據：</strong>看到 <code>Now listening on</code> 時，lambda 和建構子裡的 <code>Console.WriteLine</code> 還是一行都沒印。要等 ③ 有請求進來才會印。</p>
@@ -823,15 +913,44 @@ app.Run();      // → Now listening on</code></pre>
 <div class="diagram">
 <img src="../images/flow-map-3-1.svg" alt="流程小地圖：目前在 ③ 建立 Controller" style="width:100%;height:auto">
 </div>
-<p><strong>這一步在做什麼：</strong>請求進來，ASP.NET Core 要建立 <code>PostsController</code>。它不會直接 <code>new PostsController()</code>，而是做一個「工廠」：建構子要什麼參數，就跟<strong>這個請求專用的 scope</strong>（這個請求專用的登記簿）要。PostsController 要 BlogDbContext → 要 new BlogDbContext，它的建構子又要 options → 所以<strong>先做 options</strong>（③-2），再呼叫建構子（③-3）。</p>
+<p><strong>這一步在做什麼：</strong>瀏覽器打 <code>GET /api/posts</code>，ASP.NET Core 查路由，知道要交給 <code>PostsController</code> 處理。要呼叫它的方法，得先有一個 <code>PostsController</code> 物件；但你沒寫 <code>new PostsController(…)</code>，而且它的建構子還要一個 <code>BlogDbContext</code>。於是框架跟登記簿<strong>要</strong>一個 <code>BlogDbContext</code>，登記簿查到做法是「new 一個」，再看建構子：又要一個 <code>DbContextOptions&lt;BlogDbContext&gt;</code>，再查登記簿……這是一條<strong>需求鏈</strong>：Controller 要 DbContext，DbContext 要 options。框架從鏈的<strong>最尾端</strong>開始做：先做 options，再 new BlogDbContext，最後 new PostsController。</p>
+<details class="aside" id="scope">
+<summary>📎 補充：「這個請求專用的 scope」是什麼？</summary>
+<div class="aside-body">
+<p>登記簿的每一筆，除了「怎麼做」，還寫了「<strong>做好的東西可以用多久</strong>」。<code>AddDbContext</code> 登記的是 <strong>Scoped</strong>：</p>
+<ul>
+  <li>每個請求進來，框架開一個 <strong>scope</strong>，可以想成這個請求專用的小籃子</li>
+  <li>這個請求<strong>第一次</strong>要 <code>BlogDbContext</code>：做一個，放進籃子</li>
+  <li>同一個請求<strong>再</strong>要：直接給籃子裡那一個，不再做</li>
+  <li>請求結束：整個籃子丟掉，裡面的 <code>BlogDbContext</code> 也丟掉</li>
+</ul>
+<p>為什麼要這樣設計、還有哪幾種「用多久」，是第 3 課的主題。這裡只要知道：<strong>一個請求一個 BlogDbContext</strong>。</p>
+</div>
+</details>
 <p class="file-label">✏️ 你寫的：Controllers/PostsController.cs</p>
-<pre><code class="language-csharp">public PostsController(BlogDbContext db)      // 建構子要一個 BlogDbContext</code></pre>
+<pre><code class="language-csharp" data-user>public PostsController(BlogDbContext db)      // 建構子要一個 BlogDbContext</code></pre>
+<p class="file-label">簡化版：ASP.NET Core 內部在做的事（一行一步）</p>
+<pre><code class="language-csharp" data-pseudo>// 請求 GET /api/posts 進來，路由決定交給 PostsController
+
+// 開一個這個請求專用的 scope，並登記「回應送完後把它丟掉」
+var scope = 容器.CreateScope();
+
+// 要 new PostsController，用反射看它的建構子：要一個 BlogDbContext → 跟 scope 要
+// scope 查登記簿：做法是 new BlogDbContext(…)；再用反射看它的建構子：要一個 DbContextOptions&lt;BlogDbContext&gt;
+// → 先做 options，做好再呼叫 BlogDbContext 的建構子
+var db = scope.GetService&lt;BlogDbContext&gt;();
+
+// 做好的 BlogDbContext 傳進 PostsController 的建構子
+var controller = new PostsController(db);</code></pre>
+<details class="aside deep">
+<summary>🔎 原始碼與證據：想確認上面的簡化版沒騙你，再展開</summary>
+<div class="aside-body">
 <p class="file-label">🔎 框架原始碼：ControllerActivatorProvider.cs（<a href="https://github.com/dotnet/aspnetcore/blob/v10.0.11/src/Mvc/Mvc.Core/src/Controllers/ControllerActivatorProvider.cs#L58-L59" target="_blank">GitHub 第 58–59 行</a>）</p>
 <pre><code class="language-csharp">// 第 58–59 行
 var typeActivator = ActivatorUtilities.CreateFactory(controllerType, Type.EmptyTypes);
 return controllerContext =&gt; typeActivator(controllerContext.HttpContext.RequestServices, arguments: null);
 // ↑ 做一個「建立 PostsController」的工廠；建構子要的參數，跟這個請求的 RequestServices 要</code></pre>
-<p><code>RequestServices</code> 第一次被用到時，建立這個請求專用的 scope，順便登記「回應結束時要 Dispose」（④ 會用到）：</p>
+<p><code>RequestServices</code> 第一次被用到時，建立這個請求專用的 scope，順便登記「回應結束時要 Dispose」：</p>
 <p class="file-label">🔎 框架原始碼：RequestServicesFeature.cs（<a href="https://github.com/dotnet/aspnetcore/blob/v10.0.11/src/Http/Http/src/Features/RequestServicesFeature.cs#L31-L43" target="_blank">GitHub 第 31–43 行</a>）</p>
 <pre><code class="language-csharp">// 第 31–43 行
 public IServiceProvider RequestServices
@@ -840,8 +959,10 @@ public IServiceProvider RequestServices
     {
         if (!_requestServicesSet &amp;&amp; _scopeFactory != null)
         {
-            _context.Response.RegisterForDisposeAsync(this);   // 先登記：回應結束時要 Dispose（④）
-            _scope = _scopeFactory.CreateScope();              // 建立這個請求專用的 scope
+            // 先登記：回應結束時，呼叫這個物件的 DisposeAsync
+            _context.Response.RegisterForDisposeAsync(this);
+            // 建立這個請求專用的 scope
+            _scope = _scopeFactory.CreateScope();
             _requestServices = _scope.ServiceProvider;
             _requestServicesSet = true;
         }
@@ -860,52 +981,31 @@ at Microsoft.AspNetCore.Mvc.Controllers.ControllerFactoryProvider.&lt;&gt;c__Dis
                                                      ← 0. 要建立 PostsController
 …（中介軟體、Kestrel 省略）</code></pre>
 
+</div>
+</details>
+
 <h4 id="builder">③-2 a～c：做出 options（設定單）</h4>
 <div class="diagram">
 <img src="../images/flow-map-3-2.svg" alt="流程小地圖：目前在 ③ a 到 c 做出 options" style="width:100%;height:auto">
 </div>
 <p><strong>這一步在做什麼：</strong>EF Core 準備一張<strong>空白設定單</strong>（a），交給你的 lambda 在上面寫「用 SQL Server、連線字串是…」（b），再把填好的單變成<strong>成品</strong>（c）。lambda 是 <code>Action</code>，沒有回傳值，它不是「去拿」連線字串回來，而是在 EF Core 遞給它的那張單上<strong>寫字</strong>。</p>
 
-<p>🍽️ <strong>比喻：去餐廳點餐</strong>：服務生（EF Core）遞給你<strong>空白點餐單</strong>（a）→ 你勾選要什麼（b，你的 lambda）→ 廚房照單做出<strong>餐點</strong>（c）→ 送到你桌上（③-3 的建構子）。</p>
+<p>🍽️ <strong>比喻：去餐廳點餐</strong>：服務生（EF Core）遞給你<strong>空白點餐單</strong>（a）→ 你勾選要什麼（b，你的 lambda）→ 廚房照單做出<strong>餐點</strong>（c）→ 送到你桌上（d，你的建構子收下）。</p>
 
 <p class="file-label">✏️ 你寫的：Program.cs（b 執行的就是這段）</p>
-<pre><code class="language-csharp">options =&gt; options.UseSqlServer(builder.Configuration.GetConnectionString("BlogDb"))</code></pre>
+<pre><code class="language-csharp" data-user>options =&gt; options.UseSqlServer(builder.Configuration.GetConnectionString("BlogDb"))</code></pre>
 <p>lambda 就是「沒有名字的方法」。為了看清楚 b 在做什麼，先把它改寫成<strong>一般方法</strong>的樣子，名字就叫「你寫的方法」：</p>
-<pre><code class="language-csharp">void 你寫的方法(DbContextOptionsBuilder options)   // 參數名稱叫 options
+<pre><code class="language-csharp" data-pseudo>void 你寫的方法(DbContextOptionsBuilder options)   // 參數名稱叫 options
 {
     options.UseSqlServer(…);
 }</code></pre>
 <p class="file-label">簡化版：EF Core 內部在做的事（每行對應小地圖的字母）</p>
-<pre><code class="language-csharp">var builder = new DbContextOptionsBuilder&lt;BlogDbContext&gt;();  // a. 空白設定單
+<pre><code class="language-csharp" data-pseudo>var builder = new DbContextOptionsBuilder&lt;BlogDbContext&gt;();  // a. 空白設定單
 你寫的方法(builder);                                       // b. 呼叫你的方法，把 builder 傳進去
 var options = builder.Options;                                 // c. 填好的單 → 成品
-var db = new BlogDbContext(options);                           // d. 呼叫你的建構子（③-3）</code></pre>
+var db = new BlogDbContext(options);                           // d. 呼叫你的建構子</code></pre>
 <p>看 b：呼叫 <code>你寫的方法(builder)</code> 時，方法的參數 <code>options</code> 收到的就是 <code>builder</code>。所以方法裡的 <code>options.UseSqlServer(…)</code>，其實是在 <code>builder</code> 這張設定單上寫字。<strong><code>options</code> 只是方法裡面用的名字，指向的就是外面的 <code>builder</code></strong>：兩個名字，同一張單。</p>
 <p>（c 那行的 <code>var options</code> 是另一個變數，裝的是成品，下面的對照表會再說明。）</p>
-<p>再看真實版本：簡化版的 a～c，就是下面這個方法。順序完全一樣，只多了一行 EF Core 自己先寫的設定：</p>
-<p class="file-label">🔎 框架原始碼：CreateDbContextOptions（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/Extensions/EntityFrameworkServiceCollectionExtensions.cs#L1137-L1152" target="_blank">GitHub 第 1137–1152 行</a>）</p>
-<pre><code class="language-csharp">// 第 1137–1152 行
-private static DbContextOptions&lt;TContext&gt; CreateDbContextOptions&lt;TContext&gt;(
-    IServiceProvider applicationServiceProvider)
-    where TContext : DbContext
-{
-    var builder = new DbContextOptionsBuilder&lt;TContext&gt;(
-        new DbContextOptions&lt;TContext&gt;(new Dictionary&lt;Type, IDbContextOptionsExtension&gt;()));   // a. 空白設定單
-
-    builder.UseApplicationServiceProvider(applicationServiceProvider);   // EF Core 自己先寫的 1 筆
-
-    foreach (var configuration in applicationServiceProvider.GetServices&lt;IDbContextOptionsConfiguration&lt;TContext&gt;&gt;())
-    {
-        configuration.Configure(applicationServiceProvider, builder);   // b. 把設定單交出去（下一段）
-    }
-
-    return builder.Options;                                             // c. 填好的單 → 成品
-}</code></pre>
-<p>b 的 <code>Configure</code> 叫到的，就是 ① 存起來的東西。它只做一件事：執行存著的 lambda，也就是 ① 包的那層 <code>(_, b) =&gt; optionsAction(b)</code>，最後執行到你寫的 lambda：</p>
-<p class="file-label">🔎 框架原始碼：DbContextOptionsConfiguration.cs（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/Infrastructure/Internal/DbContextOptionsConfiguration.cs#L32-L33" target="_blank">GitHub 第 32–33 行</a>）</p>
-<pre><code class="language-csharp">// 第 32–33 行
-public virtual void Configure(IServiceProvider serviceProvider, DbContextOptionsBuilder optionsBuilder)
-    =&gt; _configure(serviceProvider, optionsBuilder);</code></pre>
 <p><strong>所以程式裡有兩個 <code>options</code>，它們不是同一個東西：</strong></p>
 <div class="table-wrap">
 <table>
@@ -918,19 +1018,54 @@ public virtual void Configure(IServiceProvider serviceProvider, DbContextOptions
 </div>
 <p>兩個都叫 <code>options</code> 只是剛好同名。lambda 的參數名稱可以自己取，官方文件常寫成 <code>optionsBuilder =&gt; optionsBuilder.UseSqlServer(…)</code>，就不會跟建構子的混在一起。</p>
 <p><strong>為什麼 lambda 沒有回傳值也可以？</strong>因為 lambda 改的是 EF Core 交給它的<strong>那一張單本身</strong>。C# 的 class 物件傳給方法時，傳的是同一個物件，不是複製一份，所以 lambda 寫在單上的字，EF Core 手上那張單也看得到。lambda 結束後，EF Core 直接拿這張單做成品（c）。</p>
-<p><strong>🔍 證據：</strong>① 在 lambda 裡印出型別和設定數（型別名稱整理成 C# 的寫法）</p>
+<p><strong>🔍 證據：</strong>在 lambda 裡印出型別和設定數（型別名稱整理成 C# 的寫法）</p>
 <pre><code class="nohighlight">lambda 收到的 options 型別：DbContextOptionsBuilder&lt;BlogDbContext&gt;，單上的設定數：1
 UseSqlServer 之後，單上的設定數：2</code></pre>
 <ul>
   <li>lambda 收到的確實是<strong>設定單</strong>（Builder）</li>
-  <li>設定數 1 → 2：原本那 1 筆是上面原始碼的 <code>UseApplicationServiceProvider</code>，<code>UseSqlServer</code> 再寫上 1 筆</li>
+  <li>設定數 1 → 2：原本那 1 筆是 EF Core 在 a 之後自己先寫的（展開下面的原始碼，會看到 <code>UseApplicationServiceProvider</code> 那一行），<code>UseSqlServer</code> 再寫上 1 筆</li>
 </ul>
-<p>② 在 lambda 裡印出堆疊追蹤（上半段），由下往上讀，和上面的原始碼一模一樣：</p>
+<details class="aside deep">
+<summary>🔎 原始碼與證據：想確認上面的簡化版沒騙你，再展開</summary>
+<div class="aside-body">
+<p>再看真實版本：簡化版的 a～c，就是下面這個方法。順序完全一樣，只多了一行 EF Core 自己先寫的設定：</p>
+<p class="file-label">🔎 框架原始碼：CreateDbContextOptions（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/Extensions/EntityFrameworkServiceCollectionExtensions.cs#L1137-L1152" target="_blank">GitHub 第 1137–1152 行</a>）</p>
+<pre><code class="language-csharp">// 第 1137–1152 行
+private static DbContextOptions&lt;TContext&gt; CreateDbContextOptions&lt;TContext&gt;(
+    IServiceProvider applicationServiceProvider)
+    where TContext : DbContext
+{
+    // a. 空白設定單
+    var builder = new DbContextOptionsBuilder&lt;TContext&gt;(
+        new DbContextOptions&lt;TContext&gt;(new Dictionary&lt;Type, IDbContextOptionsExtension&gt;()));
+
+    // EF Core 自己先寫的 1 筆
+    builder.UseApplicationServiceProvider(applicationServiceProvider);
+
+    foreach (var configuration in applicationServiceProvider.GetServices&lt;IDbContextOptionsConfiguration&lt;TContext&gt;&gt;())
+    {
+        // b. 呼叫 Configure，把設定單傳進去
+        configuration.Configure(applicationServiceProvider, builder);
+    }
+
+    // c. 填好的單 → 成品
+    return builder.Options;
+}</code></pre>
+<p>b 上面那行 <code>GetServices&lt;IDbContextOptionsConfiguration&lt;TContext&gt;&gt;()</code>，會照 ① <code>ConfigureDbContext</code> 登記的方法，這時候才 new 一個 <code>DbContextOptionsConfiguration</code>，把新 lambda <code>(_, b) =&gt; optionsAction(b)</code> 傳進建構子。建構子把它放進 <code>_configure</code> 欄位；b 呼叫的 <code>Configure</code> 就是執行 <code>_configure</code>：</p>
+<p class="file-label">🔎 框架原始碼：DbContextOptionsConfiguration.cs（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/Infrastructure/Internal/DbContextOptionsConfiguration.cs#L23-L33" target="_blank">GitHub 第 23–33 行</a>）</p>
+<pre><code class="language-csharp">// 第 23–24 行：建構子。收到的新 lambda 放進 _configure 欄位
+public DbContextOptionsConfiguration(Action&lt;IServiceProvider, DbContextOptionsBuilder&gt; configure)
+    =&gt; _configure = configure;
+
+// 第 32–33 行：b 呼叫的 Configure。執行 _configure 裡的新 lambda → 新 lambda 呼叫你寫的 lambda
+public virtual void Configure(IServiceProvider serviceProvider, DbContextOptionsBuilder optionsBuilder)
+    =&gt; _configure(serviceProvider, optionsBuilder);</code></pre>
+<p><strong>🔍 證據：</strong>在 lambda 裡印出堆疊追蹤（上半段），由下往上讀，和上面的原始碼一模一樣：</p>
 <pre><code class="nohighlight">=== LAMBDA ===
 at Program.&lt;&gt;c__DisplayClass0_0.&lt;&lt;Main&gt;$&gt;b__0(DbContextOptionsBuilder options)
                                                      ← b. 你的 lambda
 at …EntityFrameworkServiceCollectionExtensions.&lt;&gt;c__DisplayClass1_0`2.&lt;AddDbContext&gt;b__0(IServiceProvider _, DbContextOptionsBuilder b)
-                                                     ← ① 包的那層 (_, b) =&gt; optionsAction(b)
+                                                     ← ① 另外寫的新 lambda (_, b) =&gt; optionsAction(b)
 at …DbContextOptionsConfiguration`1.Configure(IServiceProvider serviceProvider, DbContextOptionsBuilder optionsBuilder)
                                                      ← Configure
 at …EntityFrameworkServiceCollectionExtensions.CreateDbContextOptions[TContext](IServiceProvider applicationServiceProvider)
@@ -940,26 +1075,43 @@ at …ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite
                                                      ← ③-1 的 DI：準備 BlogDbContext 建構子要的參數
 …（以下是 ③-1 的下半段）</code></pre>
 
+</div>
+</details>
+
 <h4 id="flow-3-3">③-3 d～f：呼叫你的建構子，交回 Controller</h4>
 <div class="diagram">
 <img src="../images/flow-map-3-3.svg" alt="流程小地圖：目前在 ③ d 到 f 呼叫建構子" style="width:100%;height:auto">
 </div>
-<p><strong>這一步在做什麼：</strong>options 做好之後，DI 用反射呼叫你的 <code>BlogDbContext</code> 建構子，把成品傳進去（d）；你的 <code>: base(options)</code> 再交給 EF Core 的 <code>DbContext</code>（e）。做好的 BlogDbContext 存進這個請求的 scope，再傳給 PostsController 的建構子（f）。</p>
+<p><strong>這一步在做什麼：</strong>options 做好之後，框架用反射呼叫你的 <code>BlogDbContext</code> 建構子，把成品傳進去（d）；你寫的 <code>: base(options)</code> 再把成品交給父類別 <code>DbContext</code>（e），之後 <code>_db.Posts</code> 查資料時，DbContext 就是從這裡知道要連哪個資料庫。做好的 BlogDbContext 先記在這個請求的 scope 裡，再傳給 <code>PostsController</code> 的建構子（f），你寫的 <code>_db = db</code> 把它放進欄位，Controller 裡每個方法都能用。</p>
 <p class="file-label">✏️ 你寫的：Data/BlogDbContext.cs（d、e）</p>
-<pre><code class="language-csharp">public BlogDbContext(DbContextOptions&lt;BlogDbContext&gt; options) : base(options)   // d. 收下成品  e. 交給父類別
+<pre><code class="language-csharp" data-user>// d. 收下成品   e. : base(options) 交給父類別
+public BlogDbContext(DbContextOptions&lt;BlogDbContext&gt; options) : base(options)
 {
 }</code></pre>
 <p class="file-label">✏️ 你寫的：Controllers/PostsController.cs（f）</p>
-<pre><code class="language-csharp">public PostsController(BlogDbContext db)
+<pre><code class="language-csharp" data-user>public PostsController(BlogDbContext db)
 {
-    _db = db;                                                                     // f. 交回 Controller
+    _db = db;   // f. 交回 Controller
 }</code></pre>
-<p>這一段沒有要另外看的框架原始碼：呼叫建構子的是 DI 容器內部（<code>CallSiteRuntimeResolver</code>），程式很長，直接看堆疊追蹤比較清楚。</p>
-<p><strong>🔍 證據：</strong>① 在建構子裡印出型別和內容</p>
+<p class="file-label">簡化版：DI 容器內部在做的事（接在 a～c 後面，字母對應小地圖）</p>
+<pre><code class="language-csharp" data-pseudo>// d. 用反射呼叫你的建構子，把成品 options 傳進去
+//    你的建構子裡的 : base(options) 再把成品交給父類別 DbContext 的建構子（e）
+var db = new BlogDbContext(options);
+
+// 記在這個請求的 scope 裡：同一個請求再有人要 BlogDbContext，給這一個
+scope.Cache(db);
+
+// f. 傳進 PostsController 的建構子；你寫的 _db = db 把它放進欄位
+var controller = new PostsController(db);</code></pre>
+<p><strong>🔍 證據：</strong>在建構子裡印出型別和內容</p>
 <pre><code class="nohighlight">建構子收到的 options 型別：DbContextOptions&lt;BlogDbContext&gt;
 建構子收到的成品裡有 SQL Server 設定嗎：True，連線字串開頭：Server=localhost,1433;Database</code></pre>
-<p>收到的是<strong>成品</strong>，而且 ③-2 lambda 寫在單上的 SQL Server 設定和連線字串都在裡面。</p>
-<p>② 在建構子裡印出堆疊追蹤，由下往上讀：</p>
+<p>收到的是<strong>成品</strong>，而且 lambda 在 b 寫在單上的 SQL Server 設定和連線字串都在裡面。</p>
+<details class="aside deep">
+<summary>🔎 原始碼與證據：想確認上面的簡化版沒騙你，再展開</summary>
+<div class="aside-body">
+<p>這一段沒有要另外看的框架原始碼：呼叫建構子的是 DI 容器內部（<code>CallSiteRuntimeResolver</code>），程式很長，直接看堆疊追蹤比較清楚。</p>
+<p><strong>🔍 證據：</strong>在建構子裡印出堆疊追蹤，由下往上讀：</p>
 <pre><code class="nohighlight">=== CTOR ===
 at BlogApi.Data.BlogDbContext..ctor(DbContextOptions`1 options)
                                                      ← d. 你的建構子
@@ -970,12 +1122,21 @@ at …ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite
 …（以下是 ③-1 的下半段）</code></pre>
 <p>和 ③-2 的堆疊追蹤比較：兩段都從 <code>VisitConstructor</code> 分出來，代表它們是<strong>同一次</strong>「準備 BlogDbContext」裡發生的事：先往上做 options（③-2），做完回來再呼叫建構子（③-3）。</p>
 
+</div>
+</details>
+
 <h4 id="flow-4">④ 請求結束：丟掉 scope，BlogDbContext 跟著被丟掉</h4>
 <div class="diagram">
 <img src="../images/flow-map-4.svg" alt="流程小地圖：目前在 ④ 請求結束" style="width:100%;height:auto">
 </div>
-<p><strong>這一步在做什麼：</strong>回應送完之後，執行 ③-1 建立 scope 時登記的 Dispose：丟掉這個請求的 scope，scope 裡的 BlogDbContext 也跟著被丟掉。下一個請求進來，回到 ③-1 再建一個新的。</p>
+<p><strong>這一步在做什麼：</strong>回應送出去之後，框架執行 ③-1 開 scope 時登記的那件事：丟掉這個請求的 scope。scope 裡的每個物件都會被 <strong>Dispose</strong>（意思是「用完了，把握著的資源還回去」；對 BlogDbContext 來說，就是把資料庫連線還回去），BlogDbContext 也在裡面。下一個請求進來，回到 ③-1 再建一個新的。</p>
 <p>這一步<strong>你不用寫任何程式</strong>。</p>
+<p class="file-label">簡化版：ASP.NET Core 內部在做的事</p>
+<pre><code class="language-csharp" data-pseudo>// 回應送完了。丟掉這個請求的 scope：裡面每個物件都被 Dispose，BlogDbContext 把資料庫連線還回去
+scope.Dispose();</code></pre>
+<details class="aside deep">
+<summary>🔎 原始碼與證據：想確認上面的簡化版沒騙你，再展開</summary>
+<div class="aside-body">
 <p class="file-label">🔎 框架原始碼：RequestServicesFeature.cs（<a href="https://github.com/dotnet/aspnetcore/blob/v10.0.11/src/Http/Http/src/Features/RequestServicesFeature.cs#L53-L58" target="_blank">GitHub 第 53–58 行</a>）</p>
 <pre><code class="language-csharp">// 第 53–58 行（只留相關的行）
 public ValueTask DisposeAsync()
@@ -983,7 +1144,8 @@ public ValueTask DisposeAsync()
     switch (_scope)
     {
         case IAsyncDisposable asyncDisposable:
-            var vt = asyncDisposable.DisposeAsync();   // 丟掉這個請求的 scope，scope 裡的 BlogDbContext 一起被 Dispose</code></pre>
+            // 丟掉這個請求的 scope，scope 裡的 BlogDbContext 一起被 Dispose
+            var vt = asyncDisposable.DisposeAsync();</code></pre>
 <p><strong>🔍 證據：</strong>在 BlogDbContext 覆寫 <code>DisposeAsync</code>，印出堆疊追蹤（只是為了實測，正式專案不用寫），由下往上讀：</p>
 <pre><code class="nohighlight">=== DISPOSE ===
 at BlogApi.Data.BlogDbContext.DisposeAsync()
@@ -997,7 +1159,29 @@ at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpProtocol.&lt;FireO
                                                      ← 回應送完之後觸發
 …（省略）</code></pre>
 
+</div>
+</details>
+
 <p><strong>小結：</strong><code>AddDbContext</code> 只是登記；BlogDbContext 要等 ③ 有人要它時才建立，而且<strong>每個請求</strong>都會從 ③-1 走一次，請求結束就丟掉。3-6 的 <code>dotnet ef</code> 指令也會「要」一個 BlogDbContext，所以執行它時也會走 ③-2、③-3。</p>
+
+<p><strong>自我檢查</strong>：不看上面，試著回答這四題，答案摺疊在下面。</p>
+<ol>
+  <li>你寫的 lambda <code>options =&gt; options.UseSqlServer(…)</code> 是在什麼時候執行的？執行幾次？</li>
+  <li>誰呼叫了 <code>BlogDbContext</code> 的建構子？它怎麼知道要傳什麼進去？</li>
+  <li>同一個請求裡，兩個地方都要 <code>BlogDbContext</code>，拿到的是同一個嗎？</li>
+  <li>請求結束後，那個 <code>BlogDbContext</code> 去哪了？</li>
+</ol>
+<details class="answer">
+<summary>參考答案（想完再打開）</summary>
+<div class="answer-body">
+<ol>
+  <li>請求進來、第一次需要 <code>BlogDbContext</code>、框架在做 options 的時候（b）。每個請求執行一次；程式啟動時不執行。</li>
+  <li>DI 容器（登記簿）。它用反射看到建構子要一個 <code>DbContextOptions&lt;BlogDbContext&gt;</code>，查登記簿做一個出來，再用反射呼叫建構子把它傳進去（d）。</li>
+  <li>是。<code>AddDbContext</code> 登記的是 Scoped：同一個 scope（請求）只做一次，之後都給同一個。</li>
+  <li>回應送完，框架丟掉這個請求的 scope，<code>BlogDbContext</code> 被 Dispose，資料庫連線還回去（④）。</li>
+</ol>
+</div>
+</details>
 
 <h4 id="lifetime">再深一點：lambda 什麼時候執行、同一個請求拿幾次？（第 3 課預告）</h4>
 <p>3-5 說過：lambda 交出去之後，<strong>什麼時候執行由 EF Core 決定</strong>。那到底是什麼時候？我寫了一個小程式實測：在 lambda 裡印一行字，看它在什麼時候出現。測試程式用的 DbContext 叫 <code>DemoDb</code>，「scope」可以先想成「一個請求」。</p>

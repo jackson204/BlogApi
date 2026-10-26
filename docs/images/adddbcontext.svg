@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 430" width="1000" height="430" role="img" aria-label="拆解 AddDbContext、UseSqlServer、GetConnectionString 三個方法：由內往外讀">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 430" width="1000" height="430" role="img" aria-label="拆解 AddDbContext、UseSqlServer、GetConnectionString 三個方法：由內往外讀（讀的順序，不是執行的順序）">
 <style>
   svg {
     --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa; --card: #ffffff;
@@ -40,7 +40,7 @@
 <text class="code" x="40" y="49">builder.Services.<tspan class="k1">AddDbContext&lt;BlogDbContext&gt;</tspan>(<tspan class="k2">options =&gt;</tspan></text>
 <text class="code" x="40" y="77">    <tspan class="k2">options.UseSqlServer(</tspan><tspan class="k3">builder.Configuration.GetConnectionString("BlogDb")</tspan><tspan class="k2">)</tspan>);</text>
 
-<text class="hint" x="500" y="122" text-anchor="middle">括號一層包一層，所以「由內往外」讀：③ → ② → ①</text>
+<text class="hint" x="500" y="122" text-anchor="middle">看懂結構：由內往外讀 ③ → ② → ①（這是讀的順序，不是執行的順序）</text>
 
 <!-- ③ -->
 <rect class="card3" x="20" y="140" width="300" height="210" rx="10"/>
@@ -85,6 +85,6 @@
 <path class="arr" d="M220,304 C240,380 330,380 360,262" marker-end="url(#am)"/>
 <text class="lbl" x="268" y="392">string? 傳進 connectionString</text>
 <path class="arr" d="M560,350 C600,400 650,400 690,262" marker-end="url(#am)"/>
-<text class="lbl" x="556" y="406">整段 options =&gt; … 就是一個 Action</text>
+<text class="lbl" x="556" y="406">整段 options =&gt; … 是一個 Action，當成參數交給 ①，交出去時不執行</text>
 
 </svg>
