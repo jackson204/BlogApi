@@ -868,14 +868,21 @@ at Microsoft.AspNetCore.Mvc.Controllers.ControllerFactoryProvider.&lt;&gt;c__Dis
 
 <p>🍽️ <strong>比喻：去餐廳點餐</strong>：服務生（EF Core）遞給你<strong>空白點餐單</strong>（a）→ 你勾選要什麼（b，你的 lambda）→ 廚房照單做出<strong>餐點</strong>（c）→ 送到你桌上（③-3 的建構子）。</p>
 
-<p class="file-label">先看簡化版（EF Core 內部在做的事，每行對應小地圖的字母）</p>
-<pre><code class="language-csharp">var builder = new DbContextOptionsBuilder&lt;BlogDbContext&gt;();  // a. 空白設定單
-你寫的lambda(builder);                                         // b. 你的 options 就是這個 builder
-var options = builder.Options;                                 // c. 填好的單 → 成品
-var db = new BlogDbContext(options);                           // d. 呼叫你的建構子（③-3）</code></pre>
 <p class="file-label">✏️ 你寫的：Program.cs（b 執行的就是這段）</p>
 <pre><code class="language-csharp">options =&gt; options.UseSqlServer(builder.Configuration.GetConnectionString("BlogDb"))</code></pre>
-<p>再看真實版本：簡化版那四行的前三行，就是下面這個方法。順序完全一樣，只多了一行 EF Core 自己先寫的設定：</p>
+<p>lambda 就是「沒有名字的方法」。為了看清楚 b 在做什麼，先把它改寫成<strong>一般方法</strong>的樣子，名字就叫「你寫的方法」：</p>
+<pre><code class="language-csharp">void 你寫的方法(DbContextOptionsBuilder options)   // 參數名稱叫 options
+{
+    options.UseSqlServer(…);
+}</code></pre>
+<p class="file-label">簡化版：EF Core 內部在做的事（每行對應小地圖的字母）</p>
+<pre><code class="language-csharp">var builder = new DbContextOptionsBuilder&lt;BlogDbContext&gt;();  // a. 空白設定單
+你寫的方法(builder);                                       // b. 呼叫你的方法，把 builder 傳進去
+var options = builder.Options;                                 // c. 填好的單 → 成品
+var db = new BlogDbContext(options);                           // d. 呼叫你的建構子（③-3）</code></pre>
+<p>看 b：呼叫 <code>你寫的方法(builder)</code> 時，方法的參數 <code>options</code> 收到的就是 <code>builder</code>。所以方法裡的 <code>options.UseSqlServer(…)</code>，其實是在 <code>builder</code> 這張設定單上寫字。<strong><code>options</code> 只是方法裡面用的名字，指向的就是外面的 <code>builder</code></strong>：兩個名字，同一張單。</p>
+<p>（c 那行的 <code>var options</code> 是另一個變數，裝的是成品，下面的對照表會再說明。）</p>
+<p>再看真實版本：簡化版的 a～c，就是下面這個方法。順序完全一樣，只多了一行 EF Core 自己先寫的設定：</p>
 <p class="file-label">🔎 框架原始碼：CreateDbContextOptions（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/Extensions/EntityFrameworkServiceCollectionExtensions.cs#L1137-L1152" target="_blank">GitHub 第 1137–1152 行</a>）</p>
 <pre><code class="language-csharp">// 第 1137–1152 行
 private static DbContextOptions&lt;TContext&gt; CreateDbContextOptions&lt;TContext&gt;(
