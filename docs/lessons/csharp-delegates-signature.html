@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C# 補充：委派與方法簽章</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>C# 補充：委派（Action / Func）與方法簽章</h1>
+<p class="subtitle">看懂 <code>options =&gt; …</code> 這種寫法，以及怎麼從方法簽章讀出「這個方法要什麼、回傳什麼」</p>
+<div class="tags">
+  <span class="tag">委派</span><span class="tag">Action</span><span class="tag">Func</span><span class="tag">lambda</span>
+  <span class="tag">方法簽章</span><span class="tag">擴充方法</span><span class="tag">泛型</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>什麼時候會用到這頁</strong>：這裡是 C# 語法，不是 EF Core 的內容。各課遇到下面這些寫法時，會連回這裡：</p>
+<ul>
+  <li>第 1 課 3-5：<code>AddDbContext(options =&gt; options.UseSqlServer(…))</code></li>
+  <li>第 1 課 3-3：<code>modelBuilder.Entity&lt;Post&gt;(entity =&gt; { … })</code></li>
+  <li>之後的課：<code>Where(p =&gt; …)</code> 這類 LINQ、第 3 課 DI 的 <code>AddScoped</code> 等擴充方法</li>
+</ul>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#delegate">先認識 Action 和 Func</a></li>
+    <li><a href="#signature">學會看方法簽章：拆解 AddDbContext 那一行</a></li>
+  </ol>
+</nav>
+
+<h2 id="delegate">1. 先認識 Action 和 Func</h2>
+<p>看 <code>AddDbContext</code> 的簽章時，會看到參數型別是 <code>Action&lt;DbContextOptionsBuilder&gt;</code>。要看懂它，得先知道什麼是<strong>委派（delegate）</strong>。</p>
+<p><strong>委派就是「裝著一個方法的變數」</strong>。一般的變數裝的是值（數字、字串），委派裝的是「一段可以執行的程式」。.NET 內建兩種最常用的委派：</p>
+
+<div class="diagram">
+<img src="../images/delegates.svg" alt="Action 和 Func 的差別：Action 收參數不回傳，Func 最後一個型別是回傳值；Action&lt;DbContextOptionsBuilder&gt; 就是收一個 options、不回傳的方法" style="width:100%;height:auto">
+<div class="diagram-caption">Action 只做事、不回傳；Func 最後一個型別是回傳值</div>
+</div>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>Action</th><th>Func</th></tr>
+  <tr><td>回傳值</td><td>沒有（等於 <code>void</code> 方法）</td><td>有，<strong>角括號裡最後一個型別</strong>就是回傳型別</td></tr>
+  <tr><td>寫法</td><td><code>Action&lt;參數1, 參數2, …&gt;</code></td><td><code>Func&lt;參數1, 參數2, …, 回傳&gt;</code></td></tr>
+  <tr><td>例子</td><td><code>Action&lt;string&gt;</code>＝收一個 string、不回傳</td><td><code>Func&lt;int, int, int&gt;</code>＝收兩個 int、回傳 int</td></tr>
+</table>
+</div>
+
+<p class="file-label">簡單範例：先用具名方法，再改用 lambda（實際執行過）</p>
+<pre><code class="language-csharp">// 1. 先用具名方法
+void SayHello() =&gt; Console.WriteLine("Hello");
+int Add(int a, int b) =&gt; a + b;
+
+Action hello = SayHello;          // 把「方法」裝進變數（注意：SayHello 後面沒有括號）
+Func&lt;int, int, int&gt; add = Add;
+hello();                          // 執行變數裡的方法 → Hello
+Console.WriteLine(add(1, 2));     // → 3
+
+// 2. 改用 lambda，不用另外取名字
+Action&lt;string&gt; greet = name =&gt; Console.WriteLine($"Hi, {name}");
+Func&lt;int, int, int&gt; multiply = (a, b) =&gt; a * b;
+Func&lt;string, bool&gt; isLong = title =&gt; title.Length &gt; 5;
+greet("小明");                     // → Hi, 小明
+Console.WriteLine(multiply(3, 4)); // → 12
+Console.WriteLine(isLong("EF Core 入門")); // → True</code></pre>
+
+<p><strong>lambda 的讀法</strong>：<code>參數 =&gt; 要做的事</code>。<code>=&gt;</code> 念成「goes to」，左邊是參數，右邊是內容。只有一個參數時可以省略括號，像 <code>name =&gt; …</code>；兩個以上要加括號，像 <code>(a, b) =&gt; …</code>。</p>
+
+<p class="file-label">進階範例：把方法當參數傳給別人，由別人決定什麼時候執行（實際執行過）</p>
+<pre><code class="language-csharp">void RunLater(Action&lt;string&gt; action)
+{
+    Console.WriteLine("RunLater 開始，還沒執行 action");
+    action("由 RunLater 傳進來的值");   // 由 RunLater 決定什麼時候執行、傳什麼值
+}
+
+RunLater(text =&gt; Console.WriteLine($"action 執行了：{text}"));
+
+// 輸出：
+// RunLater 開始，還沒執行 action
+// action 執行了：由 RunLater 傳進來的值</code></pre>
+
+<p><strong>這就是 <code>AddDbContext</code> 的模式</strong>：</p>
+<ul>
+  <li>你傳進去的 <code>options =&gt; options.UseSqlServer(…)</code> 是一個 <code>Action&lt;DbContextOptionsBuilder&gt;</code></li>
+  <li><code>options</code> 是 EF Core 之後會傳進來的，就像上面的 <code>text</code> 是 <code>RunLater</code> 傳進來的</li>
+  <li>什麼時候執行，由 EF Core 決定，見第 1 課 3-8「<a href="01-efcore-crud.html#wiring">串起來</a>」</li>
+</ul>
+<p>你其實早就用過 Func 了：<code>_db.Posts.Where(p =&gt; p.Title.Contains(keyword))</code> 裡的 <code>p =&gt; …</code>，寫法就是一個「收 <code>Post</code>、回傳 <code>bool</code>」的 lambda。（細節：EF Core 實際收的型別是 <code>Expression&lt;Func&lt;Post, bool&gt;&gt;</code>，它會把這段 lambda 當成「資料」拆開，才能翻成 SQL；後面的課再細講。）</p>
+
+<h2 id="signature">2. 學會看方法簽章：拆解 AddDbContext 那一行</h2>
+<p>這行其實是<strong>三個方法</strong>一層包一層。括號最裡面的先執行，所以要<strong>由內往外讀</strong>：</p>
+
+<div class="diagram">
+<img src="../images/adddbcontext.svg" alt="拆解 AddDbContext、UseSqlServer、GetConnectionString 三個方法：由內往外讀" style="width:100%;height:auto">
+<div class="diagram-caption">③ 的回傳值餵給 ②，② 所在的整段 lambda 再餵給 ①</div>
+</div>
+
+<p>下面是這三個方法在 EF Core 10 / .NET 10 的<strong>真正簽章</strong>（用反射從套件讀出來的，只列出這一行用到的那個多載）：</p>
+
+<p class="file-label">③ Microsoft.Extensions.Configuration.ConfigurationExtensions</p>
+<pre><code class="language-csharp">public static string? GetConnectionString(
+    this IConfiguration configuration,
+    string name)</code></pre>
+
+<p class="file-label">② Microsoft.EntityFrameworkCore.SqlServerDbContextOptionsExtensions</p>
+<pre><code class="language-csharp">public static DbContextOptionsBuilder UseSqlServer(
+    this DbContextOptionsBuilder optionsBuilder,
+    string? connectionString,
+    Action&lt;SqlServerDbContextOptionsBuilder&gt;? sqlServerOptionsAction = null)</code></pre>
+
+<p class="file-label">① Microsoft.Extensions.DependencyInjection.EntityFrameworkServiceCollectionExtensions</p>
+<pre><code class="language-csharp">public static IServiceCollection AddDbContext&lt;TContext&gt;(
+    this IServiceCollection serviceCollection,
+    Action&lt;DbContextOptionsBuilder&gt;? optionsAction = null,
+    ServiceLifetime contextLifetime = ServiceLifetime.Scoped,
+    ServiceLifetime optionsLifetime = ServiceLifetime.Scoped)
+    where TContext : DbContext</code></pre>
+
+<h3>簽章怎麼讀：逐一對照</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>看到什麼</th><th>代表什麼</th><th>對應到我們那一行</th></tr>
+  <tr><td><code>static</code> + 第一個參數有 <code>this</code></td><td><strong>擴充方法</strong>（extension method）。可以像「那個型別本來就有的方法」一樣，用 <code>.</code> 呼叫</td><td><code>this IServiceCollection</code> → 所以寫成 <code>builder.Services.AddDbContext(…)</code>，<code>builder.Services</code> 的型別就是 <code>IServiceCollection</code></td></tr>
+  <tr><td>方法名稱後面的 <code>&lt;TContext&gt;</code></td><td><strong>泛型參數</strong>，呼叫時填入型別</td><td><code>AddDbContext&lt;BlogDbContext&gt;</code></td></tr>
+  <tr><td><code>where TContext : DbContext</code></td><td><strong>泛型限制</strong>：填進去的型別必須繼承 <code>DbContext</code></td><td><code>BlogDbContext : DbContext</code>，所以可以；填 <code>string</code> 會編譯錯誤</td></tr>
+  <tr><td><code>Action&lt;DbContextOptionsBuilder&gt;</code></td><td><strong>委派</strong>：「一個收 <code>DbContextOptionsBuilder</code>、沒有回傳值的方法」。可以用 lambda 寫</td><td><code>options =&gt; options.UseSqlServer(…)</code>，這裡的 <code>options</code> 型別就是 <code>DbContextOptionsBuilder</code></td></tr>
+  <tr><td><code>= null</code>、<code>= ServiceLifetime.Scoped</code></td><td><strong>選擇性參數</strong>：沒傳就用預設值</td><td>我們只傳了 lambda，所以生命週期都是 <code>Scoped</code>（一個請求一個，第 3 課講）</td></tr>
+  <tr><td><code>string?</code></td><td>可能是 <code>null</code></td><td>連線字串名稱打錯時，<code>GetConnectionString</code> 回傳 <code>null</code>，啟動後會出現<a href="01-efcore-crud.html#pitfalls">第 1 課常見坑</a>裡的 <code>Value cannot be null</code></td></tr>
+  <tr><td>回傳型別和 <code>this</code> 參數型別相同</td><td>可以<strong>串接</strong>呼叫（Fluent API）</td><td><code>UseSqlServer</code> 回傳 <code>DbContextOptionsBuilder</code>，後面還能再接 <code>.LogTo(…)</code> 這類設定</td></tr>
+</table>
+</div>
+
+<div class="callout">
+<p>🔍 <strong>在 Rider 裡自己查簽章</strong></p>
+<ul>
+  <li><strong>滑鼠停在方法名稱上</strong>：跳出說明視窗，顯示簽章和文件註解</li>
+  <li><strong>Ctrl + 滑鼠左鍵</strong>（Go to Declaration）：跳到方法的定義。套件的程式碼會顯示反編譯或 SourceLink 下載的原始碼</li>
+  <li><strong>游標放在括號裡，叫出 Parameter Info</strong>：顯示所有<strong>多載</strong>，例如 <code>AddDbContext</code> 有 6 個多載。快捷鍵依 keymap 不同：Visual Studio keymap 是 <kbd>Ctrl+Shift+Space</kbd>，IntelliJ keymap 是 <kbd>Ctrl+P</kbd></li>
+  <li>官方 API 文件：<a href="https://learn.microsoft.com/dotnet/api/microsoft.extensions.dependencyinjection.entityframeworkservicecollectionextensions.adddbcontext" target="_blank">AddDbContext</a>、<a href="https://learn.microsoft.com/dotnet/api/microsoft.entityframeworkcore.sqlserverdbcontextoptionsextensions.usesqlserver" target="_blank">UseSqlServer</a>、<a href="https://learn.microsoft.com/dotnet/api/microsoft.extensions.configuration.configurationextensions.getconnectionstring" target="_blank">GetConnectionString</a></li>
+</ul>
+</div>
+
+<nav class="footer-nav">
+  <a href="01-efcore-crud.html#register">← 回第 1 課 3-5</a>
+  <a href="../index.html">回目錄</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

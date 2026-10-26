@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 96" width="1000" height="96" role="img" aria-label="流程小地圖：目前在 3-1">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0;
+    --s1: #3b6fd8; --s1-s: #e7f0ff; --s2: #16a34a; --s2-s: #effcf3; --s3: #bc4c00; --s3-s: #fff4e5; --s4: #7c3aed; --s4-s: #f5f0ff;
+    --pin: #cf222e;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d;
+      --s1: #6ea8ff; --s1-s: #10213d; --s2: #3fb950; --s2-s: #10221a; --s3: #ffa657; --s3-s: #2a1d0e; --s4: #a78bfa; --s4-s: #1c1530;
+      --pin: #ff7b72;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; font-weight: 700; }
+  .sm { font-size: 11.5px; }
+  .code { white-space: pre; font-family: "Cascadia Code", Consolas, monospace; font-variant-ligatures: none; }
+  .p1 { fill: var(--s1-s); stroke: var(--s1); } .p2 { fill: var(--s2-s); stroke: var(--s2); }
+  .p3 { fill: var(--s3-s); stroke: var(--s3); } .p4 { fill: var(--s4-s); stroke: var(--s4); }
+  .chip { fill: var(--bg); stroke: var(--s3); }
+  .box { stroke-width: 1.5; }
+  .on { stroke-width: 3; }
+  .on-chip { fill: var(--s3); stroke: var(--s3); stroke-width: 2; }
+  .on-chip-t { fill: var(--bg); }
+  .dim { opacity: .35; }
+  .arr { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  .pin { fill: var(--pin); font-size: 12px; }
+  .pinline { stroke: var(--pin); stroke-width: 2; }
+</style>
+<defs><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path fill="#8c959f" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bg" x="0" y="0" width="1000" height="96" rx="10"/>
+<g class="dim"><rect class="p1 box " x="10" y="30" width="110" height="56" rx="10"/><text x="65.0" y="63" text-anchor="middle">① 啟動</text></g>
+<g class="dim"><rect class="p2 box " x="140" y="30" width="110" height="56" rx="10"/><text x="195.0" y="63" text-anchor="middle">② 跑起來</text></g>
+<g class="dim"><rect class="p4 box " x="850" y="30" width="140" height="56" rx="10"/><text x="920.0" y="63" text-anchor="middle">④ 請求結束</text></g>
+<rect class="p3 box on" x="270" y="30" width="560" height="56" rx="10"/>
+<text class="sm" x="282" y="45">③ 請求進來</text>
+<g class=""><rect class="on-chip" x="282" y="52" width="92" height="26" rx="6"/><text class="sm code on-chip-t" x="328.0" y="69" text-anchor="middle">Controller</text></g>
+<g class="dim"><rect class="chip box" x="382" y="52" width="64" height="26" rx="6"/><text class="sm " x="414.0" y="69" text-anchor="middle">a 空白單</text></g>
+<g class="dim"><rect class="chip box" x="454" y="52" width="64" height="26" rx="6"/><text class="sm " x="486.0" y="69" text-anchor="middle">b 填單</text></g>
+<g class="dim"><rect class="chip box" x="526" y="52" width="64" height="26" rx="6"/><text class="sm " x="558.0" y="69" text-anchor="middle">c 成品</text></g>
+<g class="dim"><rect class="chip box" x="598" y="52" width="64" height="26" rx="6"/><text class="sm " x="630.0" y="69" text-anchor="middle">d 建構子</text></g>
+<g class="dim"><rect class="chip box" x="670" y="52" width="64" height="26" rx="6"/><text class="sm " x="702.0" y="69" text-anchor="middle">e base</text></g>
+<g class="dim"><rect class="chip box" x="742" y="52" width="64" height="26" rx="6"/><text class="sm " x="774.0" y="69" text-anchor="middle">f _db</text></g>
+<path class="arr" d="M120,58 H138" marker-end="url(#m)"/>
+<path class="arr" d="M250,58 H268" marker-end="url(#m)"/>
+<path class="arr" d="M830,58 H848" marker-end="url(#m)"/>
+<text class="pin" x="328.0" y="17" text-anchor="middle">📍 你在這裡</text>
+<line class="pinline" x1="282" y1="24" x2="374" y2="24"/>
+</svg>
