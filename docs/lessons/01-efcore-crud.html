@@ -458,6 +458,7 @@ dotnet ef --version                         # 確認版本</code></pre>
 <img src="../images/efcore-packages.svg" alt="EF Core 套件的分層：SqlServer 套件帶入 Relational、EF Core 本體和 SqlClient，負責執行時；Design 套件給 dotnet ef 工具在開發時產生 Migration 用" style="width:100%;height:auto">
 <div class="diagram-caption">左：API 執行時要用的（裝 SqlServer 一個就帶進四層）　右：開發時下 <code>dotnet ef</code> 指令要用的</div>
 </div>
+<p>💡 <strong>什麼時候裝</strong>：左邊的 SqlServer 在<strong>題 2</strong> 就要裝，因為題 3 寫 <code>DbContext</code> 就會用到。右邊的 Design 和 <code>dotnet-ef</code> 只有執行 <code>dotnet ef</code> 指令時才需要，所以留到<strong>題 5</strong> 產生 Migration 時再裝。</p>
 
 <div class="table-wrap">
 <table>
@@ -814,29 +815,29 @@ dotnet sln add BlogApi/BlogApi.csproj   # 用 Rider 建立的話可以略過（�
     ├─ Controllers\
     └─ Properties\launchSettings.json   ← 執行時用的網址和 port</code></pre>
 <p>每個專案的 port 是隨機產生的，看 <code>launchSettings.json</code> 的 <code>applicationUrl</code> 就知道。</p>
+<div class="callout">
+<p>❓ <strong>瀏覽器打開 <code>http://localhost:5107/</code> 出現 404，是不是壞了？</strong>沒壞。Web API 只回應<strong>有定義的路徑</strong>，範本只有 <code>/weatherforecast</code>，根目錄 <code>/</code> 沒有人處理，所以回 404。這也代表伺服器有在運作，真的沒啟動的話會是「無法連線」。網址改成 <code>http://localhost:5107/weatherforecast</code> 就會看到 JSON。</p>
+<p>❓ <strong>終端機出現 <code>warn: … Failed to determine the https port for redirect.</code></strong>：<code>Program.cs</code> 有 <code>app.UseHttpsRedirection()</code>，它想把 http 導向 https，但你用的是 <code>http</code> 這個啟動設定，只開了 http，找不到 https 的 port，所以不導向，只發出警告。開發時可以忽略；想讓它消失，可以改用 <code>https</code> 啟動設定。</p>
+</div>
 </div>
 </details>
 </div>
 
 <!-- 題 2 -->
 <div class="exercise">
-<h3>題 2：安裝 EF Core 套件和 dotnet-ef 工具</h3>
+<h3>題 2：安裝 EF Core 的 SQL Server 套件</h3>
 <p>需求：</p>
 <ul>
-  <li>在 BlogApi 專案安裝 <code>Microsoft.EntityFrameworkCore.SqlServer</code> 和 <code>Microsoft.EntityFrameworkCore.Design</code></li>
-  <li>確認 <code>dotnet ef --version</code> 是 <strong>10.x</strong>；如果是 9.x 或更舊，就更新它</li>
+  <li>在 BlogApi 專案安裝 <code>Microsoft.EntityFrameworkCore.SqlServer</code></li>
   <li><code>dotnet build</code> 沒有錯誤，也<strong>沒有警告</strong></li>
 </ul>
-<p><strong>💡 提示</strong>：語法在 3-2。這兩個套件和一個工具<strong>各自是做什麼用的</strong>，先看 3-2 的「<a href="#packages">為什麼要裝這兩個套件和一個工具？</a>」再動手。安裝完 build 一次，看看會不會出現 <code>NU1902</code> / <code>NU1903</code> 警告，出現的話先自己讀讀看它在說什麼。</p>
-<p class="accept">✅ 驗收：<code>dotnet ef --version</code> 顯示 10.x；<code>dotnet build</code> 顯示 0 個警告、0 個錯誤</p>
+<p><strong>💡 提示</strong>：語法在 3-2。先看 3-2 的「<a href="#packages">為什麼要裝這兩個套件和一個工具？</a>」，弄清楚 SqlServer 套件是做什麼的再動手。安裝完 build 一次，看看會不會出現 <code>NU1902</code> / <code>NU1903</code> 警告，出現的話先自己讀讀看它在說什麼。</p>
+<p class="accept">✅ 驗收：csproj 裡有 <code>Microsoft.EntityFrameworkCore.SqlServer</code>；<code>dotnet build</code> 顯示 0 個警告、0 個錯誤</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
 <pre><code class="language-powershell">cd $HOME\RiderProjects\BlogApi\BlogApi
 dotnet add package Microsoft.EntityFrameworkCore.SqlServer
-dotnet add package Microsoft.EntityFrameworkCore.Design
-dotnet tool update --global dotnet-ef     # 還沒裝過的話用 install
-dotnet ef --version
 dotnet build</code></pre>
 <p><strong>關於 NU1902 / NU1903 警告</strong>（2026-10 驗證時會出現）：</p>
 <pre><code class="language-plaintext">warning NU1903: 套件 'System.Security.Cryptography.Pkcs' 9.0.11 具有已知的 高 嚴重性弱點</code></pre>
@@ -850,10 +851,6 @@ dotnet build</code></pre>
 <p>完成後的 csproj：</p>
 <pre><code class="language-xml">&lt;ItemGroup&gt;
   &lt;PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" /&gt;
-  &lt;PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13"&gt;
-    &lt;IncludeAssets&gt;runtime; build; native; contentfiles; analyzers; buildtransitive&lt;/IncludeAssets&gt;
-    &lt;PrivateAssets&gt;all&lt;/PrivateAssets&gt;
-  &lt;/PackageReference&gt;
   &lt;PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.13" /&gt;
   &lt;PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" /&gt;
 &lt;/ItemGroup&gt;</code></pre>
@@ -976,18 +973,35 @@ var app = builder.Build();
 <h3>題 5：Migration 建立 Posts 表</h3>
 <p>需求：</p>
 <ol>
+  <li><strong>先準備工具</strong>：安裝 <code>Microsoft.EntityFrameworkCore.Design</code> 套件，並確認 <code>dotnet ef --version</code> 是 <strong>10.x</strong>；如果是 9.x 或更舊，就更新它</li>
   <li>建立第一個 migration，名稱 <code>InitialCreate</code></li>
   <li><strong>套用之前</strong>，先用指令印出它會執行的 SQL，讀讀看</li>
   <li>套用到資料庫</li>
   <li>在 Rider 的 Database 視窗重新整理 BlogDb，找到 <code>Posts</code> 和 <code>__EFMigrationsHistory</code> 兩張表，看看欄位型別</li>
 </ol>
-<p><strong>💡 提示</strong>：指令都在 3-6。注意要在有 .csproj 的資料夾執行。</p>
-<p class="accept">✅ 驗收：Rider 看得到 Posts 表；<code>Title</code> 是 <code>nvarchar(200)</code>、<code>UpdatedAt</code> 允許 NULL</p>
+<p><strong>💡 提示</strong>：安裝 Design 和 dotnet-ef 的語法在 3-2，Migration 指令在 3-6。注意要在有 .csproj 的資料夾執行。</p>
+<p>🧪 <strong>想體驗看看的話</strong>：先只更新 <code>dotnet-ef</code>、<strong>不裝 Design</strong>，直接執行 <code>dotnet ef migrations add InitialCreate</code>，讀讀看錯誤訊息在說什麼，再把 Design 裝上。</p>
+<p class="accept">✅ 驗收：<code>dotnet ef --version</code> 顯示 10.x；Rider 看得到 Posts 表；<code>Title</code> 是 <code>nvarchar(200)</code>、<code>UpdatedAt</code> 允許 NULL</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
+<p><strong>① 準備工具</strong></p>
 <pre><code class="language-powershell">cd $HOME\RiderProjects\BlogApi\BlogApi
-dotnet ef migrations add InitialCreate
+dotnet add package Microsoft.EntityFrameworkCore.Design
+dotnet tool update --global dotnet-ef     # 還沒裝過的話用 install
+dotnet ef --version                       # 確認是 10.x</code></pre>
+<p>沒裝 Design 就執行 <code>dotnet ef migrations add</code>，會出現這個錯誤（實測）：</p>
+<pre><code class="nohighlight">Your startup project 'BlogApi' doesn't reference Microsoft.EntityFrameworkCore.Design.
+This package is required for the Entity Framework Core Tools to work.
+Ensure your startup project is correct, install the package, and try again.</code></pre>
+<p>意思是：<code>dotnet-ef</code> 工具只是個殼，真正產生 Migration 的程式在 Design 套件裡，所以專案一定要參考它（見 3-2 的<a href="#packages">圖右半邊</a>）。</p>
+<p>安裝後 csproj 會多出這段。<code>PrivateAssets</code> 是 <code>all</code>，表示它只在開發時使用：</p>
+<pre><code class="language-xml">&lt;PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13"&gt;
+  &lt;IncludeAssets&gt;runtime; build; native; contentfiles; analyzers; buildtransitive&lt;/IncludeAssets&gt;
+  &lt;PrivateAssets&gt;all&lt;/PrivateAssets&gt;
+&lt;/PackageReference&gt;</code></pre>
+<p><strong>② 建立、檢查、套用 Migration</strong></p>
+<pre><code class="language-powershell">dotnet ef migrations add InitialCreate
 dotnet ef migrations script
 dotnet ef database update</code></pre>
 <p><code>migrations script</code> 印出來的 SQL（實際驗證結果）：</p>
@@ -1370,7 +1384,7 @@ WHERE [Id] = @p0;</code></pre></td>
   <tr><th>症狀</th><th>原因</th><th>解法</th></tr>
   <tr><td><code>The Entity Framework tools version '9.x' is older than that of the runtime '10.x'</code></td><td>dotnet-ef 工具版本比 EF Core 舊</td><td><code>dotnet tool update --global dotnet-ef</code></td></tr>
   <tr><td>build 出現 <code>NU1902</code> / <code>NU1903</code></td><td>間接相依的套件有已知漏洞</td><td>見題 2 答案：<code>dotnet nuget why</code> 找來源，直接安裝新版</td></tr>
-  <tr><td><code>Your startup project 'BlogApi' doesn't reference Microsoft.EntityFrameworkCore.Design</code></td><td>沒裝 Design 套件</td><td>安裝 <code>Microsoft.EntityFrameworkCore.Design</code></td></tr>
+  <tr><td><code>Your startup project 'BlogApi' doesn't reference Microsoft.EntityFrameworkCore.Design</code></td><td>沒裝 Design 套件</td><td>安裝 <code>Microsoft.EntityFrameworkCore.Design</code>（見題 5 答案）</td></tr>
   <tr><td><code>No project was found</code></td><td>在 solution 資料夾執行 <code>dotnet ef</code></td><td>切到有 .csproj 的資料夾，或加 <code>--project BlogApi</code></td></tr>
   <tr><td><code>Value cannot be null. (Parameter 'connectionString')</code></td><td>讀不到連線字串：User Secrets 沒設定、名稱打錯，或不是在 Development 環境執行</td><td><code>dotnet user-secrets list</code> 檢查；確認 <code>launchSettings.json</code> 的 <code>ASPNETCORE_ENVIRONMENT</code> 是 <code>Development</code></td></tr>
   <tr><td>API 回 201，但資料庫沒有資料</td><td>忘了 <code>SaveChangesAsync()</code>，或忘了 <code>await</code></td><td>見 <a href="#tracking">2-6</a></td></tr>
