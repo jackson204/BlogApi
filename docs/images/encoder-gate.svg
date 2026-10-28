@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 330" width="1000" height="330" role="img" aria-label="編碼器是輸出前的過濾器：在白名單裡的字原樣輸出，不在白名單的改寫成安全寫法；小於、大於、and 符號永遠改寫">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --c2: #bc4c00; --c2-s: #fff4e5; --ok: #1a7f37; --ok-s: #dcfce7; --no: #cf222e; --no-s: #ffebe9;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --c2: #ffa657; --c2-s: #2a1d0e; --ok: #3fb950; --ok-s: #12261b; --no: #ff7b72; --no-s: #3d1515;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .t { font-size: 14px; font-weight: 700; }
+  .sm { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 12.5px; }
+  .box { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .enc { fill: var(--c2-s); stroke: var(--c2); stroke-width: 2; }
+  .in { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .yes { fill: var(--ok-s); stroke: var(--ok); stroke-width: 1.5; }
+  .no { fill: var(--no-s); stroke: var(--no); stroke-width: 1.5; }
+  .k-ok { fill: var(--ok); font-weight: 700; } .k-no { fill: var(--no); font-weight: 700; } .k-enc { fill: var(--c2); font-weight: 700; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .f-muted { fill: var(--muted); }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="330" rx="12"/>
+
+<!-- 輸入 -->
+<rect class="in" x="20" y="110" width="200" height="90" rx="10"/>
+<text class="t" x="120" y="138" text-anchor="middle" style="fill:var(--c1)">你的字串</text>
+<text class="code" x="120" y="168" text-anchor="middle">Docker 入門 &lt;b&gt;</text>
+<text class="sm" x="120" y="188" text-anchor="middle">準備寫進回應</text>
+
+<path class="arr" d="M220,155 H262" marker-end="url(#am)"/>
+
+<!-- 編碼器 -->
+<rect class="enc" x="265" y="40" width="300" height="250" rx="12"/>
+<text class="t k-enc" x="415" y="68" text-anchor="middle">編碼器（Encoder）</text>
+<text class="sm" x="415" y="88" text-anchor="middle">每個字都過一次這個關卡</text>
+
+<rect class="box" x="290" y="105" width="250" height="40" rx="8"/>
+<text x="415" y="130" text-anchor="middle">這個字在<tspan style="font-weight:700">白名單</tspan>裡嗎？</text>
+
+<path class="arr" d="M350,145 V175" marker-end="url(#am)"/>
+<text class="sm" x="330" y="165">是</text>
+<rect class="yes" x="290" y="178" width="115" height="44" rx="8"/>
+<text class="k-ok" x="347" y="205" text-anchor="middle">原樣輸出</text>
+
+<path class="arr" d="M480,145 V175" marker-end="url(#am)"/>
+<text class="sm" x="486" y="165">否</text>
+<rect class="no" x="425" y="178" width="115" height="44" rx="8"/>
+<text class="k-no" x="482" y="205" text-anchor="middle">改寫成安全寫法</text>
+
+<rect class="box" x="290" y="236" width="250" height="40" rx="8"/>
+<text class="sm" x="415" y="252" text-anchor="middle">例外：<tspan class="code">&lt; &gt; &amp;</tspan> 這些敏感字元</text>
+<text class="sm" x="415" y="268" text-anchor="middle">不看白名單，<tspan class="k-no">永遠改寫</tspan></text>
+
+<path class="arr" d="M565,155 H607" marker-end="url(#am)"/>
+
+<!-- 輸出 -->
+<text class="t" x="615" y="62">輸出（JSON 的例子）</text>
+
+<rect class="box" x="610" y="78" width="370" height="76" rx="10"/>
+<text x="625" y="100">白名單＝<tspan style="font-weight:700">預設</tspan>（只有英數和常見符號）</text>
+<text class="code" x="625" y="122">Docker <tspan class="k-no">\u5165\u9580</tspan> <tspan class="k-no">\u003C</tspan>b<tspan class="k-no">\u003E</tspan></text>
+<text class="sm" x="625" y="143">中文不在白名單 → 改寫；&lt; &gt; 永遠改寫</text>
+
+<rect class="box" x="610" y="168" width="370" height="76" rx="10"/>
+<text x="625" y="190">白名單＝<tspan style="font-weight:700">UnicodeRanges.All</tspan></text>
+<text class="code" x="625" y="212">Docker <tspan class="k-ok">入門</tspan> <tspan class="k-no">\u003C</tspan>b<tspan class="k-no">\u003E</tspan></text>
+<text class="sm" x="625" y="233">中文進了白名單 → 原樣；&lt; &gt; 還是改寫</text>
+
+<text class="sm" x="615" y="272">兩種輸出，對方讀回來都是同一個字串「Docker 入門 &lt;b&gt;」</text>
+<text class="sm" x="615" y="290">差別只在「原始回應」人眼看起來長什麼樣</text>
+</svg>

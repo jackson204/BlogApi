@@ -933,15 +933,15 @@ app.Run();      // → Now listening on</code></pre>
 <pre><code class="language-csharp" data-pseudo>// 請求 GET /api/posts 進來，路由決定交給 PostsController
 
 // 開一個這個請求專用的 scope，並登記「回應送完後把它丟掉」
-var scope = 容器.CreateScope();
+IServiceScope scope = 容器.CreateScope();
 
 // 要 new PostsController，用反射看它的建構子：要一個 BlogDbContext → 跟 scope 要
 // scope 查登記簿：做法是 new BlogDbContext(…)；再用反射看它的建構子：要一個 DbContextOptions&lt;BlogDbContext&gt;
 // → 先做 options，做好再呼叫 BlogDbContext 的建構子
-var db = scope.GetService&lt;BlogDbContext&gt;();
+BlogDbContext db = scope.GetService&lt;BlogDbContext&gt;();
 
 // 做好的 BlogDbContext 傳進 PostsController 的建構子
-var controller = new PostsController(db);</code></pre>
+PostsController controller = new PostsController(db);</code></pre>
 <details class="aside deep">
 <summary>🔎 原始碼與證據：想確認上面的簡化版沒騙你，再展開</summary>
 <div class="aside-body">
@@ -994,18 +994,116 @@ at Microsoft.AspNetCore.Mvc.Controllers.ControllerFactoryProvider.&lt;&gt;c__Dis
 
 <p class="file-label">✏️ 你寫的：Program.cs（b 執行的就是這段）</p>
 <pre><code class="language-csharp" data-user>options =&gt; options.UseSqlServer(builder.Configuration.GetConnectionString("BlogDb"))</code></pre>
-<p>lambda 就是「沒有名字的方法」。為了看清楚 b 在做什麼，先把它改寫成<strong>一般方法</strong>的樣子，名字就叫「你寫的方法」：</p>
-<pre><code class="language-csharp" data-pseudo>void 你寫的方法(DbContextOptionsBuilder options)   // 參數名稱叫 options
+<p>lambda 就是「沒有名字的方法」。為了看清楚 b 在做什麼，先把它改寫成<strong>一般方法</strong>的樣子。一般方法一定要有名字，這裡我取一個叫 <code>ConfigureBlogDb</code>；這個名字是為了說明方便取的，你的 lambda 本來就沒有名字，叫什麼都不影響它做的事：</p>
+<pre><code class="language-csharp" data-pseudo>// ConfigureBlogDb 是為了說明取的名字；大括號裡面就是你 lambda 的那一行
+void ConfigureBlogDb(DbContextOptionsBuilder options)   // 參數名稱叫 options
 {
     options.UseSqlServer(…);
 }</code></pre>
 <p class="file-label">簡化版：EF Core 內部在做的事（每行對應小地圖的字母）</p>
-<pre><code class="language-csharp" data-pseudo>var builder = new DbContextOptionsBuilder&lt;BlogDbContext&gt;();  // a. 空白設定單
-你寫的方法(builder);                                       // b. 呼叫你的方法，把 builder 傳進去
-var options = builder.Options;                                 // c. 填好的單 → 成品
-var db = new BlogDbContext(options);                           // d. 呼叫你的建構子</code></pre>
-<p>看 b：呼叫 <code>你寫的方法(builder)</code> 時，方法的參數 <code>options</code> 收到的就是 <code>builder</code>。所以方法裡的 <code>options.UseSqlServer(…)</code>，其實是在 <code>builder</code> 這張設定單上寫字。<strong><code>options</code> 只是方法裡面用的名字，指向的就是外面的 <code>builder</code></strong>：兩個名字，同一張單。</p>
-<p>（c 那行的 <code>var options</code> 是另一個變數，裝的是成品，下面的對照表會再說明。）</p>
+<pre><code class="language-csharp" data-pseudo>// a. 空白設定單
+DbContextOptionsBuilder&lt;BlogDbContext&gt; builder = new DbContextOptionsBuilder&lt;BlogDbContext&gt;();
+
+// b. 執行你的 lambda（填單）
+ConfigureBlogDb(builder);
+
+// c. 從 builder 拿出成品
+DbContextOptions&lt;BlogDbContext&gt; options = builder.Options;
+
+// d. 呼叫你的建構子
+BlogDbContext db = new BlogDbContext(options);</code></pre>
+<p>看 b：呼叫 <code>ConfigureBlogDb(builder)</code> 時，方法的參數 <code>options</code> 收到的就是 <code>builder</code>。所以方法裡的 <code>options.UseSqlServer(…)</code>，其實是在 <code>builder</code> 這張設定單上寫字。<strong><code>options</code> 只是方法裡面用的名字，指向的就是外面的 <code>builder</code></strong>：兩個名字，同一張單。記憶體裡長這樣：</p>
+<div class="diagram">
+<img src="../images/same-object.svg" alt="呼叫 ConfigureBlogDb(builder) 時記憶體裡的樣子：外面的變數 builder 和方法裡的參數 options 各裝一支箭頭，都指向同一個 DbContextOptionsBuilder 物件；方法裡透過 options 改物件，方法結束後 builder 看得到改動" style="width:100%;height:auto">
+<div class="diagram-caption">變數裡裝的是「指向物件的箭頭」（參考）。呼叫時複製的是箭頭，物件只有一個，所以方法裡改了，外面看得到</div>
+</div>
+<p><strong>為什麼 <code>ConfigureBlogDb</code> 沒有回傳值也可以？</strong>就是圖裡的 ③：它改的是 <code>builder</code> 這個物件本身，不是算出一個新東西交回來。<code>UseSqlServer</code> 做的事是把 builder 裡面的 <code>_options</code> 欄位換成「多了 SQL Server 這筆設定」的版本（原始碼在下面 c 的摺疊區）；方法結束後，外面的 <code>builder</code> 已經不一樣了。</p>
+<p><code>UseSqlServer</code> 會在單上寫兩筆：<code>SqlServerOptionsExtension</code>（你寫的 SQL Server 設定）和 <code>CoreOptionsExtension</code>（順便加的 EF Core 共用設定）。</p>
+<details class="aside">
+<summary>📎 補充：CoreOptionsExtension 是什麼？為什麼 UseSqlServer 會順便加它</summary>
+<div class="aside-body">
+<p>設定單上的每一筆（EF Core 叫 extension）各管一塊：<code>SqlServerOptionsExtension</code> 管 <strong>SQL Server 專屬</strong>的設定（連線字串等）；<code>CoreOptionsExtension</code> 管 <strong>EF Core 本體、不分資料庫</strong>的設定：log 怎麼印、要不要在 log 裡顯示參數值、哪些警告要當成錯誤直接丟例外、3-8 真實版本的 <code>UseApplicationServiceProvider</code> 寫的也是這一筆。</p>
+<p><code>UseSqlServer</code> 會加它，是因為 SQL Server 這個 provider 要求「某幾種警告要直接丟例外」（例如 <code>PendingModelChangesWarning</code>：model 改了卻沒做 migration），而「哪些警告要丟例外」這個設定住在 <code>CoreOptionsExtension</code> 裡。所以 <code>UseSqlServer</code> 寫完自己那一筆之後，把 <code>CoreOptionsExtension</code> 找出來（單上沒有就 new 一個），寫入警告設定，再放回單上：</p>
+<p class="file-label">🔎 框架原始碼：SqlServerDbContextOptionsBuilderExtensions.cs（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore.SqlServer/Extensions/SqlServerDbContextOptionsBuilderExtensions.cs#L61-L72" target="_blank">GitHub 第 61–72 行</a>、<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore.SqlServer/Extensions/SqlServerDbContextOptionsBuilderExtensions.cs#L747-L759" target="_blank">第 747–759 行</a>、<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore.SqlServer/Extensions/SqlServerDbContextOptionsBuilderExtensions.cs#L803-L816" target="_blank">第 803–816 行</a>）</p>
+<pre><code class="language-csharp">// 第 61–72 行：你的 lambda 呼叫的 UseSqlServer
+public static DbContextOptionsBuilder UseSqlServer(
+    this DbContextOptionsBuilder optionsBuilder,
+    string? connectionString,
+    Action&lt;SqlServerDbContextOptionsBuilder&gt;? sqlServerOptionsAction = null)
+{
+    // 找出單上的 SqlServerOptionsExtension（沒有就 new 一個），寫入連線字串，放回單上
+    var extension = GetOrCreateExtension&lt;SqlServerOptionsExtension&gt;(optionsBuilder);
+    extension = (SqlServerOptionsExtension)extension
+        .WithEngineType(SqlServerEngineType.SqlServer)
+        .WithConnectionString(connectionString);
+    ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
+    return ApplyConfiguration(optionsBuilder, sqlServerOptionsAction);
+}
+
+// 第 747–751 行：ApplyConfiguration 第一件事就是 ConfigureWarnings
+private static DbContextOptionsBuilder ApplyConfiguration(
+    DbContextOptionsBuilder optionsBuilder,
+    Action&lt;SqlServerDbContextOptionsBuilder&gt;? sqlServerOptionsAction)
+{
+    ConfigureWarnings(optionsBuilder);
+    // …（省略）
+
+// 第 803–816 行：找出（或 new）CoreOptionsExtension，寫入「哪些警告要丟例外」，放回單上
+private static void ConfigureWarnings(DbContextOptionsBuilder optionsBuilder)
+{
+    var coreOptionsExtension
+        = optionsBuilder.Options.FindExtension&lt;CoreOptionsExtension&gt;()
+        ?? new CoreOptionsExtension();
+
+    coreOptionsExtension = RelationalOptionsExtension.WithDefaultWarningConfiguration(coreOptionsExtension);
+
+    coreOptionsExtension = coreOptionsExtension.WithWarningsConfiguration(
+        coreOptionsExtension.WarningsConfiguration.TryWithExplicit(
+            SqlServerEventId.ConflictingValueGenerationStrategiesWarning, WarningBehavior.Throw));
+
+    ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(coreOptionsExtension);
+}</code></pre>
+<p>這也解釋了下面真實版本的「設定數 1 → 2」：<code>UseApplicationServiceProvider</code> 先放了一筆 <code>CoreOptionsExtension</code>（1 筆），<code>UseSqlServer</code> 加上自己那一筆（2 筆），再把已經存在的 <code>CoreOptionsExtension</code> 更新，數量不變。</p>
+</div>
+</details>
+<p>看 c：<code>Options</code> 是 <code>DbContextOptionsBuilder</code> 的屬性，讀出來的值就是 builder 裡面<strong>一路被 b 填寫的那張單</strong>，型別是 <code>DbContextOptions&lt;BlogDbContext&gt;</code>（成品）。c 不是憑空變出成品，是把 builder 肚子裡的東西拿出來。</p>
+<p>（c 那行的 <code>options</code> 是另一個變數，裝的是成品，下面的對照表會再說明。）</p>
+<p><strong>🔍 證據：</strong>c 拿到的成品長這樣（單獨 new 一個 builder、跑完 a～c 之後印出來；<code>←</code> 後面是我加的說明）</p>
+<pre><code class="nohighlight">c. options 的型別：DbContextOptions`1
+   ← 就是 DbContextOptions&lt;BlogDbContext&gt;，`1 代表「一個型別參數」
+   options.ContextType：BlogDbContext
+   同一個物件？builder.Options == options：True
+   ← 不是複製一份，就是 builder 肚子裡那張單
+   - SqlServerOptionsExtension          ← 單上的第 1 筆：你寫的 SQL Server 設定
+   - CoreOptionsExtension               ← 單上的第 2 筆：EF Core 共用設定
+   SqlServerOptionsExtension.ConnectionString：Server=localhost,1433;Database=BlogDb;User Id=sa;Password=Blog_Dev_2026!;TrustServerCertificate=True
+   db.Database.GetConnectionString()：Data Source=localhost,1433;Initial Catalog=BlogDb;User ID=sa;Password=Blog_Dev_2026!;…（後面省略）
+   ← d 把成品交給建構子、e 交給父類別之後，從 DbContext 問得到同一條連線字串</code></pre>
+<p>所以成品就是<strong>一張清單</strong>，每一筆是一個設定（EF Core 叫它 extension），SQL Server 那一筆裡放著你的連線字串。最後一行的寫法不太一樣（<code>Server</code> 變 <code>Data Source</code>），是 SQL Server 的驅動把連線字串整理成標準寫法，內容相同。</p>
+<details class="aside deep">
+<summary>🔎 原始碼：Options 屬性到底拿出什麼，再展開</summary>
+<div class="aside-body">
+<p>builder 裡有一個欄位 <code>_options</code>，裝著「目前為止的設定」。你的 lambda 呼叫 <code>UseSqlServer</code>，最後會走到 <code>AddOrUpdateExtension</code>，把 <code>_options</code> 換成「多了 SQL Server 這筆設定」的新版本；<code>Options</code> 屬性做的事只有一件：把 <code>_options</code> 交出來。</p>
+<p class="file-label">🔎 框架原始碼：DbContextOptionsBuilder.cs（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/DbContextOptionsBuilder.cs#L25-L53" target="_blank">GitHub 第 25–53 行</a>、<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/DbContextOptionsBuilder.cs#L786-L787" target="_blank">第 786–787 行</a>）</p>
+<pre><code class="language-csharp">// 第 25–27 行：builder 的欄位，裝著目前為止的設定
+public class DbContextOptionsBuilder : IDbContextOptionsBuilderInfrastructure
+{
+    private DbContextOptions _options;
+
+// 第 52–53 行：Options 屬性。讀它，就是拿到 _options
+    public virtual DbContextOptions Options
+        =&gt; _options;
+
+// 第 786–787 行：UseSqlServer 這類方法最後都走到這裡，把 _options 換成多了一筆設定的新版本
+    void IDbContextOptionsBuilderInfrastructure.AddOrUpdateExtension&lt;TExtension&gt;(TExtension extension)
+        =&gt; _options = _options.WithExtension(extension);</code></pre>
+<p class="file-label">🔎 框架原始碼：DbContextOptionsBuilder`.cs（泛型版，<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/DbContextOptionsBuilder%60.cs#L48-L49" target="_blank">GitHub 第 48–49 行</a>）</p>
+<pre><code class="language-csharp">// 第 48–49 行：DbContextOptionsBuilder&lt;BlogDbContext&gt; 的 Options
+//   讀它，就是把上面那個 _options 轉成 DbContextOptions&lt;BlogDbContext&gt; 交出來
+public new virtual DbContextOptions&lt;TContext&gt; Options
+    =&gt; (DbContextOptions&lt;TContext&gt;)base.Options;</code></pre>
+</div>
+</details>
 <p><strong>所以程式裡有兩個 <code>options</code>，它們不是同一個東西：</strong></p>
 <div class="table-wrap">
 <table>
@@ -1017,7 +1115,6 @@ var db = new BlogDbContext(options);                           // d. 呼叫你�
 </table>
 </div>
 <p>兩個都叫 <code>options</code> 只是剛好同名。lambda 的參數名稱可以自己取，官方文件常寫成 <code>optionsBuilder =&gt; optionsBuilder.UseSqlServer(…)</code>，就不會跟建構子的混在一起。</p>
-<p><strong>為什麼 lambda 沒有回傳值也可以？</strong>因為 lambda 改的是 EF Core 交給它的<strong>那一張單本身</strong>。C# 的 class 物件傳給方法時，傳的是同一個物件，不是複製一份，所以 lambda 寫在單上的字，EF Core 手上那張單也看得到。lambda 結束後，EF Core 直接拿這張單做成品（c）。</p>
 <p><strong>🔍 證據：</strong>在 lambda 裡印出型別和設定數（型別名稱整理成 C# 的寫法）</p>
 <pre><code class="nohighlight">lambda 收到的 options 型別：DbContextOptionsBuilder&lt;BlogDbContext&gt;，單上的設定數：1
 UseSqlServer 之後，單上的設定數：2</code></pre>
@@ -1096,13 +1193,13 @@ public BlogDbContext(DbContextOptions&lt;BlogDbContext&gt; options) : base(optio
 <p class="file-label">簡化版：DI 容器內部在做的事（接在 a～c 後面，字母對應小地圖）</p>
 <pre><code class="language-csharp" data-pseudo>// d. 用反射呼叫你的建構子，把成品 options 傳進去
 //    你的建構子裡的 : base(options) 再把成品交給父類別 DbContext 的建構子（e）
-var db = new BlogDbContext(options);
+BlogDbContext db = new BlogDbContext(options);
 
 // 記在這個請求的 scope 裡：同一個請求再有人要 BlogDbContext，給這一個
 scope.Cache(db);
 
 // f. 傳進 PostsController 的建構子；你寫的 _db = db 把它放進欄位
-var controller = new PostsController(db);</code></pre>
+PostsController controller = new PostsController(db);</code></pre>
 <p><strong>🔍 證據：</strong>在建構子裡印出型別和內容</p>
 <pre><code class="nohighlight">建構子收到的 options 型別：DbContextOptions&lt;BlogDbContext&gt;
 建構子收到的成品裡有 SQL Server 設定嗎：True，連線字串開頭：Server=localhost,1433;Database</code></pre>
@@ -1693,6 +1790,7 @@ public class PostsController : ControllerBase
   <li>每送一個請求，就到 Rider 的 Run 視窗看 EF Core 印出的 SQL</li>
   <li>在 <code>GetAll</code> 裡用 <code>ToQueryString()</code> 印出 SQL，跟 log 比較看看</li>
 </ol>
+<p>順便看一下回應：標題裡的中文會<strong>直接顯示</strong>，不是 <code>\u5165\u9580</code>。為什麼、以及要不要加編碼設定，見「<a href="encoding-json-html.html">補充：編碼器（Encoder）</a>」。</p>
 <p><strong>💡 提示</strong></p>
 <div class="table-wrap">
 <table>

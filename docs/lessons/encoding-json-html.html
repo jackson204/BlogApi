@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>補充：編碼器（Encoder）</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>補充：編碼器（Encoder）：中文為什麼有時變成 \u6587 或 &amp;#x6587;</h1>
+<p class="subtitle">看到 <code>\u6587</code>、<code>&amp;#x6587;</code>、<code>%E6%96%87</code> 是不是壞了？你的 Web API 需不需要加 <code>HtmlEncoder.Create(UnicodeRanges.All)</code>？</p>
+<div class="tags">
+  <span class="tag">Encoder</span><span class="tag">JSON</span><span class="tag">\u 編碼</span><span class="tag">HtmlEncoder</span>
+  <span class="tag">JavaScriptEncoder</span><span class="tag">UnicodeRanges</span><span class="tag">XSS</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>什麼時候會用到這頁</strong>：這是觀念介紹，沒有練習題。</p>
+<ul>
+  <li>在回應、log 或網頁原始碼裡看到中文變成 <code>\u6587</code> 或 <code>&amp;#x6587;</code>，想知道是不是壞了</li>
+  <li>網路上查到 <code>HtmlEncoder.Create(UnicodeRanges.All)</code> 這行，不知道自己的專案要不要加</li>
+</ul>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#what">編碼器是什麼：輸出前的過濾器</a></li>
+    <li><a href="#three">三兄弟：同一個「文」字，三種長相</a></li>
+    <li><a href="#api">你的 Web API 會不會變 \u？（實測＋原始碼）</a></li>
+    <li><a href="#browser">瀏覽器讀到會不會不一樣？（實測）</a></li>
+    <li><a href="#when">什麼時候要自己設定</a></li>
+  </ol>
+</nav>
+
+<h2 id="what">1. 編碼器是什麼：輸出前的過濾器</h2>
+<p>程式把一個字串寫進回應、網頁或網址之前，會先讓它<strong>每個字都過一次關卡</strong>：在<strong>白名單</strong>裡的字原樣輸出；不在白名單的字，改寫成一種「對方讀回來還原得了、但不會被誤當成程式碼」的寫法。這個關卡就是<strong>編碼器（Encoder）</strong>。</p>
+
+<div class="diagram">
+<img src="../images/encoder-gate.svg" alt="編碼器是輸出前的過濾器：在白名單裡的字原樣輸出，不在白名單的改寫成安全寫法；小於、大於、and 符號永遠改寫" style="width:100%;height:auto">
+<div class="diagram-caption">同一個字串，白名單不同，原始回應就長得不一樣；但對方讀回來都是同一個字串</div>
+</div>
+
+<p><strong>為什麼要有這個關卡？</strong>如果有人在文章標題裡塞 <code>&lt;script&gt;…&lt;/script&gt;</code>，而你的程式把它原封不動寫進網頁，瀏覽器就會把它當成<strong>程式碼執行</strong>，這叫 XSS（跨站腳本攻擊）。所以 <code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code> 這些「會被當成標籤」的字元，編碼器<strong>永遠改寫，不看白名單</strong>。</p>
+<p><strong>那中文為什麼也被改寫？</strong>因為 .NET 的預設白名單只有 BasicLatin（ASCII 的英數和常見符號）。中文不在裡面，就跟著被改寫。這<strong>不是壞掉</strong>：改寫的格式是標準的，對方讀回來一定還原得了；只是人眼看原始回應很難讀。</p>
+<p><code>UnicodeRanges.All</code> 的意思是「把白名單放大到整個 Unicode 基本平面（U+0000～U+FFFF）」，中文就會原樣輸出；<code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code> 照樣改寫，安全底線還在。</p>
+
+<h2 id="three">2. 三兄弟：同一個「文」字，三種長相</h2>
+<p>輸出的地方不同，「安全的寫法」就不同，所以 .NET 有三個編碼器（都在 <code>System.Text.Encodings.Web</code>）：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>編碼器</th><th>輸出到哪裡</th><th>「文」變成</th><th><code>&lt;</code> 變成</th><th>誰在用</th></tr>
+  <tr><td><code>HtmlEncoder</code></td><td>HTML 網頁的文字</td><td><code>&amp;#x6587;</code></td><td><code>&amp;lt;</code></td><td>Razor 寫 <code>@Model.Title</code> 時</td></tr>
+  <tr><td><code>JavaScriptEncoder</code></td><td>JSON、JavaScript 的字串</td><td><code>\u6587</code></td><td><code>\u003C</code></td><td><code>System.Text.Json</code> 序列化時</td></tr>
+  <tr><td><code>UrlEncoder</code></td><td>網址</td><td><code>%E6%96%87</code></td><td><code>%3C</code></td><td>組查詢字串時</td></tr>
+</table>
+</div>
+<p>三個都有 <code>.Default</code>（預設白名單）和 <code>.Create(UnicodeRanges.All)</code>（放大白名單）兩種拿法。網路上常看到的 <code>HtmlEncoder.Create(UnicodeRanges.All)</code> 是第一列、給 <strong>Razor 網頁</strong>用的；Web API 回的是 JSON，走的是第二列。</p>
+
+<h2 id="api">3. 你的 Web API 會不會變 \u？（實測＋原始碼）</h2>
+<p><strong>結論先講：不會。</strong>Controller 回傳的 JSON，中文直接輸出，連 <code>&lt;</code>、<code>&amp;</code> 都不改寫。但如果你<strong>自己</strong>呼叫 <code>JsonSerializer.Serialize</code>（例如寫 log），就會看到 <code>\u</code>。</p>
+<p><strong>🔍 實測</strong>：同一組 <code>List&lt;Post&gt;</code>，標題故意放 <code>Docker 入門 &lt;b&gt;&amp;&lt;/b&gt;</code>，用 curl 抓原始回應：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>怎麼輸出</th><th>原始回應裡的「入門」</th><th>原始回應裡的 <code>&lt;b&gt;&amp;</code></th></tr>
+  <tr><td>Controller 直接 <code>return posts;</code></td><td><code>入門</code></td><td><code>&lt;b&gt;&amp;</code></td></tr>
+  <tr><td>自己呼叫 <code>JsonSerializer.Serialize(posts)</code></td><td><code>\u5165\u9580</code></td><td><code>\u003Cb\u003E\u0026</code></td></tr>
+  <tr><td>加了 <code>AddJsonOptions</code>，Encoder 換成 <code>JavaScriptEncoder.Create(UnicodeRanges.All)</code>（第 5 節）</td><td><code>入門</code></td><td><code>\u003Cb\u003E\u0026</code></td></tr>
+</table>
+</div>
+<p>三個回應的 header 都是 <code>Content-Type: application/json; charset=utf-8</code>。</p>
+<p><strong>為什麼 Controller 不改寫？</strong>ASP.NET Core 組裝 JSON 輸出器的時候，發現你沒有自己設定 Encoder，就換成一顆<strong>寬鬆版</strong>的編碼器 <code>UnsafeRelaxedJsonEscaping</code>：中文、<code>&lt;</code>、<code>&amp;</code> 都原樣。名字裡的 Unsafe 是提醒「只能用在對方確定會把它當 UTF-8 JSON 讀的地方」，而 Web API 的回應正是這種地方。</p>
+
+<details class="aside deep">
+<summary>🔎 原始碼：想確認上面沒騙你，再展開</summary>
+<div class="aside-body">
+<p class="file-label">🔎 框架原始碼：SystemTextJsonOutputFormatter.cs（<a href="https://github.com/dotnet/aspnetcore/blob/v10.0.11/src/Mvc/Mvc.Core/src/Formatters/SystemTextJsonOutputFormatter.cs#L35-L48" target="_blank">GitHub 第 35–48 行</a>）</p>
+<pre><code class="language-csharp">// 第 35–48 行（ASP.NET Core 10.0.11）
+internal static SystemTextJsonOutputFormatter CreateFormatter(JsonOptions jsonOptions)
+{
+    var jsonSerializerOptions = jsonOptions.JsonSerializerOptions;
+
+    // 你沒有在 AddJsonOptions 裡設定 Encoder → 這裡是 null
+    if (jsonSerializerOptions.Encoder is null)
+    {
+        // If the user hasn't explicitly configured the encoder, use the less strict encoder that does not encode all non-ASCII characters.
+        // ↑ 原文註解：使用者沒設定的話，用比較寬鬆、不會把所有非 ASCII 字元都改寫的那顆
+        jsonSerializerOptions = new JsonSerializerOptions(jsonSerializerOptions)
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
+    }
+
+    return new SystemTextJsonOutputFormatter(jsonSerializerOptions);</code></pre>
+<p><code>jsonOptions.JsonSerializerOptions</code> 是 <code>new JsonSerializerOptions(JsonSerializerDefaults.Web)</code> 建出來的（<a href="https://github.com/dotnet/aspnetcore/blob/v10.0.11/src/Mvc/Mvc.Core/src/JsonOptions.cs#L35" target="_blank">JsonOptions.cs 第 35 行</a>），裡面沒有設 Encoder，所以上面的 <code>is null</code> 成立。你自己 <code>new JsonSerializerOptions(JsonSerializerDefaults.Web)</code> 去 Serialize 時，沒有人幫你做這個替換，所以會看到 <code>\u</code>（上面實測的第二列）。</p>
+</div>
+</details>
+
+<h2 id="browser">4. 瀏覽器讀到會不會不一樣？（實測）</h2>
+<p>拿第 3 節那兩種回應（一個中文直接輸出，一個是 <code>\u5165\u9580</code>），讓瀏覽器用幾種方式讀：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>瀏覽器怎麼讀</th><th>有差嗎</th><th>實測看到的</th></tr>
+  <tr><td>前端 JavaScript <code>fetch(…)</code> → <code>response.json()</code></td><td><strong>沒差</strong></td><td>兩邊的 <code>title</code> 都是 <code>Docker 入門 &lt;b&gt;&amp;&lt;/b&gt;</code>，用 <code>===</code> 比是 <code>true</code></td></tr>
+  <tr><td>再用 <code>textContent</code> 放進網頁</td><td><strong>沒差</strong></td><td>畫面上都顯示 <code>Docker 入門 &lt;b&gt;&amp;&lt;/b&gt;</code>（<code>&lt;b&gt;</code> 當文字顯示，不是標籤）</td></tr>
+  <tr><td>在網址列直接打開 API 網址</td><td><strong>有差</strong></td><td>Edge 預設檢視顯示的是原始文字：一個看到 <code>入門</code>，另一個看到 <code>\u5165\u9580</code>，不會幫你還原</td></tr>
+  <tr><td>Razor 網頁裡的 <code>&amp;#x6587;</code> 和 <code>文</code></td><td>畫面<strong>沒差</strong></td><td>瀏覽器都畫出「文」；按 F12 看原始碼才有差</td></tr>
+</table>
+</div>
+<p>所以：<strong>程式在讀的時候，改不改寫都一樣；只有人眼直接看原始回應時不一樣。</strong>這也是為什麼它不算 bug。</p>
+
+<p><strong>那改寫 <code>&lt;</code> 到底在防什麼？</strong>不是防上面 <code>fetch</code> 的情境：<code>response.json()</code> 之後 <code>\u003C</code> 已經還原成 <code>&lt;</code>，之後前端如果用 <code>innerHTML</code> 塞進網頁，一樣會被當成標籤。它防的是「<strong>把 JSON 直接寫在網頁的 <code>&lt;script&gt;</code> 裡</strong>」這種用法：</p>
+<pre><code class="language-html">&lt;script&gt;
+  // 字串裡的 &lt;/script&gt; 會把外面這個 script 標籤提前關掉，後面的字就變成網頁的一部分
+  var posts = [{"title":"&lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;"}];
+&lt;/script&gt;
+
+&lt;script&gt;
+  // 改寫成 \u003C 之後，瀏覽器找不到 &lt;/script&gt;，標籤不會被提前關掉；JavaScript 讀字串時再還原
+  var posts = [{"title":"\u003C/script\u003E\u003Cscript\u003Ealert(1)\u003C/script\u003E"}];
+&lt;/script&gt;</code></pre>
+<p>Web API 的回應是獨立的一份 <code>application/json</code>，不會被夾在網頁裡，所以框架敢用寬鬆版。前端把資料放進網頁時用 <code>textContent</code>、不用 <code>innerHTML</code>，是前端自己的責任，編碼器管不到那裡。</p>
+
+<h2 id="when">5. 什麼時候要自己設定</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>情境</th><th style="white-space:nowrap">要不要設</th><th>怎麼設</th></tr>
+  <tr><td>Web API 的 Controller 回傳 JSON，想看到中文</td><td><strong>不用</strong></td><td>框架已經用寬鬆版（第 3 節）</td></tr>
+  <tr><td>自己呼叫 <code>JsonSerializer.Serialize</code> 寫 log 或檔案，想看到中文</td><td>要</td><td><code>new JsonSerializerOptions { Encoder = JavaScriptEncoder.Create(UnicodeRanges.All) }</code></td></tr>
+  <tr><td>Razor 網頁，想讓原始碼裡是中文而不是 <code>&amp;#x…;</code></td><td style="white-space:nowrap">看你要不要</td><td><code>builder.Services.AddSingleton(HtmlEncoder.Create(UnicodeRanges.All));</code></td></tr>
+  <tr><td>Web API 想比框架預設<strong>嚴格</strong>（<code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code> 也改寫）</td><td style="white-space:nowrap">多一層保險</td><td>下面的 <code>AddJsonOptions</code>（從瀏覽器看不出差別）</td></tr>
+</table>
+</div>
+
+<p class="file-label">正式語法：Program.cs（Web API 把編碼器換成 Create(UnicodeRanges.All)）</p>
+<pre><code class="language-csharp">using System.Text.Encodings.Web;   // JavaScriptEncoder
+using System.Text.Unicode;         // UnicodeRanges
+
+// AddJsonOptions：設定整個 API 的 JSON 輸出
+// Encoder：換掉「哪些字要改寫」的關卡
+// 效果：中文照樣直接輸出；&lt; &gt; &amp; 改成 \u003C 這種寫法（比框架預設嚴格）
+builder.Services.AddControllers()
+    .AddJsonOptions(options =&gt;
+        options.JsonSerializerOptions.Encoder = JavaScriptEncoder.Create(UnicodeRanges.All));</code></pre>
+
+<details class="aside">
+<summary>📎 補充：UnicodeRanges.All 不是「全部」、UnsafeRelaxedJsonEscaping 自己不要設</summary>
+<div class="aside-body">
+<ul>
+  <li><code>UnicodeRanges.All</code> 只到 U+FFFF（基本平面）。大部分 emoji 在補充平面，還是會被改寫成 <code>\uD83D\uDE00</code> 這種一對代理字元，讀回來一樣正常。</li>
+  <li>官方建議只放行用到的範圍，但中文至少要 CJK 統一表意文字、CJK 符號標點、全形字元三個範圍，列起來麻煩，實務上多數人直接用 <code>All</code>。</li>
+  <li><code>JavaScriptEncoder.UnsafeRelaxedJsonEscaping</code> 連 <code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code> 都不改寫。框架在 Web API 已經幫你用了；自己 Serialize 的輸出如果會被寫進 HTML 或 <code>&lt;script&gt;</code>，<strong>絕對不要</strong>用它。</li>
+  <li>放行中文之後，輸出就依賴對方用 UTF-8 讀。ASP.NET Core 回應帶 <code>charset=utf-8</code>，一般沒事；自己寫檔案時記得用 UTF-8。</li>
+</ul>
+</div>
+</details>
+
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://learn.microsoft.com/dotnet/standard/serialization/system-text-json/character-encoding" target="_blank">System.Text.Json：自訂字元編碼</a>（預設行為、<code>UnicodeRanges.All</code>、<code>UnsafeRelaxedJsonEscaping</code> 的警告都在這頁）</li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/web-api/advanced/formatting" target="_blank">Format response data in ASP.NET Core Web API</a>（<code>AddJsonOptions</code>）</li>
+  <li><a href="https://learn.microsoft.com/dotnet/api/system.text.encodings.web.htmlencoder.create" target="_blank">HtmlEncoder.Create</a>、<a href="https://learn.microsoft.com/dotnet/api/system.text.encodings.web.javascriptencoder.create" target="_blank">JavaScriptEncoder.Create</a>、<a href="https://learn.microsoft.com/dotnet/api/system.text.unicode.unicoderanges" target="_blank">UnicodeRanges</a></li>
+</ul>
+</div>
+
+<nav class="footer-nav">
+  <a href="01-efcore-crud.html#exercise">← 回第 1 課練習題</a>
+  <a href="../index.html">回目錄</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

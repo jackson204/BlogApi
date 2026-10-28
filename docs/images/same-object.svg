@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" width="1000" height="440" role="img" aria-label="呼叫 ConfigureBlogDb(builder) 時記憶體裡的樣子：外面的變數 builder 和方法裡的參數 options 各裝一支箭頭，都指向同一個 DbContextOptionsBuilder 物件；方法裡透過 options 改物件，方法結束後 builder 看得到改動">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --c2: #bc4c00; --c2-s: #fff4e5; --c3: #8250df; --c3-s: #fbefff; --ok: #1a7f37; --ok-s: #dcfce7; --no: #cf222e;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --c2: #ffa657; --c2-s: #2a1d0e; --c3: #d2a8ff; --c3-s: #271b3d; --ok: #3fb950; --ok-s: #12261b; --no: #ff7b72;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .t { font-size: 14px; font-weight: 700; }
+  .sm { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 12.5px; }
+  .area1 { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .area3 { fill: var(--c3-s); stroke: var(--c3); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .var { fill: var(--bg); stroke: var(--border); stroke-width: 1.5; }
+  .obj { fill: var(--c2-s); stroke: var(--c2); stroke-width: 2.5; }
+  .field { fill: var(--bg); stroke: var(--c2); stroke-width: 1.5; }
+  .k1 { fill: var(--c1); font-weight: 700; } .k2 { fill: var(--c2); font-weight: 700; } .k3 { fill: var(--c3); font-weight: 700; }
+  .k-ok { fill: var(--ok); font-weight: 700; } .k-no { fill: var(--no); font-weight: 700; }
+  .ref { fill: none; stroke: var(--fg); stroke-width: 2.2; }
+  .copy { fill: none; stroke: var(--c3); stroke-width: 2; stroke-dasharray: 5 4; }
+  .f-fg { fill: var(--fg); } .f-c3 { fill: var(--c3); }
+  .num { font-size: 12px; font-weight: 800; fill: #ffffff; }
+</style>
+<defs>
+  <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-fg" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-c3" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="440" rx="12"/>
+
+<text class="t" x="500" y="28" text-anchor="middle">呼叫 ConfigureBlogDb(builder) 時，記憶體裡長這樣：物件只有一個，箭頭有兩支</text>
+
+<!-- ① 複製箭頭 -->
+<path class="copy" d="M140,118 C140,58 860,58 860,118" marker-end="url(#a3)"/>
+<circle cx="500" cy="62" r="12" style="fill:var(--c3)"/><text class="num" x="500" y="66" text-anchor="middle">1</text>
+<text class="sm" x="500" y="90" text-anchor="middle">呼叫時，把 builder 裡的箭頭<tspan class="k3">複製一份</tspan>給參數 options（複製的是箭頭，不是物件）</text>
+
+<!-- 左：外面 -->
+<rect class="area1" x="20" y="120" width="250" height="150" rx="12"/>
+<text class="t k1" x="145" y="145" text-anchor="middle">外面：簡化版的程式</text>
+<rect class="var" x="45" y="165" width="200" height="54" rx="8"/>
+<text class="code" x="60" y="188">builder</text>
+<text class="sm" x="60" y="207">變數：裝著一支箭頭</text>
+<text class="code k1" x="215" y="195" text-anchor="middle">➜</text>
+<text class="sm" x="145" y="250" text-anchor="middle">③ 方法結束後，這支箭頭還指著同一個物件</text>
+
+<!-- 右：方法裡 -->
+<rect class="area3" x="730" y="120" width="250" height="150" rx="12"/>
+<text class="t k3" x="855" y="145" text-anchor="middle">ConfigureBlogDb 裡面</text>
+<rect class="var" x="755" y="165" width="200" height="54" rx="8"/>
+<text class="code" x="770" y="188">options</text>
+<text class="sm" x="770" y="207">參數：① 複製來的箭頭</text>
+<text class="code k3" x="925" y="195" text-anchor="middle">➜</text>
+<text class="sm" x="855" y="250" text-anchor="middle">③ 方法結束，這個參數就消失了</text>
+
+<!-- 中：物件 -->
+<rect class="obj" x="370" y="105" width="260" height="190" rx="12"/>
+<text class="t k2" x="500" y="130" text-anchor="middle">DbContextOptionsBuilder 物件</text>
+<text class="sm" x="500" y="148" text-anchor="middle">整張圖裡只有這一個</text>
+<rect class="field" x="390" y="162" width="220" height="118" rx="8"/>
+<text class="code" x="405" y="184">_options（設定清單）</text>
+<text class="code" x="405" y="208">• CoreOptionsExtension</text>
+<text class="code k-ok" x="405" y="232">• SqlServerOptionsExtension</text>
+<text class="sm" x="405" y="252">↑ ② options.UseSqlServer(…) 順著箭頭</text>
+<text class="sm" x="405" y="268">  找到這個物件，把清單換成多這一筆的版本</text>
+
+<!-- 兩支箭頭指向同一個物件 -->
+<path class="ref" d="M245,192 H365" marker-end="url(#a1)"/>
+<path class="ref" d="M755,192 H635" marker-end="url(#a1)"/>
+
+<!-- 底下說明 -->
+<rect class="var" x="20" y="300" width="960" height="120" rx="10"/>
+<text x="40" y="325"><tspan class="k3">①</tspan> 呼叫 <tspan class="code">ConfigureBlogDb(builder)</tspan>：複製的是箭頭。所以方法裡的 <tspan class="code">options</tspan> 和外面的 <tspan class="code">builder</tspan> 指向同一個物件：兩個名字，同一張單。</text>
+<text x="40" y="351"><tspan class="k2">②</tspan> <tspan class="code">options.UseSqlServer(…)</tspan>：順著箭頭找到物件，改它的 <tspan class="code">_options</tspan>。改的是物件，不是 <tspan class="code">options</tspan> 這個變數。</text>
+<text x="40" y="377"><tspan class="k1">③</tspan> 方法結束：<tspan class="code">options</tspan> 消失，<tspan class="code">builder</tspan> 的箭頭還指著那個物件，所以外面看得到 ② 的改動，<tspan style="font-weight:700">不需要回傳值</tspan>。</text>
+<text class="sm" x="40" y="404">變數裡裝的不是物件本身，是「指向物件的箭頭」（參考 reference）。class 的物件傳給方法，傳的就是這支箭頭；這也是為什麼下面 c 的 builder.Options 拿到的就是被改過的那張單。</text>
+</svg>
