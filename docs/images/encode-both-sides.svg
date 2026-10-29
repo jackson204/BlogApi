@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" width="1000" height="520" role="img" aria-label="請求和回應各有一組編碼與解碼：請求時瀏覽器把使用者打的字放進網址（編碼），ASP.NET Core 讀網址時解碼；回應時你的程式把字串放進 JSON（編碼器編碼），瀏覽器讀 JSON 時解碼。誰把字串寫進格式誰就編碼，誰讀那個格式誰就解碼">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --c2: #bc4c00; --c2-s: #fff4e5; --c3: #8250df; --c3-s: #fbefff; --ok: #1a7f37; --ok-s: #dcfce7; --no: #cf222e;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --c2: #ffa657; --c2-s: #2a1d0e; --c3: #d2a8ff; --c3-s: #271b3d; --ok: #3fb950; --ok-s: #12261b; --no: #ff7b72;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .t { font-size: 14px; font-weight: 700; }
+  .sm { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 12px; }
+  .box { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .in { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .enc { fill: var(--c2-s); stroke: var(--c2); stroke-width: 2; }
+  .dec { fill: var(--c3-s); stroke: var(--c3); stroke-width: 2; }
+  .out { fill: var(--ok-s); stroke: var(--ok); stroke-width: 1.5; }
+  .db { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .db-body { fill: var(--c1-s); }
+  .db-side { fill: none; stroke: var(--c1); stroke-width: 1.5; }
+  .k1 { fill: var(--c1); font-weight: 700; } .k-enc { fill: var(--c2); font-weight: 700; } .k-dec { fill: var(--c3); font-weight: 700; } .k-ok { fill: var(--ok); font-weight: 700; } .k-no { fill: var(--no); font-weight: 700; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .f-muted { fill: var(--muted); }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="520" rx="12"/>
+
+<text class="t" x="500" y="28" text-anchor="middle">誰把字串寫進格式，誰就編碼；誰讀那個格式，誰就解碼。瀏覽器和你的 API 輪流當這兩個角色</text>
+
+<!-- ① 請求 -->
+<text class="t" x="5" y="64">① 請求：<tspan class="k-enc">瀏覽器是寫的人 → 編碼</tspan>；<tspan class="k-dec">你的 API 是讀的人 → 解碼</tspan></text>
+
+<rect class="in" x="5" y="78" width="145" height="96" rx="10"/>
+<text class="t k1" x="77" y="103" text-anchor="middle">使用者打字</text>
+<text class="code" x="77" y="130" text-anchor="middle">入門&lt;b&gt;</text>
+<text class="sm" x="77" y="156" text-anchor="middle">在輸入框裡，還只是字</text>
+<path class="arr" d="M150,126 H172" marker-end="url(#am)"/>
+
+<rect class="enc" x="175" y="78" width="160" height="96" rx="10"/>
+<text class="t k-enc" x="255" y="103" text-anchor="middle">瀏覽器：編碼</text>
+<text class="sm" x="255" y="124" text-anchor="middle">放進網址之前</text>
+<text class="code" x="255" y="150" text-anchor="middle">encodeURIComponent</text>
+<path class="arr" d="M335,126 H357" marker-end="url(#am)"/>
+
+<rect class="box" x="360" y="78" width="280" height="96" rx="10"/>
+<text class="t" x="500" y="103" text-anchor="middle">線路上（網址）</text>
+<text class="code" x="500" y="128" text-anchor="middle">GET /api/posts</text>
+<text class="code" x="500" y="148" text-anchor="middle">?keyword=<tspan class="k-no">%E5%85%A5%E9%96%80%3Cb%3E</tspan></text>
+<path class="arr" d="M640,126 H662" marker-end="url(#am)"/>
+
+<rect class="dec" x="665" y="78" width="160" height="96" rx="10"/>
+<text class="t k-dec" x="745" y="103" text-anchor="middle">ASP.NET Core：解碼</text>
+<text class="sm" x="745" y="124" text-anchor="middle">讀網址的時候</text>
+<text class="sm" x="745" y="150" text-anchor="middle">框架做，不用你寫</text>
+<path class="arr" d="M825,126 H847" marker-end="url(#am)"/>
+
+<rect class="in" x="850" y="78" width="145" height="96" rx="10"/>
+<text class="t k1" x="922" y="103" text-anchor="middle">你的 Controller</text>
+<text class="code" x="922" y="128" text-anchor="middle">keyword =</text>
+<text class="code" x="922" y="148" text-anchor="middle">"入門&lt;b&gt;"</text>
+
+<!-- 中間：資料庫 -->
+<path class="arr" d="M922,174 V200" marker-end="url(#am)"/>
+<ellipse class="db" cx="922" cy="256" rx="40" ry="7"/>
+<rect class="db-body" x="882" y="212" width="80" height="44"/>
+<path class="db-side" d="M882,212 V256 M962,212 V256"/>
+<ellipse class="db" cx="922" cy="212" rx="40" ry="7"/>
+<text class="k1" x="922" y="239" text-anchor="middle">資料庫</text>
+<path class="arr" d="M922,263 V296" marker-end="url(#am)"/>
+<text class="sm" x="872" y="228" text-anchor="end">存原文</text>
+<text class="sm" x="872" y="246" text-anchor="end">之後再查出來</text>
+
+<!-- ② 回應 -->
+<text class="t" x="5" y="290">② 回應：<tspan class="k-enc">你的程式是寫的人 → 編碼</tspan>；<tspan class="k-dec">瀏覽器是讀的人 → 解碼</tspan></text>
+
+<rect class="in" x="850" y="300" width="145" height="96" rx="10"/>
+<text class="t k1" x="922" y="325" text-anchor="middle">你的 Controller</text>
+<text class="code" x="922" y="350" text-anchor="middle">post.Title =</text>
+<text class="code" x="922" y="370" text-anchor="middle">"入門&lt;b&gt;"</text>
+<path class="arr" d="M850,348 H828" marker-end="url(#am)"/>
+
+<rect class="enc" x="665" y="300" width="160" height="96" rx="10"/>
+<text class="t k-enc" x="745" y="325" text-anchor="middle">編碼器：編碼</text>
+<text class="sm" x="745" y="346" text-anchor="middle">放進 JSON 之前</text>
+<text class="code" x="745" y="372" text-anchor="middle">JavaScriptEncoder</text>
+<path class="arr" d="M665,348 H643" marker-end="url(#am)"/>
+
+<rect class="box" x="360" y="300" width="280" height="96" rx="10"/>
+<text class="t" x="500" y="325" text-anchor="middle">線路上（JSON 回應）</text>
+<text class="code" x="500" y="350" text-anchor="middle">{"title":</text>
+<text class="code" x="500" y="370" text-anchor="middle">"<tspan class="k-no">\u5165\u9580\u003C</tspan>b<tspan class="k-no">\u003E</tspan>"}</text>
+<path class="arr" d="M360,348 H338" marker-end="url(#am)"/>
+
+<rect class="dec" x="175" y="300" width="160" height="96" rx="10"/>
+<text class="t k-dec" x="255" y="325" text-anchor="middle">瀏覽器：解碼</text>
+<text class="sm" x="255" y="346" text-anchor="middle">讀 JSON 的時候</text>
+<text class="code" x="255" y="372" text-anchor="middle">response.json()</text>
+<path class="arr" d="M175,348 H153" marker-end="url(#am)"/>
+
+<rect class="out" x="5" y="300" width="145" height="96" rx="10"/>
+<text class="t k-ok" x="77" y="325" text-anchor="middle">畫面</text>
+<text class="code" x="77" y="352" text-anchor="middle">入門&lt;b&gt;</text>
+<text class="sm" x="77" y="378" text-anchor="middle">和打字時一模一樣</text>
+
+<text class="sm" x="500" y="440" text-anchor="middle">打字那一刻什麼都沒發生；編碼發生在「放進網址」「放進 JSON」那一刻，解碼發生在「讀網址」「讀 JSON」那一刻</text>
+<text class="sm" x="500" y="462" text-anchor="middle">瀏覽器在 ① 是寫的人（編碼），在 ② 是讀的人（解碼）；你的 API 剛好相反</text>
+<text class="sm" x="500" y="484" text-anchor="middle">第 1 節開頭的表只講 ②；① 是同一條規則用在瀏覽器身上</text>
+</svg>

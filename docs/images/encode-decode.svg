@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" width="1000" height="400" role="img" aria-label="編碼在你的程式寫出去之前做，解碼在對方讀回來時由對方的解析器做；線路上的文字長得不一樣，兩端的字串一樣。HTML、JSON、網址三種編碼器，線路上三種長相，各自由瀏覽器、JSON 解析器、ASP.NET Core 還原">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --c2: #bc4c00; --c2-s: #fff4e5; --c3: #8250df; --c3-s: #fbefff; --ok: #1a7f37; --ok-s: #dcfce7; --no: #cf222e; --no-s: #ffebe9;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --c2: #ffa657; --c2-s: #2a1d0e; --c3: #d2a8ff; --c3-s: #271b3d; --ok: #3fb950; --ok-s: #12261b; --no: #ff7b72; --no-s: #3d1515;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .t { font-size: 14px; font-weight: 700; }
+  .sm { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 12.5px; }
+  .box { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .in { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .enc { fill: var(--c2-s); stroke: var(--c2); stroke-width: 2; }
+  .dec { fill: var(--c3-s); stroke: var(--c3); stroke-width: 2; }
+  .out { fill: var(--ok-s); stroke: var(--ok); stroke-width: 1.5; }
+  .p-html { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .p-json { fill: var(--c2-s); stroke: var(--c2); stroke-width: 1.5; }
+  .p-url { fill: var(--c3-s); stroke: var(--c3); stroke-width: 1.5; }
+  .k1 { fill: var(--c1); font-weight: 700; } .k-enc { fill: var(--c2); font-weight: 700; } .k-dec { fill: var(--c3); font-weight: 700; } .k-ok { fill: var(--ok); font-weight: 700; } .k-no { fill: var(--no); font-weight: 700; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .f-muted { fill: var(--muted); }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="400" rx="12"/>
+
+<text class="t" x="500" y="30" text-anchor="middle">編碼（Encode）在寫出去之前做，解碼（Decode）在讀回來時做；兩端的字串一模一樣</text>
+
+<!-- 第一排：來回流程 -->
+<rect class="in" x="5" y="70" width="160" height="96" rx="10"/>
+<text class="t k1" x="85" y="96" text-anchor="middle">你的程式</text>
+<text class="code" x="85" y="124" text-anchor="middle">Docker 入門 &lt;b&gt;</text>
+<text class="sm" x="85" y="148" text-anchor="middle">準備寫出去</text>
+<path class="arr" d="M165,118 H202" marker-end="url(#am)"/>
+
+<rect class="enc" x="205" y="70" width="140" height="96" rx="10"/>
+<text class="t k-enc" x="275" y="96" text-anchor="middle">編碼器</text>
+<text class="sm" x="275" y="116" text-anchor="middle">Encoder</text>
+<text class="sm" x="275" y="136" text-anchor="middle">你的程式這一邊做</text>
+<text class="sm" x="275" y="154" text-anchor="middle">把某些字改寫</text>
+<path class="arr" d="M345,118 H382" marker-end="url(#am)"/>
+
+<rect class="box" x="385" y="60" width="230" height="116" rx="10"/>
+<text class="t" x="500" y="84" text-anchor="middle">線路上的文字</text>
+<text class="code" x="500" y="110" text-anchor="middle">"Docker <tspan class="k-no">\u5165\u9580</tspan></text>
+<text class="code" x="500" y="128" text-anchor="middle"><tspan class="k-no">\u003C</tspan>b<tspan class="k-no">\u003E</tspan>"</text>
+<text class="sm" x="500" y="152" text-anchor="middle">JSON 的例子：人眼看起來不一樣</text>
+<path class="arr" d="M615,118 H652" marker-end="url(#am)"/>
+
+<rect class="dec" x="655" y="70" width="140" height="96" rx="10"/>
+<text class="t k-dec" x="725" y="96" text-anchor="middle">解碼</text>
+<text class="sm" x="725" y="116" text-anchor="middle">Decode</text>
+<text class="sm" x="725" y="136" text-anchor="middle">對方的解析器做</text>
+<text class="sm" x="725" y="154" text-anchor="middle">把改寫的字還原</text>
+<path class="arr" d="M795,118 H832" marker-end="url(#am)"/>
+
+<rect class="out" x="835" y="70" width="160" height="96" rx="10"/>
+<text class="t k-ok" x="915" y="96" text-anchor="middle">對方的程式</text>
+<text class="code" x="915" y="124" text-anchor="middle">Docker 入門 &lt;b&gt;</text>
+<text class="sm" x="915" y="148" text-anchor="middle">和左邊一模一樣</text>
+
+<!-- 第二排：三種編碼器 -->
+<text class="t" x="5" y="215">三種編碼器 → 線路上三種長相 → 三個不同的還原者</text>
+
+<rect class="p-html" x="5" y="226" width="64" height="26" rx="13"/>
+<text class="k1" x="37" y="244" text-anchor="middle" style="font-size:12px">HTML</text>
+<text class="code" x="85" y="244">Docker &amp;#x5165;&amp;#x9580; &amp;lt;b&amp;gt;</text>
+<path class="arr" d="M395,239 H425" marker-end="url(#am)"/>
+<text x="432" y="244">瀏覽器的 HTML 解析器：畫面直接顯示「入門 &lt;b&gt;」</text>
+
+<rect class="p-json" x="5" y="271" width="64" height="26" rx="13"/>
+<text class="k-enc" x="37" y="289" text-anchor="middle" style="font-size:12px">JSON</text>
+<text class="code" x="85" y="289">"Docker \u5165\u9580 \u003Cb\u003E"</text>
+<path class="arr" d="M395,284 H425" marker-end="url(#am)"/>
+<text x="432" y="289">JSON 解析器：前端 response.json()、後端 JsonSerializer.Deserialize</text>
+
+<rect class="p-url" x="5" y="316" width="64" height="26" rx="13"/>
+<text class="k-dec" x="37" y="334" text-anchor="middle" style="font-size:12px">網址</text>
+<text class="code" x="85" y="334">Docker%20%E5%85%A5%E9%96%80%20%3Cb%3E</text>
+<path class="arr" d="M395,329 H425" marker-end="url(#am)"/>
+<text x="432" y="334">ASP.NET Core 解析網址：[FromQuery] 拿到的已經是「入門 &lt;b&gt;」</text>
+
+<text class="sm" x="500" y="378" text-anchor="middle">你的程式裡幾乎不會出現「解碼」這個動作：還原是讀的那一方的解析器內建的</text>
+</svg>
