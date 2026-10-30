@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>補充：呼叫外部 API（Typed Client）</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>補充：從 Web API 呼叫外部 API（HttpClient、IHttpClientFactory、Typed Client）</h1>
+<p class="subtitle">到目前為止都是別人來呼叫你的 API。這頁反過來：你的 API 去呼叫別人的 API。.NET 有哪些做法？為什麼不建議到處 <code>new HttpClient()</code>？Typed Client 要寫哪三個零件？</p>
+<div class="tags">
+  <span class="tag">HttpClient</span><span class="tag">IHttpClientFactory</span><span class="tag">Typed Client</span><span class="tag">AddHttpClient</span>
+  <span class="tag">GetFromJsonAsync</span><span class="tag">BaseAddress</span><span class="tag">HttpRequestException</span><span class="tag">socket exhaustion</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>什麼時候會用到這頁</strong></p>
+<ul>
+  <li>後端要去拿別的服務的資料：天氣、匯率、金流、物流、公司內部其他系統</li>
+  <li>聽過「<code>HttpClient</code> 不要 <code>using</code>」「要用 <code>IHttpClientFactory</code>」，不知道為什麼</li>
+</ul>
+<p>練習用的外部 API 是 <a href="https://jsonplaceholder.typicode.com" target="_blank">JSONPlaceholder</a>：免費、不用金鑰，<code>GET /posts/1</code> 會回一篇假文章。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#role">角色互換：BlogApi 變成用戶端</a></li>
+    <li><a href="#ways">.NET 呼叫 API 的幾種做法</a></li>
+    <li><a href="#parts">Typed Client 的三個零件</a></li>
+    <li><a href="#exercise">練習：串接 JSONPlaceholder</a></li>
+    <li><a href="#break">故意弄壞：四個實驗</a></li>
+    <li><a href="#notfound">練習：對方回 404 時怎麼辦</a></li>
+    <li><a href="#next">延伸問題</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="role">1. 角色互換：BlogApi 變成用戶端</h2>
+<p>平常的流程是：前端發請求 → BlogApi 處理 → 回應。這次 BlogApi 在處理請求的<strong>中途</strong>，自己發出另一個 HTTP 請求給 JSONPlaceholder，等它回應，再把結果交給前端。對 JSONPlaceholder 來說，BlogApi 就是一個用戶端，跟瀏覽器、Postman 沒有差別。</p>
+
+<div class="diagram">
+<div class="mermaid">
+sequenceDiagram
+    participant F as 前端 / .http 檔
+    participant C as ExternalPostsController
+    participant T as JsonPlaceholderClient
+    participant J as jsonplaceholder.typicode.com
+    F->>C: GET /api/external-posts/1
+    C->>T: GetPostAsync(1)
+    T->>J: GET /posts/1（BlogApi 當用戶端）
+    J-->>T: 200 + 文章 JSON
+    Note over T: JSON 轉成 JsonPlaceholderPostDto 物件
+    T-->>C: JsonPlaceholderPostDto
+    C-->>F: 200 + 文章 JSON
+</div>
+<div class="diagram-caption">外面那一圈（前端 ↔ Controller）你在 01 寫過；裡面那一圈（Client ↔ JSONPlaceholder）是這頁要學的</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="ways">2. .NET 呼叫 API 的幾種做法</h2>
+<p>不管哪種做法，真正把 HTTP 請求送出去的都是 <code>System.Net.Http.HttpClient</code>。差別在於<strong>誰建立它、誰管理它</strong>，以及外面有沒有額外的方便功能。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>做法</th><th>做什麼</th><th>適合</th></tr>
+  <tr><td><code>new HttpClient()</code></td><td>自己建立、自己決定什麼時候丟掉</td><td>Console 小工具、一次性的腳本</td></tr>
+  <tr><td><code>IHttpClientFactory.CreateClient()</code></td><td>向 DI 要一個 Factory，需要時跟它拿 <code>HttpClient</code></td><td>偶爾呼叫一次、設定很簡單</td></tr>
+  <tr><td>Named Client</td><td><code>AddHttpClient("github", c =&gt; …)</code> 先用名稱登記 BaseAddress、Header，用的時候 <code>CreateClient("github")</code></td><td>要呼叫好幾個外部服務，各自設定不同</td></tr>
+  <tr><td><strong>Typed Client</strong></td><td>寫一個類別專門負責一個外部 API，建構子要一個 <code>HttpClient</code>，由 DI 傳進來</td><td><strong>Web API 專案的主流做法</strong>，這頁練這個</td></tr>
+  <tr><td>Refit、RestSharp、Flurl</td><td>第三方套件。Refit 只要宣告 interface，套件會產生呼叫的程式碼</td><td>端點很多、想少寫重複程式碼</td></tr>
+  <tr><td>NSwag、Kiota</td><td>讀對方的 OpenAPI（Swagger）文件，產生整套 client 類別</td><td>對方有提供 OpenAPI 規格</td></tr>
+</table>
+</div>
+
+<details class="aside">
+<summary>📎 補充：為什麼不建議到處 new HttpClient()</summary>
+<div class="aside-body">
+<p><code>HttpClient</code> 底下有一個 <code>HttpMessageHandler</code>，它負責開 TCP 連線、重複使用連線。問題出在它的壽命：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>寫法</th><th>會發生什麼</th></tr>
+  <tr><td>每個請求 <code>using var http = new HttpClient();</code></td><td>每次都開新連線。<code>Dispose</code> 之後，作業系統還會讓那條連線停在 TIME_WAIT 狀態一段時間。請求一多，可用的 port 被占滿，新請求連不出去，這叫 <strong>socket exhaustion</strong></td></tr>
+  <tr><td>整個程式共用一個 <code>static HttpClient</code></td><td>連線一直重複使用，port 不會被占滿；但連線建立時查到的 DNS 結果也一直沿用，對方換了 IP，你還連舊的</td></tr>
+  <tr><td><code>IHttpClientFactory</code>（包含 Typed Client）</td><td>Factory 保留 handler 重複使用連線，並且每隔一段時間（預設 2 分鐘）換一個新的 handler，新 handler 會重新查 DNS。兩個問題都解決</td></tr>
+</table>
+</div>
+<p>所以從 Factory 拿到的 <code>HttpClient</code> <strong>不用</strong>自己 <code>Dispose</code>，連線由 Factory 管理。官方說明：<a href="https://learn.microsoft.com/dotnet/fundamentals/networking/http/httpclient-guidelines" target="_blank">Guidelines for using HttpClient</a>。</p>
+</div>
+</details>
+
+<!-- ============================================================ -->
+<h2 id="parts">3. Typed Client 的三個零件</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>零件</th><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td><strong>DTO</strong></td><td>一個 <code>record</code>，屬性對應外部 API 回傳的 JSON 欄位</td><td>讓 JSON 轉成 C# 物件時，有地方放每個欄位的值</td></tr>
+  <tr><td><strong>Client 類別</strong></td><td>建構子要一個 <code>HttpClient</code>；方法裡用它送請求，回傳 DTO</td><td>「怎麼呼叫 JSONPlaceholder」只寫在這個類別裡，Controller 只呼叫 <code>GetPostAsync(1)</code>，不用知道網址和 JSON</td></tr>
+  <tr><td><strong>註冊</strong></td><td><code>Program.cs</code> 寫 <code>builder.Services.AddHttpClient&lt;Client 類別&gt;(c =&gt; …)</code></td><td>告訴 DI：有人要這個 Client 類別時，從 Factory 拿一個已經設好 BaseAddress 的 <code>HttpClient</code>，傳進它的建構子</td></tr>
+</table>
+</div>
+
+<h3 id="syntax">正式語法</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>要做的事</th><th>寫法</th><th>官方文件</th></tr>
+  <tr><td>註冊 Typed Client</td><td><code>builder.Services.AddHttpClient&lt;T&gt;(Action&lt;HttpClient&gt; configureClient)</code></td><td><a href="https://learn.microsoft.com/dotnet/api/microsoft.extensions.dependencyinjection.httpclientfactoryservicecollectionextensions.addhttpclient" target="_blank">AddHttpClient</a></td></tr>
+  <tr><td>設定共同的網址開頭</td><td><code>c.BaseAddress = new Uri("https://jsonplaceholder.typicode.com/");</code></td><td><a href="https://learn.microsoft.com/dotnet/api/system.net.http.httpclient.baseaddress" target="_blank">HttpClient.BaseAddress</a></td></tr>
+  <tr><td>GET 並把 JSON 轉成物件</td><td><code>await httpClient.GetFromJsonAsync&lt;T&gt;("posts/1")</code>，回傳 <code>T?</code></td><td><a href="https://learn.microsoft.com/dotnet/api/system.net.http.json.httpclientjsonextensions.getfromjsonasync" target="_blank">GetFromJsonAsync</a></td></tr>
+  <tr><td>POST 一個物件（轉成 JSON 送出）</td><td><code>await httpClient.PostAsJsonAsync("posts", dto)</code>，回傳 <code>HttpResponseMessage</code></td><td><a href="https://learn.microsoft.com/dotnet/api/system.net.http.json.httpclientjsonextensions.postasjsonasync" target="_blank">PostAsJsonAsync</a></td></tr>
+</table>
+</div>
+<p>兩個細節：</p>
+<ul>
+  <li><strong>大小寫</strong>：JSON 是 <code>userId</code>，C# 屬性是 <code>UserId</code>，<code>GetFromJsonAsync</code> 照樣對得上。它用的是 <code>JsonSerializerDefaults.Web</code> 設定，比對屬性名稱時不分大小寫。</li>
+  <li><strong>Typed Client 的生命週期是 Transient</strong>：每次有人要它，DI 就建立一個新的。所以不要把它注入到 Singleton 服務裡，否則那個 Singleton 會一直抓著同一個 <code>HttpClient</code>，Factory 換 handler 的機制就失效了。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="exercise">4. 練習：串接 JSONPlaceholder</h2>
+<div class="callout warn">
+<p>⚠️ 這頁的練習不需要資料庫，但 <code>Program.cs</code> 裡已經有 <code>AddDbContext</code>，啟動時不會連線，所以 Docker 沒開也能跑。</p>
+</div>
+
+<!-- 題 1 -->
+<div class="exercise">
+<h3>題 1：DTO</h3>
+<p>需求：</p>
+<ul>
+  <li>先用瀏覽器打開 <code>https://jsonplaceholder.typicode.com/posts/1</code>，看回傳的 JSON 有哪些欄位、各是什麼型別</li>
+  <li>新增 <code>Models/External/JsonPlaceholderPostDto.cs</code>，寫一個 <code>record</code>，屬性對應那些欄位</li>
+</ul>
+<p><strong>💡 提示</strong>：positional record 一行就能寫完，例如 <code>public record Xxx(int A, string B);</code>。namespace 跟著資料夾：<code>BlogApi.Models.External</code>。</p>
+<p class="accept">✅ 驗收：專案可以建置成功（Rider 的 Build 或 <code>dotnet build</code>）</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Models/External/JsonPlaceholderPostDto.cs</p>
+<pre><code class="language-csharp">namespace BlogApi.Models.External;
+
+// 對應 JSONPlaceholder 回傳的 { "userId": 1, "id": 1, "title": "…", "body": "…" }
+public record JsonPlaceholderPostDto(int UserId, int Id, string Title, string Body);</code></pre>
+<p>放在 <code>External</code> 資料夾，是為了和自己資料庫的 <code>Post</code> 分開：<code>Post</code> 長什麼樣子由你決定，這個 DTO 長什麼樣子由 JSONPlaceholder 決定。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 2 -->
+<div class="exercise">
+<h3>題 2：Client 類別</h3>
+<p>需求：</p>
+<ul>
+  <li>新增 <code>Clients/JsonPlaceholderClient.cs</code></li>
+  <li>建構子要一個 <code>HttpClient</code>，放進 <code>private readonly</code> 欄位（寫法同 01 的 <a href="01-efcore-crud.html#inject">Controller 拿 BlogDbContext</a>）</li>
+  <li>一個方法 <code>GetPostAsync(int id)</code>，呼叫 <code>posts/{id}</code>，回傳 <code>Task&lt;JsonPlaceholderPostDto?&gt;</code></li>
+</ul>
+<p><strong>💡 提示</strong>：第 3 節正式語法表的 <code>GetFromJsonAsync</code>。網址只寫 <code>posts/{id}</code>，前面的 <code>https://…</code> 交給題 3 的 BaseAddress。</p>
+<p class="accept">✅ 驗收：專案可以建置成功</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Clients/JsonPlaceholderClient.cs</p>
+<pre><code class="language-csharp">using BlogApi.Models.External;
+
+namespace BlogApi.Clients;
+
+public class JsonPlaceholderClient
+{
+    // 建構子收到的 HttpClient 放這裡；它的 BaseAddress 已經在 Program.cs 設好
+    private readonly HttpClient _httpClient;
+
+    public JsonPlaceholderClient(HttpClient httpClient)
+    {
+        _httpClient = httpClient;
+    }
+
+    public async Task&lt;JsonPlaceholderPostDto?&gt; GetPostAsync(int id)
+    {
+        // 實際送出的網址 = BaseAddress + "posts/1"
+        return await _httpClient.GetFromJsonAsync&lt;JsonPlaceholderPostDto&gt;($"posts/{id}");
+    }
+}</code></pre>
+<p><code>GetFromJsonAsync</code> 是 <code>System.Net.Http.Json</code> 命名空間的擴充方法。Web 專案的 ImplicitUsings 已經包含它，不用自己寫 <code>using</code>。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 3 -->
+<div class="exercise">
+<h3>題 3：在 Program.cs 註冊</h3>
+<p>需求：</p>
+<ul>
+  <li>在 <code>AddDbContext</code> 那段下面，註冊 <code>JsonPlaceholderClient</code> 為 Typed Client</li>
+  <li>BaseAddress 設成 <code>https://jsonplaceholder.typicode.com/</code>（注意結尾的 <code>/</code>）</li>
+</ul>
+<p><strong>💡 提示</strong>：第 3 節正式語法表的前兩列。lambda 的參數 <code>c</code> 就是之後會傳進你建構子的那個 <code>HttpClient</code>。</p>
+<p class="accept">✅ 驗收：專案可以建置成功、可以啟動</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Program.cs（新增的部分）</p>
+<pre><code class="language-csharp">using BlogApi.Clients;
+
+// …AddDbContext 那段下面
+
+// 有人要 JsonPlaceholderClient 時：從 Factory 拿一個 HttpClient，先執行這個 lambda 設好 BaseAddress，
+// 再把它傳進 JsonPlaceholderClient 的建構子
+builder.Services.AddHttpClient&lt;JsonPlaceholderClient&gt;(c =&gt;
+    c.BaseAddress = new Uri("https://jsonplaceholder.typicode.com/"));</code></pre>
+<p>和 01 的 <code>AddDbContext</code> 一樣，這一行在啟動時只登記做法，還沒有建立任何 <code>HttpClient</code>。真的有 Controller 要 <code>JsonPlaceholderClient</code> 時才建立。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 4 -->
+<div class="exercise">
+<h3>題 4：Controller 和 .http 檔</h3>
+<p>需求：</p>
+<ul>
+  <li>新增 <code>Controllers/ExternalPostsController.cs</code>，路由 <code>api/external-posts</code></li>
+  <li>建構子要一個 <code>JsonPlaceholderClient</code></li>
+  <li><code>GET api/external-posts/{id}</code>：呼叫 <code>GetPostAsync(id)</code>，回傳結果</li>
+  <li>在 <code>BlogApi.http</code> 加一個請求打 <code>/api/external-posts/1</code></li>
+</ul>
+<p><strong>💡 提示</strong>：Controller 的骨架（<code>[ApiController]</code>、<code>[Route]</code>、<code>ControllerBase</code>、<code>[HttpGet("{id}")]</code>）和 01 的 <code>PostsController</code> 一樣。回傳型別可以用 <code>Task&lt;ActionResult&lt;JsonPlaceholderPostDto&gt;&gt;</code>。</p>
+<p class="accept">✅ 驗收：送出 <code>.http</code> 的請求，回 200 和第 1 篇文章的 JSON（<code>title</code> 是 <code>sunt aut facere repellat…</code>）</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Controllers/ExternalPostsController.cs</p>
+<pre><code class="language-csharp">using BlogApi.Clients;
+using BlogApi.Models.External;
+using Microsoft.AspNetCore.Mvc;
+
+namespace BlogApi.Controllers;
+
+[ApiController]
+[Route("api/external-posts")]
+public class ExternalPostsController : ControllerBase
+{
+    private readonly JsonPlaceholderClient _client;
+
+    public ExternalPostsController(JsonPlaceholderClient client)
+    {
+        _client = client;
+    }
+
+    [HttpGet("{id:int}")]
+    public async Task&lt;ActionResult&lt;JsonPlaceholderPostDto&gt;&gt; Get(int id)
+    {
+        JsonPlaceholderPostDto? post = await _client.GetPostAsync(id);
+        return post;
+    }
+}</code></pre>
+<p class="file-label">BlogApi/BlogApi.http（新增）</p>
+<pre><code class="language-http">GET {{BlogApi_HostAddress}}/api/external-posts/1
+Accept: application/json
+
+###</code></pre>
+<p>回應：</p>
+<pre><code class="language-plaintext">HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+
+{
+  "userId": 1,
+  "id": 1,
+  "title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit",
+  "body": "quia et suscipit\nsuscipit recusandae consequuntur …"
+}</code></pre>
+<p>Controller 完全沒有出現 <code>jsonplaceholder.typicode.com</code> 或 JSON 的字樣。之後要換一個外部服務，或改成從設定檔讀網址，只動 <code>Program.cs</code> 和 <code>JsonPlaceholderClient</code>。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="break">5. 故意弄壞：四個實驗</h2>
+<p>每個實驗改一個地方，<strong>先猜</strong>會發生什麼，再執行，再打開對照。做完記得改回來。</p>
+
+<div class="exercise">
+<h3>實驗 A：拿掉註冊</h3>
+<p>把題 3 的 <code>AddHttpClient&lt;JsonPlaceholderClient&gt;(…)</code> 註解掉，重新啟動，送出 <code>.http</code> 的請求。</p>
+<p>猜：啟動時就失敗，還是請求進來才失敗？錯誤訊息裡會提到哪個類別？</p>
+<details class="answer">
+<summary>觀察與解釋（試完再打開）</summary>
+<div class="answer-body">
+<p>啟動成功，請求進來才失敗，回 500。錯誤訊息說找不到 <code>JsonPlaceholderClient</code> 這個服務，並提到正在建立的是 <code>ExternalPostsController</code>。</p>
+<p>原因：Controller 是請求進來時才建立的。DI 要建立 <code>ExternalPostsController</code>，看到建構子要一個 <code>JsonPlaceholderClient</code>，去登記簿裡找，沒有登記過，只好放棄。這和 01 拿掉 <code>AddDbContext</code> 是同一件事。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3>實驗 B：DTO 屬性名稱寫錯</h3>
+<p>把 DTO 的 <code>Body</code> 改成 <code>Content</code>，重新啟動，送出請求。</p>
+<p>猜：會報錯嗎？回應裡會看到什麼？</p>
+<details class="answer">
+<summary>觀察與解釋（試完再打開）</summary>
+<div class="answer-body">
+<p>不會報錯，回 200。其他欄位都正常，只有 <code>content</code> 是空的（<code>string</code> 的預設值 <code>null</code>）。實測轉出來的物件：</p>
+<pre><code class="language-plaintext">WrongDto { UserId = 1, Id = 1, Title = sunt aut facere …, Content =  }</code></pre>
+<p>原因：轉換時，JSON 裡的 <code>body</code> 找不到同名屬性，就被略過；DTO 的 <code>Content</code> 在 JSON 裡找不到對應欄位，就留預設值。兩邊都不算錯誤。</p>
+<p>這是串接外部 API 最常見的 bug：<strong>不報錯，資料默默變成空的</strong>。名稱一定要對著對方的 JSON 寫；名稱想取不一樣時，用 <code>[JsonPropertyName("body")]</code> 指定對應的 JSON 欄位。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3>實驗 C：BaseAddress 結尾的斜線</h3>
+<p>把 BaseAddress 改成 <code>https://jsonplaceholder.typicode.com/posts</code>（<strong>沒有</strong>結尾 <code>/</code>），Client 裡的網址改成只有 <code>$"{id}"</code>。送出請求。再把 BaseAddress 結尾補上 <code>/</code>，送一次。</p>
+<p>猜：兩次實際送出去的網址各是什麼？</p>
+<details class="answer">
+<summary>觀察與解釋（試完再打開）</summary>
+<div class="answer-body">
+<p>用 <code>new Uri(baseAddress, 相對網址)</code> 實測四種組合：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>BaseAddress</th><th>相對網址</th><th>實際送出</th></tr>
+  <tr><td><code>…typicode.com/posts</code></td><td><code>1</code></td><td><code>…typicode.com/1</code> ❌</td></tr>
+  <tr><td><code>…typicode.com/posts</code></td><td><code>/1</code></td><td><code>…typicode.com/1</code> ❌</td></tr>
+  <tr><td><code>…typicode.com/posts/</code></td><td><code>1</code></td><td><code>…typicode.com/posts/1</code> ✅</td></tr>
+  <tr><td><code>…typicode.com/posts/</code></td><td><code>/1</code></td><td><code>…typicode.com/1</code> ❌</td></tr>
+</table>
+</div>
+<p>規則跟瀏覽器解析相對連結一樣：BaseAddress 最後一個 <code>/</code> 後面的部分（這裡的 <code>posts</code>）會被當成「檔名」換掉；相對網址開頭是 <code>/</code> 的話，直接從網域根目錄開始。</p>
+<p>記法：<strong>BaseAddress 結尾加 <code>/</code>，相對網址開頭不加 <code>/</code></strong>。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3>實驗 D：要一篇不存在的文章</h3>
+<p>全部改回正確版本，送出 <code>GET /api/external-posts/99999</code>。</p>
+<p>猜：前端收到 404 還是別的？</p>
+<details class="answer">
+<summary>觀察與解釋（試完再打開）</summary>
+<div class="answer-body">
+<p>前端收到 <strong>500</strong>，不是 404。JSONPlaceholder 確實回了 404，但 <code>GetFromJsonAsync</code> 看到不是 2xx 的狀態碼，就丟出例外：</p>
+<pre><code class="language-plaintext">System.Net.Http.HttpRequestException: Response status code does not indicate success: 404 (Not Found).</code></pre>
+<p>例外一路往上，Controller 沒有處理，ASP.NET Core 就回 500。對前端來說，「文章不存在」和「伺服器壞了」看起來一樣，這不對。下一題修它。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="notfound">6. 練習：對方回 404 時怎麼辦</h2>
+<div class="exercise">
+<h3>題 5：把 404 轉成 404</h3>
+<p>需求：</p>
+<ul>
+  <li>改 <code>GetPostAsync</code>：對方回 404 時回傳 <code>null</code>，其他失敗照樣丟例外</li>
+  <li>改 Controller：拿到 <code>null</code> 就回 <code>NotFound()</code></li>
+</ul>
+<p><strong>💡 提示</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>需求</th><th>用什麼</th></tr>
+  <tr><td>送請求，但先不轉 JSON</td><td><code>HttpResponseMessage response = await _httpClient.GetAsync(網址);</code></td></tr>
+  <tr><td>看狀態碼</td><td><code>response.StatusCode == HttpStatusCode.NotFound</code>（<code>using System.Net;</code>）</td></tr>
+  <tr><td>不是 2xx 就丟例外</td><td><code>response.EnsureSuccessStatusCode();</code></td></tr>
+  <tr><td>把回應內容轉成物件</td><td><code>await response.Content.ReadFromJsonAsync&lt;T&gt;()</code></td></tr>
+</table>
+</div>
+<p class="accept">✅ 驗收：<code>/api/external-posts/1</code> 回 200 和文章；<code>/api/external-posts/99999</code> 回 404</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Clients/JsonPlaceholderClient.cs（GetPostAsync 改成）</p>
+<pre><code class="language-csharp">public async Task&lt;JsonPlaceholderPostDto?&gt; GetPostAsync(int id)
+{
+    HttpResponseMessage response = await _httpClient.GetAsync($"posts/{id}");
+
+    // 對方說找不到：這是正常情況，用 null 告訴呼叫的人「沒有這篇」
+    if (response.StatusCode == HttpStatusCode.NotFound)
+    {
+        return null;
+    }
+
+    // 其他非 2xx（500、503…）是對方真的出問題，照樣丟 HttpRequestException
+    response.EnsureSuccessStatusCode();
+
+    return await response.Content.ReadFromJsonAsync&lt;JsonPlaceholderPostDto&gt;();
+}</code></pre>
+<p>檔案最上面要加 <code>using System.Net;</code>，<code>HttpStatusCode</code> 在這個命名空間。</p>
+<p class="file-label">BlogApi/Controllers/ExternalPostsController.cs（Get 改成）</p>
+<pre><code class="language-csharp">[HttpGet("{id:int}")]
+public async Task&lt;ActionResult&lt;JsonPlaceholderPostDto&gt;&gt; Get(int id)
+{
+    JsonPlaceholderPostDto? post = await _client.GetPostAsync(id);
+    if (post is null)
+    {
+        return NotFound();
+    }
+    return post;
+}</code></pre>
+<p>為什麼不在 Controller 裡 <code>try/catch HttpRequestException</code>：Controller 不該知道底下用的是 HTTP。「找不到」由 Client 翻譯成 <code>null</code>，Controller 只判斷 <code>null</code>，和 01 查資料庫找不到時的寫法一樣。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="next">延伸問題</h2>
+<ol>
+  <li>JSONPlaceholder 偶爾很慢，或暫時回 503。安裝 <code>Microsoft.Extensions.Http.Resilience</code> 套件，在 <code>AddHttpClient&lt;…&gt;(…)</code> 後面接 <code>.AddStandardResilienceHandler()</code>，它預設做了哪些事（重試幾次、逾時多久）？</li>
+  <li>外部 API 要求每個請求都帶 <code>Authorization: Bearer xxx</code>。寫在每個方法裡、寫在註冊的 lambda 裡（<code>c.DefaultRequestHeaders</code>）、寫成一個 <code>DelegatingHandler</code>，三種差在哪？金鑰要放在哪裡（提示：01 的 User Secrets）？</li>
+  <li>前端打你的 API 打到一半就關掉分頁，你的 API 還在等 JSONPlaceholder 回應，要怎麼讓它也停下來？（提示：<code>CancellationToken</code>，Controller 的方法可以直接收一個）</li>
+  <li>如果把 <code>JsonPlaceholderClient</code> 注入到一個用 <code>AddSingleton</code> 註冊的服務裡，第 2 節補充說的「每 2 分鐘換 handler」還有效嗎？</li>
+</ol>
+
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://learn.microsoft.com/aspnet/core/fundamentals/http-requests" target="_blank">Make HTTP requests using IHttpClientFactory in ASP.NET Core</a>（基本用法、Named Client、Typed Client 都在這頁）</li>
+  <li><a href="https://learn.microsoft.com/dotnet/fundamentals/networking/http/httpclient-guidelines" target="_blank">Guidelines for using HttpClient</a>（socket exhaustion 和 DNS 問題）</li>
+  <li><a href="https://learn.microsoft.com/dotnet/fundamentals/networking/http/httpclient" target="_blank">Make HTTP requests with the HttpClient class</a>（<code>GetFromJsonAsync</code>、<code>PostAsJsonAsync</code> 等）</li>
+  <li><a href="https://learn.microsoft.com/dotnet/core/resilience/http-resilience" target="_blank">Build resilient HTTP apps</a>（<code>AddStandardResilienceHandler</code>）</li>
+  <li><a href="https://github.com/reactiveui/refit" target="_blank">Refit</a>、<a href="https://learn.microsoft.com/openapi/kiota/overview" target="_blank">Kiota</a></li>
+</ul>
+</div>
+
+<nav class="footer-nav">
+  <a href="http-cookie.html">← 補充：Cookie</a>
+  <a href="../index.html">回目錄</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/http.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

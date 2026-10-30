@@ -125,6 +125,32 @@
 <div class="diagram-caption">同一個字串，白名單不同，原始回應就長得不一樣；但對方讀回來都是同一個字串</div>
 </div>
 
+<details class="aside" id="allowlist">
+<summary>📎 補充：白名單裡實際有哪些字（用 .Default 跑出來的）</summary>
+<div class="aside-body">
+<p>三個 <code>.Default</code> 的白名單都從 BasicLatin（U+0000～U+007F，也就是 ASCII）出發，再各自扣掉一些字。把 U+0020～U+007E 這 95 個可見字元逐一丟進去，結果是：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>編碼器</th><th>原樣放行</th><th>改寫</th></tr>
+  <tr><td><code>HtmlEncoder.Default</code></td><td>英文字母、數字、空白，和 <code>! # $ % ( ) * , - . / : ; = ? @ [ \ ] ^ _ ` { | } ~</code></td><td><code>" &amp; ' + &lt; &gt;</code></td></tr>
+  <tr><td><code>JavaScriptEncoder.Default</code></td><td>英文字母、數字、空白，和 <code>! # $ % ( ) * , - . / : ; = ? @ [ ] ^ _ { | } ~</code></td><td><code>" &amp; ' + &lt; &gt; \ `</code></td></tr>
+  <tr><td><code>UrlEncoder.Default</code></td><td>英文字母、數字，和 <code>! $ ( ) * , - . ; @ _ ~</code></td><td>空白，和 <code>" # % &amp; ' + / : &lt; = &gt; ? [ \ ] ^ ` { | }</code></td></tr>
+</table>
+</div>
+<p>三列合起來看：</p>
+<ul>
+  <li>英文字母和數字在哪裡都放行。</li>
+  <li><code>" &amp; ' + &lt; &gt;</code> 這六個字三個編碼器都改寫：前五個在 HTML 裡是標籤、屬性、實體的語法符號；<code>+</code> 是為了擋一種叫 UTF-7 的舊編碼攻擊，框架原始碼的註解寫著「can be used to perform UTF7-based attacks」。</li>
+  <li><code>JavaScriptEncoder</code> 多擋 <code>\</code> 和 <code>`</code>：反斜線是 JSON 字串的逸出符號，反引號是 JavaScript 樣板字串的符號。</li>
+  <li><code>UrlEncoder</code> 擋最多：空白、<code>/</code>、<code>?</code>、<code>=</code>、<code>#</code>、<code>%</code> 在網址裡各有意義（分隔路徑、開始查詢字串、分隔參數），所以只留下不會被誤讀的那幾個符號。</li>
+  <li>控制字元（Tab、換行等 U+0000～U+001F）一律改寫：Tab 在 HTML 變 <code>&amp;#x9;</code>，在 JSON 變 <code>\t</code>，在網址變 <code>%09</code>。</li>
+  <li>U+007F 以上的字（中文、全形標點、é、emoji）預設全部改寫。<code>UnicodeRanges.All</code> 把 U+0080～U+FFFF 加進白名單，所以「文」「，」「＜」「é」變成原樣；但上面那六個字照樣改寫，emoji 在補充平面也照樣改寫成 <code>\uD83D\uDE00</code>。</li>
+  <li><code>UnsafeRelaxedJsonEscaping</code> 只改寫 <code>"</code> 和 <code>\</code> 這兩個會破壞 JSON 字串本身的字，其餘全放行。</li>
+</ul>
+<p>想自己看：對 U+0020～U+007E 逐一跑 <code>HtmlEncoder.Default.Encode(s) == s</code>，為 <code>true</code> 的就是放行的字。</p>
+</div>
+</details>
+
 <p><strong>那中文為什麼也被改寫？</strong>因為 .NET 的預設白名單只有 BasicLatin（ASCII 的英數和常見符號）。中文不在裡面，就跟著被改寫。這<strong>不是壞掉</strong>：改寫的格式是標準的，對方讀回來一定還原得了；只是人眼看原始回應很難讀。</p>
 <p><code>UnicodeRanges.All</code> 的意思是「把白名單放大到整個 Unicode 基本平面（U+0000～U+FFFF）」，中文就會原樣輸出；<code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code> 照樣改寫，安全底線還在。</p>
 <p><strong>為什麼 <code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code> 不看白名單、永遠改寫？</strong>因為它們在 HTML 裡是「標籤開始」「標籤結束」「實體開始」的語法符號。放行它們，文字就有機會變成標籤。這件事發生時就叫 XSS。</p>
@@ -151,6 +177,7 @@
   <li>讀者的瀏覽器收到的 HTML 裡有一個<strong>真的</strong> <code>&lt;script&gt;</code> 標籤。瀏覽器不知道這段「本來是標題」，它只看到標籤，就當程式碼執行。</li>
   <li>那段程式碼是在<strong>你的網站</strong>上執行的，所以拿得到你的網站發給這位讀者的 cookie，再用 <code>fetch</code> 送到攻擊者的伺服器。讀者的畫面上什麼都看不出來。</li>
 </ol>
+<p>這裡的 cookie，是伺服器發給瀏覽器、瀏覽器之後每次請求都自動帶著的一小段文字，伺服器靠它認出「這是 alice」。拿到它就能冒充這位讀者。cookie 本身是什麼、還有哪些類似的東西，見 <a href="http-cookie.html">補充：Cookie 是什麼</a>。</p>
 <p>「跨站（Cross-Site）」指的就是：程式碼是攻擊者寫的，卻在你的網站上、以讀者的身分執行，資料再跨到攻擊者的站。</p>
 
 <div class="diagram">
@@ -234,7 +261,7 @@ string html = "&lt;h1&gt;" + HtmlEncoder.Default.Encode(post.Title) + "&lt;/h1&g
   <li><strong>儲存型（Stored）</strong>：3-1 這種，惡意字串先進了資料庫，之後每個來看的人都中。部落格、留言板最常見。</li>
   <li><strong>反射型（Reflected）</strong>：惡意字串放在網址裡（例如搜尋關鍵字），伺服器把它原封不動寫回搜尋結果頁。要騙受害者點那個網址才會中。</li>
   <li><strong>DOM 型</strong>：伺服器完全沒碰，是前端自己用 <code>innerHTML</code> 把網址或輸入框的內容塞進畫面。</li>
-  <li>cookie 設定 <code>HttpOnly</code> 之後，JavaScript 的 <code>document.cookie</code> 讀不到它，3-1 那段程式碼就偷不到。這是第二道防線，但擋不住「用讀者的身分偷偷送出請求」這類其他攻擊，所以輸出時編碼還是必要的。</li>
+  <li>cookie 設定 <code>HttpOnly</code> 之後，JavaScript 的 <code>document.cookie</code> 讀不到它，3-1 那段程式碼就偷不到。這是第二道防線，但擋不住「用讀者的身分偷偷送出請求」這類其他攻擊，所以輸出時編碼還是必要的（細節在 <a href="http-cookie.html#xss">Cookie 補充頁第 5 節</a>）。</li>
   <li>官方說明：<a href="https://learn.microsoft.com/aspnet/core/security/cross-site-scripting" target="_blank">Prevent Cross-Site Scripting (XSS) in ASP.NET Core</a>、<a href="https://owasp.org/www-community/attacks/xss/" target="_blank">OWASP：Cross Site Scripting</a></li>
 </ul>
 </div>

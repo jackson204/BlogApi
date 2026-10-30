@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" width="1000" height="520" role="img" aria-label="四種記得你的東西住在哪裡、誰把它放進請求：瀏覽器這一邊有 cookie 罐（瀏覽器自動放進每個請求，HttpOnly 後 JavaScript 讀不到）、localStorage（從不自動帶，JavaScript 讀得到）、前端程式（讀 localStorage 的 token 自己寫進 Authorization header）；伺服器這一邊從 Cookie 或 Authorization header 認出你，Session 存放區把真正的資料放在伺服器、cookie 裡只放一把鑰匙">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --c2: #bc4c00; --c2-s: #fff4e5; --c3: #8250df; --c3-s: #fbefff; --ok: #1a7f37; --ok-s: #dcfce7; --no: #cf222e;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --c2: #ffa657; --c2-s: #2a1d0e; --c3: #d2a8ff; --c3-s: #271b3d; --ok: #3fb950; --ok-s: #12261b; --no: #ff7b72;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .t { font-size: 14px; font-weight: 700; }
+  .sm { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 11.5px; }
+  .box { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .in { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .jar { fill: var(--c2-s); stroke: var(--c2); stroke-width: 2; }
+  .sess { fill: var(--c3-s); stroke: var(--c3); stroke-width: 1.5; }
+  .area1 { fill: none; stroke: var(--c1); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .area3 { fill: none; stroke: var(--c3); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .k1 { fill: var(--c1); font-weight: 700; } .k-enc { fill: var(--c2); font-weight: 700; } .k3 { fill: var(--c3); font-weight: 700; } .k-ok { fill: var(--ok); font-weight: 700; } .k-no { fill: var(--no); font-weight: 700; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .arr-ok { fill: none; stroke: var(--ok); stroke-width: 2.2; }
+  .arr-c1 { fill: none; stroke: var(--c1); stroke-width: 2.2; }
+  .f-muted { fill: var(--muted); } .f-ok { fill: var(--ok); } .f-c1 { fill: var(--c1); }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="ak" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-ok" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-c1" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="520" rx="12"/>
+
+<text class="t" x="500" y="28" text-anchor="middle">四種「記得你」的東西：住在哪裡、誰把它放進請求、JavaScript 讀不讀得到</text>
+
+<!-- 瀏覽器這一邊 -->
+<rect class="area1" x="15" y="60" width="515" height="380" rx="10"/>
+<text class="t k1" x="25" y="82">瀏覽器這一邊（使用者的電腦）</text>
+
+<rect class="jar" x="35" y="105" width="230" height="120" rx="10"/>
+<text class="t k-enc" x="150" y="130" text-anchor="middle">Cookie 罐</text>
+<text class="code" x="150" y="155" text-anchor="middle">user=alice</text>
+<text class="sm" x="150" y="178" text-anchor="middle">伺服器用 Set-Cookie 放進來的</text>
+<text class="sm" x="150" y="196" text-anchor="middle">瀏覽器自動放進每個請求</text>
+<text class="sm" x="150" y="214" text-anchor="middle">HttpOnly → JavaScript 讀不到</text>
+
+<rect class="box" x="35" y="300" width="230" height="120" rx="10"/>
+<text class="t" x="150" y="325" text-anchor="middle">localStorage</text>
+<text class="code" x="150" y="350" text-anchor="middle">token=eyJhbGci…</text>
+<text class="sm" x="150" y="373" text-anchor="middle">前端程式自己放的，伺服器看不到</text>
+<text class="sm" x="150" y="391" text-anchor="middle">從不自動帶</text>
+<text class="sm" x="150" y="409" text-anchor="middle">JavaScript 讀得到 → XSS 偷得到</text>
+
+<rect class="in" x="300" y="200" width="160" height="110" rx="10"/>
+<text class="t k1" x="380" y="225" text-anchor="middle">前端程式</text>
+<text class="sm" x="380" y="247" text-anchor="middle">fetch(…)</text>
+<text class="sm" x="380" y="268" text-anchor="middle">讀 localStorage 的 token</text>
+<text class="sm" x="380" y="286" text-anchor="middle">自己寫進 header</text>
+
+<path class="arr" d="M265,360 C285,360 285,290 298,290" marker-end="url(#am)"/>
+<text class="sm" x="290" y="340">程式讀出來</text>
+
+<!-- 往伺服器的兩條路 -->
+<text class="code k-ok" x="415" y="156" text-anchor="middle">Cookie: user=alice</text>
+<path class="arr-ok" d="M265,165 H568" marker-end="url(#ak)"/>
+<text class="sm" x="415" y="182" text-anchor="middle">瀏覽器自動加，前端程式沒碰</text>
+
+<text class="code k1" x="514" y="240" text-anchor="middle" style="font-size:11px">Authorization:</text>
+<text class="code k1" x="514" y="253" text-anchor="middle" style="font-size:11px">Bearer eyJhbGci…</text>
+<path class="arr-c1" d="M460,262 H568" marker-end="url(#a1)"/>
+<text class="sm" x="514" y="280" text-anchor="middle">前端程式自己加</text>
+
+<!-- 伺服器這一邊 -->
+<rect class="area3" x="570" y="60" width="415" height="380" rx="10"/>
+<text class="t k3" x="580" y="82">伺服器這一邊（你的 API）</text>
+
+<rect class="box" x="590" y="105" width="375" height="120" rx="10"/>
+<text class="t" x="777" y="130" text-anchor="middle">認出你是誰</text>
+<text class="sm" x="777" y="152" text-anchor="middle">從 Cookie header 或 Authorization header</text>
+<text class="sm" x="777" y="170" text-anchor="middle">拿到 user=alice 或 token</text>
+<text class="code" x="777" y="196" text-anchor="middle">Request.Cookies["user"]</text>
+
+<rect class="sess" x="590" y="260" width="375" height="160" rx="10"/>
+<text class="t k3" x="777" y="285" text-anchor="middle">Session 存放區（記憶體或 Redis）</text>
+<text class="code" x="777" y="310" text-anchor="middle">abc123 → { user: alice, cart: [...] }</text>
+<text class="sm" x="777" y="335" text-anchor="middle">真正的資料放在伺服器</text>
+<text class="sm" x="777" y="353" text-anchor="middle">瀏覽器的 cookie 裡只放一把鑰匙</text>
+<text class="code" x="777" y="378" text-anchor="middle">Cookie: .AspNetCore.Session=abc123</text>
+<text class="sm" x="777" y="402" text-anchor="middle">ASP.NET Core：AddSession() + UseSession()</text>
+
+<text class="sm" x="500" y="470" text-anchor="middle">自動帶的（cookie）方便，但要防別的網站借你的瀏覽器發請求，所以有 SameSite</text>
+<text class="sm" x="500" y="492" text-anchor="middle">程式自己帶的（token）沒有這個問題，但放在 localStorage 就怕 XSS；JWT 的內容是第 5 課的事</text>
+</svg>
