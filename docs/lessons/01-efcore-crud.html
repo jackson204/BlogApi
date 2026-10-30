@@ -291,10 +291,36 @@ List&lt;Post&gt; all = await _db.Posts.ToListAsync();     // 整張表 → 一�
 <div class="diagram-caption">DbContext 是一個「工作階段」，裡面有查詢入口（DbSet）、記帳本（ChangeTracker）、連線</div>
 </div>
 <ol>
-  <li><strong>提供查詢入口</strong>：透過 <code>DbSet</code>。<code>DbSet</code> 實作了 <code>IQueryable&lt;Post&gt;</code>，所以可以直接接 LINQ：<code>_db.Posts.Where(…)</code></li>
+  <li><strong>提供查詢入口</strong>：透過 <code>DbSet</code>。<code>_db.Posts</code> 後面可以直接寫 <code>.Where(…)</code>、<code>.OrderBy(…)</code> 這些 LINQ 方法，寫的條件會被 EF Core 翻成 SQL，在資料庫那邊篩選（為什麼可以直接寫：見下方補充）</li>
   <li><strong>記帳</strong>：ChangeTracker 記住查出來或加進去的物件，以及它們被改了什麼（2-6 會詳細講）</li>
   <li><strong>管理連線</strong>：需要時才開連線，用完還回連線池，你不用寫 <code>new SqlConnection</code></li>
 </ol>
+
+<details class="aside" id="iqueryable">
+<summary>📎 補充：為什麼 _db.Posts 後面可以直接寫 .Where(…)？</summary>
+<div class="aside-body">
+<p>因為兩件事剛好對上：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>事實</th><th>在哪裡看得到</th></tr>
+  <tr><td>① <code>Where</code>、<code>OrderBy</code>、<code>Select</code> 不是 <code>DbSet</code> 自己的方法，是 .NET 內建 <code>System.Linq.Queryable</code> 類別裡的<strong>擴充方法</strong>，第一個參數是 <code>this IQueryable&lt;T&gt; source</code>。意思是：任何「是 <code>IQueryable&lt;T&gt;</code>」的東西，都可以用 <code>.Where(…)</code> 呼叫它</td><td>Rider 對 <code>.Where</code> 按 Ctrl+B</td></tr>
+  <tr><td>② <code>DbSet&lt;Post&gt;</code> 的類別宣告寫了 <code>: IQueryable&lt;Post&gt;</code>，也就是<strong>實作</strong>了這個 interface。所以 <code>DbSet&lt;Post&gt;</code> 就是一個 <code>IQueryable&lt;Post&gt;</code></td><td>Rider 對 <code>DbSet</code> 按 Ctrl+B</td></tr>
+</table>
+</div>
+<p>①說「是 <code>IQueryable&lt;T&gt;</code> 就能用」，②說「<code>DbSet&lt;Post&gt;</code> 是 <code>IQueryable&lt;Post&gt;</code>」，所以 <code>_db.Posts.Where(…)</code> 不用先轉換型別就能呼叫：</p>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    A["DbSet#lt;Post#gt;<br>（_db.Posts）"] -- "② 類別宣告寫了 : IQueryable#lt;Post#gt;" --> B["IQueryable#lt;Post#gt;"]
+    C["System.Linq.Queryable<br>Where / OrderBy / Select …"] -- "① 第一個參數是 this IQueryable#lt;T#gt;" --> B
+    B ==> D["_db.Posts.Where(p => p.Id > 3)<br>可以直接呼叫"]
+</div>
+<div class="diagram-caption"><code>Where</code> 只看「你是不是 <code>IQueryable&lt;T&gt;</code>」，不看你是哪個類別</div>
+</div>
+<p>擴充方法的 <code>this</code> 語法，在 <a href="csharp-delegates-signature.html">C# 補充頁</a>看過的 <code>AddDbContext</code> 也是同一種：那裡 <code>this</code> 後面接 <code>IServiceCollection</code>，這裡接 <code>IQueryable&lt;T&gt;</code>。</p>
+<p>為什麼條件會變成 SQL：<code>Queryable.Where</code> 收的參數型別是 <code>Expression&lt;Func&lt;T, bool&gt;&gt;</code>，它拿到的不是一段可以執行的程式，而是「<code>p.Id &gt; 3</code> 這個條件長什麼樣子」的描述（運算式樹）。EF Core 讀這份描述，翻成 <code>WHERE [p].[Id] &gt; 3</code> 送給資料庫。</p>
+</div>
+</details>
 <p>這些能力都來自 EF Core 的 <code>DbContext</code>。你的 <code>BlogDbContext</code> <strong>繼承</strong>它，所以不用自己寫就有了。</p>
 
 <h4>一個請求用一個，用完就丟</h4>
