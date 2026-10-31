@@ -439,7 +439,7 @@ flowchart TB
 </div>
 <p>這就是 <a href="#wiring">3-8</a> 最後一句說的「<code>dotnet ef</code> 指令也會要一個 BlogDbContext」。工具不是憑空知道你的模型，它真的把你的 <code>Program.cs</code> 跑起來、從 DI 拿一個 <code>BlogDbContext</code> 出來看。這也是為什麼需要 Design 套件，以及為什麼 <code>dotnet ef</code> 也會去讀連線字串。</p>
 
-<p><strong>兩者怎麼綁在一起</strong>：打開產生的 Migration 檔，最上面有兩個 attribute，就是綁定的證據：</p>
+<p><strong>兩者怎麼綁在一起</strong>：<code>migrations add</code> 會產生三個檔案。<code>xxx_InitialCreate.cs</code> 放 <code>Up()</code> / <code>Down()</code>；<code>xxx_InitialCreate.Designer.cs</code> 放這份紀錄的「身分證」，最上面有兩個 attribute，就是綁定的證據：</p>
 <pre><code class="language-csharp">[DbContext(typeof(BlogDbContext))]          // 這份紀錄屬於哪個 DbContext
 [Migration("20261030xxxxxx_InitialCreate")] // 這份紀錄的版本號
 public partial class InitialCreate : Migration</code></pre>
@@ -1798,6 +1798,56 @@ GO</code></pre>
   <tr><td><code>DateTime?</code></td><td><code>datetime2 NULL</code></td><td><code>?</code> 代表可以是 null</td></tr>
 </table>
 </div>
+<p><strong>③ 確認 <code>database update</code> 真的套用了</strong></p>
+<p>先提醒：做完 <code>migrations add</code> 時，資料庫<strong>還是空的</strong>，只有 <code>Migrations\</code> 資料夾多了檔案。要等 <code>database update</code> 跑完，資料表才會出現（3-6 的「每個指令動到哪裡」）。</p>
+<p>成功時終端機會印出它套用了哪一個 migration，最後一行是 <code>Done.</code>。因為 <code>dotnet ef</code> 是把你的 <code>Program.cs</code> 跑起來執行的，<code>appsettings.Development.json</code> 的 log 設定也生效，所以每一句送出去的 SQL 都會印出來（實測，節錄）：</p>
+<pre><code class="nohighlight">Build started...
+Build succeeded.
+      SELECT 1
+      EXEC @result = sp_getapplock @Resource = '__EFMigrationsLock', @LockMode = 'Exclusive';
+      IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
+      BEGIN
+          CREATE TABLE [__EFMigrationsHistory] ( ... );
+      END;
+      SELECT [MigrationId], [ProductVersion]
+      FROM [__EFMigrationsHistory]
+      ORDER BY [MigrationId];
+Applying migration '20261031061902_InitialCreate'.
+      CREATE TABLE [Posts] (
+          [Id] int NOT NULL IDENTITY,
+          [Title] nvarchar(200) NOT NULL,
+          ...
+      );
+      INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+      VALUES (N'20261031061902_InitialCreate', N'10.0.14');
+      EXEC @result = sp_releaseapplock @Resource = '__EFMigrationsLock';
+Done.</code></pre>
+<p>這份輸出就是 <code>database update</code> 的完整步驟，和 3-6 的圖對照：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>順序</th><th>印出的 SQL</th><th>在做什麼</th></tr>
+  <tr><td>1</td><td><code>SELECT 1</code></td><td>測試連線</td></tr>
+  <tr><td>2</td><td><code>sp_getapplock '__EFMigrationsLock'</code></td><td>上鎖，防止兩個人（或兩台 CI 機器）同時跑 <code>update</code> 互相打架</td></tr>
+  <tr><td>3</td><td><code>IF OBJECT_ID('__EFMigrationsHistory') IS NULL … CREATE TABLE</code></td><td>記帳表不存在就先建</td></tr>
+  <tr><td>4</td><td><code>SELECT [MigrationId] … FROM [__EFMigrationsHistory]</code></td><td>讀記帳表，看哪些已經套用過（第一次是空的）</td></tr>
+  <tr><td>5</td><td><code>Applying migration '…_InitialCreate'</code></td><td>決定要套用這一個</td></tr>
+  <tr><td>6</td><td><code>CREATE TABLE [Posts] (…)</code></td><td>執行 <code>Up()</code> 翻成的 SQL，<strong>這裡表才真的出現</strong></td></tr>
+  <tr><td>7</td><td><code>INSERT INTO [__EFMigrationsHistory] … N'10.0.14'</code></td><td>記一筆「這版套用過了」。<code>10.0.14</code> 是 EF Core 版本，應該和 csproj 一致</td></tr>
+  <tr><td>8</td><td><code>sp_releaseapplock</code></td><td>解鎖</td></tr>
+  <tr><td>9</td><td><code>Done.</code></td><td>結束</td></tr>
+</table>
+</div>
+<p>再跑一次會是 <code>No migrations were applied. The database is already up to date.</code>，因為第 4 步讀到記帳表裡已經有這一筆，沒有新的要套用。這也是正常的。</p>
+<p>然後到資料庫那邊確認，三種方式任選：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>方式</th><th>怎麼做</th><th>應該看到</th></tr>
+  <tr><td>Rider Database 視窗</td><td>對 <code>BlogDb</code> 按右鍵 → Refresh，展開 tables</td><td><code>Posts</code> 和 <code>__EFMigrationsHistory</code> 兩張表；點開 <code>Posts</code> 的欄位，<code>Title</code> 是 <code>nvarchar(200)</code></td></tr>
+  <tr><td>SQL 查歷史表</td><td>在 Rider 的 console 執行<br><code>SELECT * FROM __EFMigrationsHistory;</code></td><td>一筆 <code>20261031061902_InitialCreate</code>，<code>ProductVersion</code> 是 EF Core 版本號</td></tr>
+  <tr><td>用 dotnet ef 問</td><td><code>dotnet ef migrations list</code></td><td>列出所有 migration；還沒套用的後面會標 <code>(Pending)</code>，套用過的沒有標記</td></tr>
+</table>
+</div>
+<p>兩張表各是什麼：<code>Posts</code> 是你的 Entity 對應的資料表；<code>__EFMigrationsHistory</code> 是 EF Core 自己建的記帳表，記錄「這個資料庫已經套用到哪一版」。下次 <code>database update</code> 就是靠它判斷哪些 migration 還沒跑過。</p>
 <p>Migration 產生的 <code>Migrations\</code> 資料夾<strong>要 commit</strong>，它就是資料庫結構的版本紀錄。</p>
 </div>
 </details>
@@ -2150,6 +2200,7 @@ WHERE [Id] = @p0;</code></pre></td>
   <tr><td><code>No project was found</code></td><td>在 solution 資料夾執行 <code>dotnet ef</code></td><td>切到有 .csproj 的資料夾，或加 <code>--project BlogApi</code></td></tr>
   <tr><td><code>Value cannot be null. (Parameter 'connectionString')</code></td><td>讀不到連線字串：appsettings 或 User Secrets 沒設定、名稱打錯，或不是在 Development 環境執行</td><td>檢查 <code>appsettings.Development.json</code> 或 <code>dotnet user-secrets list</code>；確認 <code>launchSettings.json</code> 的 <code>ASPNETCORE_ENVIRONMENT</code> 是 <code>Development</code></td></tr>
   <tr><td>API 回 201，但資料庫沒有資料</td><td>忘了 <code>SaveChangesAsync()</code>，或忘了 <code>await</code></td><td>見 <a href="#tracking">2-6</a></td></tr>
+  <tr><td><code>migrations add</code> 跑完了，Migrations 資料夾有檔案，資料庫卻沒有表</td><td>正常。<code>add</code> 只產生檔案，不碰資料庫</td><td>執行 <code>dotnet ef database update</code>，看到 <code>Done.</code> 再去 Rider 重新整理（見題 5 答案 ③）</td></tr>
   <tr><td>改了 Post.cs，資料表卻沒變</td><td>沒有新增 migration</td><td><code>migrations add</code> → <code>database update</code>。<strong>不要</strong>直接到資料庫手動改表</td></tr>
   <tr><td>POST 後回傳的 <code>createdAt</code> 結尾有 <code>Z</code>，GET 查出來卻沒有</td><td>SQL Server 的 <code>datetime2</code> 不記錄時區，讀回來的 <code>DateTime.Kind</code> 是 Unspecified</td><td>先記得「資料庫存的都是 UTC」。之後可以改用 <code>DateTimeOffset</code> 或設定 ValueConverter</td></tr>
   <tr><td>用 curl 送中文，API 回 400 <code>could not be converted</code></td><td>終端機的編碼不是 UTF-8，中文送出去就變成亂碼</td><td>用 Rider 的 <code>.http</code> 檔測試</td></tr>
