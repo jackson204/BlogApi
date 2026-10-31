@@ -2301,6 +2301,7 @@ query = query.Where(p =&gt; p.Title.Contains(keyword));</code></pre>
   <li>在 <code>BlogApi.http</code> 寫好 5 支 API 的請求：新增兩篇 → 列表 → 關鍵字搜尋 → 單筆 → 查不存在的 id → 修改 → 刪除</li>
   <li>每送一個請求，就到 Rider 的 Run 視窗看 EF Core 印出的 SQL</li>
   <li>在 <code>GetAll</code> 裡用 <code>ToQueryString()</code> 印出 SQL，跟 log 比較看看</li>
+  <li><strong>驗證 over-posting</strong>：送一篇多帶 <code>id</code> 和 <code>createdAt</code> 的 JSON，看回應裡的 <code>id</code>、<code>createdAt</code> 是誰決定的（題 6 答案「為什麼不用 <code>Post</code> 當參數」說的事，親眼看一次）</li>
 </ol>
 <p>順便看一下回應：標題裡的中文會<strong>直接顯示</strong>，不是 <code>\u5165\u9580</code>。為什麼、以及要不要加編碼設定，見「<a href="encoding-json-html.html">補充：編碼器（Encoder）</a>」。</p>
 <p><strong>💡 提示</strong></p>
@@ -2312,7 +2313,7 @@ query = query.Where(p =&gt; p.Title.Contains(keyword));</code></pre>
   <tr><td>ToQueryString</td><td>對還沒執行的 query（<code>ToListAsync</code> 之前）呼叫 <code>.ToQueryString()</code>，會回傳 SQL 字串</td></tr>
 </table>
 </div>
-<p class="accept">✅ 驗收：每個請求的狀態碼依序是 201、201、200、200、200、404、204、204；Run 視窗看得到 INSERT / SELECT / UPDATE / DELETE</p>
+<p class="accept">✅ 驗收：每個請求的狀態碼依序是 201、201、200、200、200、404、204、204；Run 視窗看得到 INSERT / SELECT / UPDATE / DELETE；驗證失敗回 400；over-posting 那篇回 201，但回應裡的 <code>createdAt</code> 是現在的時間、<code>id</code> 不是 999</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
@@ -2326,7 +2327,6 @@ query = query.Where(p =&gt; p.Title.Contains(keyword));</code></pre>
     }
   }
 }</code></pre>
-<p>題 4 選了 ① 的話，這個檔案裡的 <code>ConnectionStrings</code> 區段要<strong>保留</strong>，只在 <code>LogLevel</code> 裡加那一行。</p>
 <p class="file-label">BlogApi/BlogApi.http（port 換成你 launchSettings.json 裡的）</p>
 <pre><code class="language-plaintext">@BlogApi_HostAddress = http://localhost:5068
 
@@ -2378,8 +2378,29 @@ Content-Type: application/json
 
 {
   "title": ""
+}
+
+### over-posting 試驗 → 201，但 id 和 createdAt 不會是你傳的
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "id": 999,
+  "title": "我想自己指定 id 和時間",
+  "content": "看看會不會被接受",
+  "createdAt": "1999-01-01T00:00:00"
 }</code></pre>
-<p>最後一個請求會得到 400，訊息是 <code>"The Title field is required."</code>、<code>"The Content field is required."</code>。這是 <code>[ApiController]</code> 自動幫你做的驗證。</p>
+<p>「驗證失敗」那個請求會得到 400，訊息是 <code>"The Title field is required."</code>、<code>"The Content field is required."</code>。這是 <code>[ApiController]</code> 自動幫你做的驗證。</p>
+<p>「over-posting 試驗」會得到 201，但回應裡的 <code>id</code> 和 <code>createdAt</code> 都不是你傳的（實測）：</p>
+<pre><code class="language-json">{
+  "id": 3,
+  "title": "我想自己指定 id 和時間",
+  "content": "看看會不會被接受",
+  "createdAt": "2026-10-31T08:00:49.4882216Z",
+  "updatedAt": null
+}</code></pre>
+<p><code>id</code> 是資料庫接著編的（前面新增兩篇、刪一篇，所以是 3），<code>createdAt</code> 是後端的 <code>UtcNow</code>。JSON 裡的 <code>"id": 999</code> 和 <code>"createdAt": "1999-…"</code> 因為 <code>PostRequest</code> 沒有這兩個屬性，進來就被丟掉了；Run 視窗的 <code>INSERT</code> 也只有 <code>@p0</code>～<code>@p2</code> 三個參數（Title、Content、CreatedAt）。這就是題 6 答案「<a href="#exercise">為什麼不用 <code>Post</code> 當參數</a>」那張表右邊那一欄。</p>
+<p>🧪 想看反例的話：把 <code>Create</code> 的參數暫時改成 <code>Post post</code>，直接 <code>_db.Posts.Add(post)</code>，再送同一個請求。<code>createdAt</code> 會乖乖變成 1999 年；<code>id: 999</code> 則會讓 SQL Server 擋下來（<code>Cannot insert explicit value for identity column</code>），整個請求變 500。把 <code>"id"</code> 那行拿掉再送一次，1999 年的文章就真的進資料庫了。看完記得改回 <code>PostRequest</code>。</p>
 <p class="file-label">ToQueryString：暫時加在 GetAll 的 ToListAsync 之前</p>
 <pre><code class="language-csharp">var sql = query.OrderByDescending(p =&gt; p.CreatedAt).ToQueryString();
 Console.WriteLine(sql);</code></pre>
@@ -2397,6 +2418,10 @@ ORDER BY [p].[CreatedAt] DESC</code></pre>
 
 <!-- ============================================================ -->
 <h2 id="sql">5. 觀察 SQL：LINQ 對照產生的 SQL</h2>
+<div class="callout">
+<p>📌 <strong>這一節只是驗收對照</strong>：把題 7 跑出來的六句 SQL 和 C# 擺在一起，確認你寫的 LINQ 真的變成了預期的 SQL。</p>
+<p>想深入了解「LINQ 怎麼翻成 SQL」，有獨立的一課：「<a href="01b-linq-sql-lab.html">01b｜LINQ ↔ SQL 實驗室</a>」。那一課另開一個 Console 專案和一個小商店資料庫，31 個實驗涵蓋單表、JOIN、GROUP BY、N+1 等，每個都先寫 LINQ、先猜 SQL、再對實測結果。建議做完題 7 之後接著做。</p>
+</div>
 <p>以下是題 7 實際執行時，EF Core 10 印出的 SQL（只保留重點）：</p>
 <div class="table-wrap">
 <table>
@@ -2454,9 +2479,10 @@ WHERE [Id] = @p0;</code></pre></td>
   <li><strong>全部都是參數化查詢</strong>（<code>@p0</code>、<code>@keyword_contains</code>），值不會直接拼進 SQL 字串，所以不會有 SQL Injection</li>
   <li><strong><code>OUTPUT INSERTED.[Id]</code></strong>：INSERT 時順便把資料庫產生的自動編號拿回來，這就是 <code>SaveChangesAsync()</code> 之後 <code>post.Id</code> 會有值的原因</li>
   <li><strong>UPDATE 只更新有改的欄位</strong>：<code>CreatedAt</code> 沒改，所以不在 SET 裡面。這是 Change Tracking 的功勞</li>
-  <li><strong>PUT 和 DELETE 都是兩句 SQL</strong>：先 <code>SELECT TOP(1)</code>（<code>FindAsync</code>），再 UPDATE / DELETE。之後的課會介紹 <code>ExecuteUpdateAsync</code> / <code>ExecuteDeleteAsync</code>，可以一句完成</li>
-  <li><strong><code>Contains</code> 變成 <code>LIKE '%...%'</code></strong>：前後都有 <code>%</code>，資料量大時用不到索引，第 4 課談效能時會再提</li>
+  <li><strong>PUT 和 DELETE 都是兩句 SQL</strong>：先 <code>SELECT TOP(1)</code>（<code>FindAsync</code>），再 UPDATE / DELETE。<code>ExecuteUpdateAsync</code> / <code>ExecuteDeleteAsync</code> 可以一句完成，01b 的 <a href="01b-linq-sql-lab.html#l4-06">L4-06</a> 有兩種寫法的對照</li>
+  <li><strong><code>Contains</code> 變成 <code>LIKE '%...%'</code></strong>：前後都有 <code>%</code>，資料量大時用不到索引。01b 的 <a href="01b-linq-sql-lab.html#l1-06">L1-06</a> 比較 <code>StartsWith</code>／<code>Contains</code>／<code>EndsWith</code> 三種 LIKE，第 4 課談效能時會再提</li>
 </ul>
+<p>這六句之外，你可能還會想知道：<code>FirstOrDefault</code> 和 <code>Single</code> 差在哪、<code>Include</code> 是哪種 JOIN、<code>GroupBy</code> 怎麼翻、哪些 LINQ 翻不過去、什麼寫法會多送幾十句 SQL。這些都在 01b。</p>
 
 <!-- ============================================================ -->
 <h2 id="pitfalls">6. 優缺點 &amp; 常見坑</h2>

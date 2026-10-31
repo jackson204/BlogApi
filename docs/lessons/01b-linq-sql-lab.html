@@ -1,0 +1,1500 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>01b｜LINQ ↔ SQL 實驗室</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 階段 1</div>
+<h1>01b｜LINQ ↔ SQL 實驗室：一個 Console 專案，看懂每一句 LINQ 變成什麼 SQL</h1>
+<p class="subtitle">01 的第 5 節只看了題 7 跑出來的六句 SQL。這一課另開一個 Console 專案和一個小商店資料庫，31 個實驗：單表、JOIN、GROUP BY、還有最常踩的坑。每個實驗你先寫 LINQ、先猜 SQL，再打開答案對。</p>
+<div class="tags">
+  <span class="tag">LINQ</span><span class="tag">IQueryable</span><span class="tag">Include</span><span class="tag">JOIN</span><span class="tag">GroupBy</span>
+  <span class="tag">EXISTS</span><span class="tag">OFFSET FETCH</span><span class="tag">延遲執行</span><span class="tag">N+1</span><span class="tag">ExecuteUpdate</span>
+  <span class="tag">OnConfiguring</span><span class="tag">LogTo</span><span class="tag">EnsureCreated</span><span class="tag">Console 專案</span>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#why">為什麼另開一個 Console 專案</a></li>
+    <li><a href="#schema">範例資料庫：一間小商店</a></li>
+    <li><a href="#setup">建立專案與骨架</a></li>
+    <li><a href="#howto">LINQ 怎麼變成 SQL、怎麼看</a></li>
+    <li><a href="#level1">Level 1：單表（12 個實驗）</a></li>
+    <li><a href="#level2">Level 2：關聯（8 個實驗）</a></li>
+    <li><a href="#level3">Level 3：彙總（5 個實驗）</a></li>
+    <li><a href="#level4">Level 4：陷阱與觀察（6 個實驗）</a></li>
+    <li><a href="#cheatsheet">LINQ ↔ SQL 對照總表</a></li>
+    <li><a href="#next">延伸問題</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="why">1. 為什麼另開一個 Console 專案</h2>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>在 Web API 裡試</th><th>另開 Console 專案</th></tr>
+  <tr><td>想看一句 SQL</td><td>加 endpoint → 啟動 → 用 <code>.http</code> 打 → 看 Run 視窗</td><td>改一行 LINQ → 按 ▶ → 直接印在主控台</td></tr>
+  <tr><td>噪音</td><td>路由、Controller、狀態碼、JSON 全混在一起</td><td>只有 LINQ 和 SQL</td></tr>
+  <tr><td>Debug</td><td>要等請求進來</td><td>Rider 直接下中斷點，單步看 <code>IQueryable</code> 什麼時候執行</td></tr>
+  <tr><td>順便學到</td><td>—</td><td><strong>自己 <code>new</code> DbContext</strong>：沒有 DI 的世界長什麼樣，對照 01 的 <a href="01-efcore-crud.html#wiring">3-8</a>，也是第 3 課「沒有 DI 會怎樣」的伏筆</td></tr>
+</table>
+</div>
+<p>資料庫也是獨立的：不用部落格的 <code>BlogDb</code>，另外建一個有五張表的小商店，JOIN、GROUP BY 今天就能練，不用等第 2 課。這套商店的結構之後做購物網站可以直接延用。</p>
+
+<!-- ============================================================ -->
+<h2 id="schema">2. 範例資料庫：一間小商店</h2>
+<div class="diagram">
+<div class="mermaid">
+erDiagram
+    Category ||--o{ Product : "有很多"
+    Customer ||--o{ Order : "下了"
+    Order ||--|{ OrderItem : "包含"
+    Product ||--o{ OrderItem : "出現在"
+    Category {
+        int Id PK
+        string Name
+    }
+    Product {
+        int Id PK
+        string Name
+        decimal Price
+        int Stock
+        int CategoryId FK
+    }
+    Customer {
+        int Id PK
+        string Name
+        string City
+        datetime JoinedAt
+    }
+    Order {
+        int Id PK
+        datetime OrderedAt
+        int Status
+        int CustomerId FK
+    }
+    OrderItem {
+        int Id PK
+        int Quantity
+        decimal UnitPrice
+        int OrderId FK
+        int ProductId FK
+    }
+</div>
+<div class="diagram-caption">五張表：類別 → 商品；客戶 → 訂單 → 明細 → 商品。OrderItem 把 Order 和 Product 接起來，所以「商品 ↔ 訂單」是多對多</div>
+</div>
+<p>種進去的資料固定如下，做實驗前先看一眼，才猜得出結果：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Products</th><th>Id</th><th>Price</th><th>Stock</th><th>類別</th></tr>
+  <tr><td>可樂</td><td>1</td><td>30</td><td>100</td><td>1 飲料</td></tr>
+  <tr><td>綠茶</td><td>2</td><td>25</td><td><strong>0</strong>（缺貨）</td><td>1 飲料</td></tr>
+  <tr><td>咖啡</td><td>3</td><td>60</td><td>20</td><td>1 飲料</td></tr>
+  <tr><td>洋芋片</td><td>4</td><td>45</td><td>50</td><td>2 零食</td></tr>
+  <tr><td>巧克力</td><td>5</td><td>80</td><td>8</td><td>2 零食</td></tr>
+  <tr><td>餅乾</td><td>6</td><td>35</td><td>30</td><td>2 零食</td></tr>
+  <tr><td>原子筆</td><td>7</td><td>15</td><td>200</td><td>3 文具</td></tr>
+  <tr><td>筆記本</td><td>8</td><td>50</td><td>40</td><td>3 文具</td></tr>
+</table>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th>Customers</th><th>Id</th><th>City</th><th>訂單（Id：日期 / 狀態 / 明細）</th></tr>
+  <tr><td>小明</td><td>1</td><td>台北</td><td>1：8/5 Paid 可樂×2、洋芋片×1｜2：9/12 Shipped 咖啡×1、筆記本×2｜3：10/3 Pending 綠茶×3</td></tr>
+  <tr><td>小華</td><td>2</td><td>台北</td><td>4：8/20 <strong>Cancelled</strong> 巧克力×1｜5：10/15 Paid 可樂×6、餅乾×2、原子筆×10</td></tr>
+  <tr><td>小美</td><td>3</td><td>台中</td><td>6：9/1 Paid 咖啡×2｜7：9/28 Shipped 筆記本×1、原子筆×3</td></tr>
+  <tr><td>阿強</td><td>4</td><td>高雄</td><td>8：10/20 Paid 巧克力×3、可樂×1</td></tr>
+  <tr><td>小芳</td><td>5</td><td>台中</td><td><strong>沒有訂單</strong></td></tr>
+</table>
+</div>
+<p><code>Status</code> 是 enum：<code>Pending = 0</code>、<code>Paid = 1</code>、<code>Shipped = 2</code>、<code>Cancelled = 3</code>，資料庫存的是數字。</p>
+
+<!-- ============================================================ -->
+<h2 id="setup">3. 建立專案與骨架</h2>
+<p>這一節的程式碼是「基礎設施」，不是這一課要學的東西，<strong>直接照抄</strong>，但每一段都有說明它在做什麼。學習的重點在第 5 節之後的實驗。</p>
+
+<h3 id="create">3-1. 建立 Console 專案</h3>
+<pre><code class="language-powershell">cd $HOME\RiderProjects\BlogApi
+dotnet new console -n LinqLab -f net10.0
+dotnet sln add LinqLab/LinqLab.csproj
+cd LinqLab
+dotnet add package Microsoft.EntityFrameworkCore.SqlServer --version 10.0.14
+dotnet add package Microsoft.Extensions.Configuration.Json</code></pre>
+<p>Rider 的話：對 solution 按右鍵 → Add → New Project → <em>Console Application</em>，名稱 <code>LinqLab</code>，再用 NuGet 視窗裝那兩個套件。完成後 solution 裡有兩個專案：</p>
+<pre><code class="language-plaintext">BlogApi\
+├─ BlogApi.sln
+├─ BlogApi\        ← Web API（01 建的）
+├─ LinqLab\        ← 這一課建的 Console 專案
+└─ docs\</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>套件</th><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td><code>Microsoft.EntityFrameworkCore.SqlServer</code></td><td>EF Core 本體 + SQL Server 的翻譯器（01 的 3-2）</td><td>和 BlogApi 用同一個版本，之後比對行為才一致</td></tr>
+  <tr><td><code>Microsoft.Extensions.Configuration.Json</code></td><td>讀 <code>appsettings.json</code> 的能力</td><td>Web 專案的 <code>CreateBuilder</code> 內建這個，Console 專案要自己裝</td></tr>
+</table>
+</div>
+
+<h3 id="appsettings">3-2. 連線字串</h3>
+<p class="file-label">LinqLab/appsettings.json（密碼換成第 0 課設的）</p>
+<pre><code class="language-json">{
+  "ConnectionStrings": {
+    "LinqLab": "Server=localhost,1433;Database=LinqLab;User Id=sa;Password=你的密碼;TrustServerCertificate=True"
+  }
+}</code></pre>
+<p>和 BlogApi 的連線字串只差 <code>Database=LinqLab</code>：同一台 Docker 的 SQL Server，另一個資料庫。這個資料庫還不存在，3-6 的 <code>EnsureCreated</code> 會建。</p>
+<p class="file-label">LinqLab/LinqLab.csproj（加上這一段）</p>
+<pre><code class="language-xml">&lt;ItemGroup&gt;
+  &lt;None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" /&gt;
+&lt;/ItemGroup&gt;</code></pre>
+<p>Console 專案的 <code>appsettings.json</code> 不會自動複製到 <code>bin\</code>，執行時會找不到檔案。這一段叫 build 把它一起複製過去。</p>
+
+<h3 id="models">3-3. Models</h3>
+<p>五個 class 放在 <code>Models\</code>。注意每個「一對多」都是兩邊各寫一個屬性：多的那邊寫<strong>外鍵欄位 + 導覽屬性</strong>，一的那邊寫<strong>集合</strong>。</p>
+<p class="file-label">LinqLab/Models/Category.cs</p>
+<pre><code class="language-csharp">namespace LinqLab.Models;
+
+public class Category
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+
+    // 一對多：一個類別底下有很多商品
+    public List&lt;Product&gt; Products { get; set; } = new();
+}</code></pre>
+<p class="file-label">LinqLab/Models/Product.cs</p>
+<pre><code class="language-csharp">namespace LinqLab.Models;
+
+public class Product
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+    public int Stock { get; set; }
+
+    // 多對一：這個商品屬於哪個類別。CategoryId 是外鍵欄位，Category 是導覽屬性
+    public int CategoryId { get; set; }
+    public Category Category { get; set; } = null!;
+
+    public List&lt;OrderItem&gt; OrderItems { get; set; } = new();
+}</code></pre>
+<p class="file-label">LinqLab/Models/Customer.cs</p>
+<pre><code class="language-csharp">namespace LinqLab.Models;
+
+public class Customer
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+    public DateTime JoinedAt { get; set; }
+
+    // 一對多：一個客戶有很多訂單
+    public List&lt;Order&gt; Orders { get; set; } = new();
+}</code></pre>
+<p class="file-label">LinqLab/Models/Order.cs</p>
+<pre><code class="language-csharp">namespace LinqLab.Models;
+
+public enum OrderStatus
+{
+    Pending = 0,
+    Paid = 1,
+    Shipped = 2,
+    Cancelled = 3
+}
+
+public class Order
+{
+    public int Id { get; set; }
+    public DateTime OrderedAt { get; set; }
+    public OrderStatus Status { get; set; }
+
+    // 多對一：這筆訂單是誰下的
+    public int CustomerId { get; set; }
+    public Customer Customer { get; set; } = null!;
+
+    // 一對多：一筆訂單有很多明細
+    public List&lt;OrderItem&gt; Items { get; set; } = new();
+}</code></pre>
+<p class="file-label">LinqLab/Models/OrderItem.cs</p>
+<pre><code class="language-csharp">namespace LinqLab.Models;
+
+public class OrderItem
+{
+    public int Id { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }   // 下單當時的單價，之後商品漲價不影響舊訂單
+
+    public int OrderId { get; set; }
+    public Order Order { get; set; } = null!;
+
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+}</code></pre>
+<details class="aside">
+<summary>📎 補充：<code>= null!</code> 是什麼</summary>
+<div class="aside-body">
+<p>專案開了 <code>&lt;Nullable&gt;enable&lt;/Nullable&gt;</code>，<code>Category Category { get; set; }</code> 沒給初始值，編譯器會警告「可能是 null」。但這個屬性在查詢時由 EF Core 填（<code>Include</code> 之後才有值），不是我們 new 的。<code>= null!</code> 的意思是「我知道它一開始是 null，不用警告我」。第 2 課會再講導覽屬性什麼時候有值、什麼時候是 null。</p>
+</div>
+</details>
+
+<h3 id="dbcontext">3-4. ShopDbContext：沒有 DI，自己設定</h3>
+<p class="file-label">LinqLab/Data/ShopDbContext.cs</p>
+<pre><code class="language-csharp">using LinqLab.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+
+namespace LinqLab.Data;
+
+public class ShopDbContext : DbContext
+{
+    public DbSet&lt;Category&gt; Categories =&gt; Set&lt;Category&gt;();
+    public DbSet&lt;Product&gt; Products =&gt; Set&lt;Product&gt;();
+    public DbSet&lt;Customer&gt; Customers =&gt; Set&lt;Customer&gt;();
+    public DbSet&lt;Order&gt; Orders =&gt; Set&lt;Order&gt;();
+    public DbSet&lt;OrderItem&gt; OrderItems =&gt; Set&lt;OrderItem&gt;();
+
+    // 這裡沒有 DI，沒有 AddDbContext 幫忙登記設定。
+    // 有人 new ShopDbContext() 時，EF Core 會呼叫這個方法來問「要怎麼連資料庫」
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        // Web 專案的 WebApplication.CreateBuilder 會自動讀 appsettings.json，Console 專案要自己讀
+        IConfiguration config = new ConfigurationBuilder()
+            .AddJsonFile("appsettings.json")
+            .Build();
+
+        optionsBuilder
+            .UseSqlServer(config.GetConnectionString("LinqLab"))
+            // 每一句送出去的 SQL 都印到主控台
+            .LogTo(Console.WriteLine, new[] { DbLoggerCategory.Database.Command.Name }, LogLevel.Information, DbContextLoggerOptions.None)
+            // 連參數的值也一起印。正式環境不要開，會把個資印進 log
+            .EnableSensitiveDataLogging();
+    }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        // decimal 要指定精度，不然 EF Core 會用預設值並發出警告
+        modelBuilder.Entity&lt;Product&gt;().Property(p =&gt; p.Price).HasPrecision(18, 2);
+        modelBuilder.Entity&lt;OrderItem&gt;().Property(i =&gt; i.UnitPrice).HasPrecision(18, 2);
+    }
+}</code></pre>
+<p>和 01 的 <code>BlogDbContext</code> 比，差別只有一個地方，但這個地方正是 DI 的意義：</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>BlogApi（有 DI）</th><th>LinqLab（沒有 DI）</th></tr>
+  <tr><td>設定寫在哪</td><td><code>Program.cs</code> 的 <code>AddDbContext(options =&gt; options.UseSqlServer(…))</code></td><td>DbContext 自己的 <code>OnConfiguring</code></td></tr>
+  <tr><td>設定怎麼進來</td><td>建構子收 <code>DbContextOptions</code>，由 DI 傳進來</td><td>沒有建構子參數；<code>new ShopDbContext()</code> 時 EF Core 回頭呼叫 <code>OnConfiguring</code></td></tr>
+  <tr><td>誰 new 它</td><td>DI（每個請求一個）</td><td>你自己 <code>new</code>、自己 <code>await using</code> 丟掉</td></tr>
+  <tr><td>要換資料庫（測試時換成記憶體資料庫）</td><td>改 <code>Program.cs</code> 一行，DbContext 不用動</td><td>要改 DbContext 本身</td></tr>
+</table>
+</div>
+<p>實驗室這樣寫最省事。但 Web 專案不要把連線寫死在 <code>OnConfiguring</code>，第 3 課會從這個痛點出發講 DI。</p>
+<div class="table-wrap">
+<table>
+  <tr><th><code>LogTo</code> 的參數</th><th>做什麼</th></tr>
+  <tr><td><code>Console.WriteLine</code></td><td>每一條 log 交給誰印。這裡印到主控台</td></tr>
+  <tr><td><code>new[] { DbLoggerCategory.Database.Command.Name }</code></td><td>只要「資料庫指令」這一類，不要連線開關、交易等雜訊。對應 01 題 7 設定的 <code>Microsoft.EntityFrameworkCore.Database.Command</code></td></tr>
+  <tr><td><code>LogLevel.Information</code></td><td>最低等級</td></tr>
+  <tr><td><code>DbContextLoggerOptions.None</code></td><td>不要前面的 <code>info:</code>、分類名稱、事件編號，只印訊息本身</td></tr>
+</table>
+</div>
+
+<h3 id="seed">3-5. Seed：固定的測試資料</h3>
+<p class="file-label">LinqLab/Data/Seed.cs</p>
+<pre><code class="language-csharp">using LinqLab.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace LinqLab.Data;
+
+public static class Seed
+{
+    // 整個資料庫砍掉重建，再種一份固定的測試資料。實驗做壞了就跑一次 reset
+    public static async Task ResetAsync()
+    {
+        await using var db = new ShopDbContext();
+        await db.Database.EnsureDeletedAsync();
+        await db.Database.EnsureCreatedAsync();
+
+        var drinks = new Category { Name = "飲料" };
+        var snacks = new Category { Name = "零食" };
+        var stationery = new Category { Name = "文具" };
+
+        var cola = new Product { Name = "可樂", Price = 30, Stock = 100, Category = drinks };
+        var tea = new Product { Name = "綠茶", Price = 25, Stock = 0, Category = drinks };      // 缺貨
+        var coffee = new Product { Name = "咖啡", Price = 60, Stock = 20, Category = drinks };
+        var chips = new Product { Name = "洋芋片", Price = 45, Stock = 50, Category = snacks };
+        var chocolate = new Product { Name = "巧克力", Price = 80, Stock = 8, Category = snacks };
+        var cookie = new Product { Name = "餅乾", Price = 35, Stock = 30, Category = snacks };
+        var pen = new Product { Name = "原子筆", Price = 15, Stock = 200, Category = stationery };
+        var notebook = new Product { Name = "筆記本", Price = 50, Stock = 40, Category = stationery };
+
+        var ming = new Customer { Name = "小明", City = "台北", JoinedAt = new DateTime(2025, 3, 1) };
+        var hua = new Customer { Name = "小華", City = "台北", JoinedAt = new DateTime(2025, 11, 20) };
+        var mei = new Customer { Name = "小美", City = "台中", JoinedAt = new DateTime(2026, 1, 15) };
+        var qiang = new Customer { Name = "阿強", City = "高雄", JoinedAt = new DateTime(2026, 6, 2) };
+        var fang = new Customer { Name = "小芳", City = "台中", JoinedAt = new DateTime(2026, 10, 1) };   // 還沒下過單
+
+        static OrderItem Item(Product p, int qty) =&gt; new() { Product = p, Quantity = qty, UnitPrice = p.Price };
+
+        var orders = new List&lt;Order&gt;
+        {
+            new() { Customer = ming, OrderedAt = new DateTime(2026, 8, 5), Status = OrderStatus.Paid, Items = { Item(cola, 2), Item(chips, 1) } },
+            new() { Customer = ming, OrderedAt = new DateTime(2026, 9, 12), Status = OrderStatus.Shipped, Items = { Item(coffee, 1), Item(notebook, 2) } },
+            new() { Customer = ming, OrderedAt = new DateTime(2026, 10, 3), Status = OrderStatus.Pending, Items = { Item(tea, 3) } },
+            new() { Customer = hua, OrderedAt = new DateTime(2026, 8, 20), Status = OrderStatus.Cancelled, Items = { Item(chocolate, 1) } },
+            new() { Customer = hua, OrderedAt = new DateTime(2026, 10, 15), Status = OrderStatus.Paid, Items = { Item(cola, 6), Item(cookie, 2), Item(pen, 10) } },
+            new() { Customer = mei, OrderedAt = new DateTime(2026, 9, 1), Status = OrderStatus.Paid, Items = { Item(coffee, 2) } },
+            new() { Customer = mei, OrderedAt = new DateTime(2026, 9, 28), Status = OrderStatus.Shipped, Items = { Item(notebook, 1), Item(pen, 3) } },
+            new() { Customer = qiang, OrderedAt = new DateTime(2026, 10, 20), Status = OrderStatus.Paid, Items = { Item(chocolate, 3), Item(cola, 1) } },
+        };
+
+        // Add 的順序決定自動編號的順序（可樂=1、綠茶=2…），所以商品先加。
+        // 訂單和明細不用一個一個 Add：EF Core 會順著導覽屬性把整棵物件圖都加進去
+        db.AddRange(drinks, snacks, stationery);
+        db.AddRange(cola, tea, coffee, chips, chocolate, cookie, pen, notebook);
+        db.AddRange(ming, hua, mei, qiang, fang);
+        db.AddRange(orders);
+        await db.SaveChangesAsync();
+    }
+}</code></pre>
+<div class="callout">
+<p>🤔 <strong>為什麼用 <code>EnsureCreated</code>，不用 01 學的 Migration？</strong></p>
+<p><code>EnsureCreatedAsync()</code> 看資料庫在不在，不在就照目前的模型直接建表，<strong>不留任何版本紀錄</strong>。實驗室的資料庫是拋棄式的：做壞了就 <code>EnsureDeleted</code> 砍掉重建，不需要「從上一版升到這一版」，所以用它最省事。</p>
+<p>它和 Migration <strong>不能混用</strong>：<code>EnsureCreated</code> 建的資料庫沒有 <code>__EFMigrationsHistory</code>，之後想加 Migration 會對不起來。正式專案（BlogApi）用 Migration；一次性的實驗、測試用 <code>EnsureCreated</code>。想練習的話，把這裡改成 Migration 是這一課的選修題。</p>
+</div>
+<p>物件圖的部分值得看一下：<code>orders</code> 裡每筆訂單掛著 <code>Customer</code> 和 <code>Items</code>，每個 <code>Item</code> 又掛著 <code>Product</code>。<code>SaveChangesAsync</code> 時 EF Core 會自己排好順序：先 INSERT 客戶和商品拿到 Id，再 INSERT 訂單填入 CustomerId，最後 INSERT 明細。跑 <code>reset</code> 時主控台會印出這整串（五句 <code>CREATE TABLE</code>、四個索引、再來是一批批的 <code>MERGE … OUTPUT INSERTED.[Id]</code>）。</p>
+
+<h3 id="runner">3-6. 實驗的骨架：Lab、Catalog、Program</h3>
+<p class="file-label">LinqLab/Experiments/Lab.cs（印結果用的小工具）</p>
+<pre><code class="language-csharp">namespace LinqLab.Experiments;
+
+public static class Lab
+{
+    public static void Title(string id, string title)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"===== {id} {title} =====");
+    }
+
+    public static void Note(string text) =&gt; Console.WriteLine($"  ({text})");
+
+    // string 也是 IEnumerable&lt;char&gt;，沒有這個多載的話會被下面的泛型版本接走，一個字一個字印
+    public static void Show(string text) =&gt; Console.WriteLine($"  → {text}");
+
+    public static void Show(object? value) =&gt; Console.WriteLine($"  → {value}");
+
+    public static void Show&lt;T&gt;(IEnumerable&lt;T&gt; items)
+    {
+        foreach (var item in items) Console.WriteLine($"  → {item}");
+    }
+}</code></pre>
+<p class="file-label">LinqLab/Experiments/Catalog.cs（實驗清單，一開始是空的，每寫完一個實驗加一行）</p>
+<pre><code class="language-csharp">using LinqLab.Data;
+
+namespace LinqLab.Experiments;
+
+public static class Catalog
+{
+    // (編號, 標題, 要執行的方法)。方法的形狀都是「收一個 ShopDbContext，回傳 Task」
+    public static readonly List&lt;(string Id, string Title, Func&lt;ShopDbContext, Task&gt; Run)&gt; All = new()
+    {
+        // ("L1-01", "Where + OrderBy", Level1.WhereOrderBy),
+    };
+}</code></pre>
+<p class="file-label">LinqLab/Experiments/Level1.cs（Level2～4 同樣先建空的 class）</p>
+<pre><code class="language-csharp">using LinqLab.Data;
+using LinqLab.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace LinqLab.Experiments;
+
+// Level 1：單表查詢
+public static class Level1
+{
+}</code></pre>
+<p class="file-label">LinqLab/Program.cs</p>
+<pre><code class="language-csharp">using LinqLab.Data;
+using LinqLab.Experiments;
+
+Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+// dotnet run -- reset          → 砍掉重建資料庫並種資料
+// dotnet run                   → 跑全部實驗
+// dotnet run -- L1-03 L2-05    → 只跑指定的實驗
+if (args is ["reset"])
+{
+    await Seed.ResetAsync();
+    Console.WriteLine("資料庫已重建並種好資料");
+    return;
+}
+
+var selected = args.Length == 0
+    ? Catalog.All
+    : Catalog.All.Where(e =&gt; args.Contains(e.Id)).ToList();
+
+foreach (var (id, title, run) in selected)
+{
+    // 每個實驗用一個全新的 DbContext，前一個實驗追蹤到的物件不會影響下一個
+    await using var db = new ShopDbContext();
+    Lab.Title(id, title);
+    await run(db);
+}</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>這行</th><th>在做什麼</th></tr>
+  <tr><td><code>args is ["reset"]</code></td><td>C# 的清單模式：「args 剛好只有一個元素而且是 reset」</td></tr>
+  <tr><td><code>Func&lt;ShopDbContext, Task&gt;</code></td><td>把「一個方法」當資料放進清單，和 <a href="csharp-delegates-signature.html">C# 補充頁</a>的 <code>Action</code>／<code>Func</code> 一樣，差別是回傳 <code>Task</code>（async 方法）</td></tr>
+  <tr><td><code>foreach (var (id, title, run) in selected)</code></td><td>tuple 拆成三個變數</td></tr>
+  <tr><td><code>await run(db)</code></td><td>呼叫那個方法，把 DbContext 傳進去</td></tr>
+  <tr><td><code>await using var db</code></td><td>這個 <code>foreach</code> 回合結束時自動 <code>Dispose</code>。Web 專案是 DI 在請求結束時幫你做，這裡自己做</td></tr>
+</table>
+</div>
+<p><strong>怎麼跑</strong>：終端機在 <code>LinqLab\</code> 資料夾執行 <code>dotnet run -- reset</code>；Rider 的話，執行設定（Run Configuration）的 <em>Program arguments</em> 填 <code>reset</code>。之後每個實驗做完，用 <code>dotnet run -- L1-01</code> 這種方式只跑那一個。</p>
+<p class="accept">✅ 驗收：跑 <code>reset</code> 後主控台印出五句 <code>CREATE TABLE</code> 和最後一行「資料庫已重建並種好資料」；Rider 的 Database 視窗多了 <code>LinqLab</code> 資料庫，五張表都有資料</p>
+
+<!-- ============================================================ -->
+<h2 id="howto">4. LINQ 怎麼變成 SQL、怎麼看</h2>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    A["你寫的 LINQ<br>db.Products.Where(p => p.Price > 40)"] --> B["運算式樹<br>（描述條件長什麼樣，還沒執行）"]
+    B -- "ToListAsync / FirstOrDefaultAsync /<br>CountAsync / AnyAsync …" --> C["EF Core 翻譯器"]
+    C --> D["SQL<br>SELECT … WHERE [p].[Price] > 40.0"]
+    D --> E[("SQL Server")]
+    E --> F["結果列 → C# 物件"]
+</div>
+<div class="diagram-caption">Where、OrderBy、Select 只是在堆運算式樹；碰到「要拿結果」的方法才翻成 SQL 送出</div>
+</div>
+<p>兩個看 SQL 的方法，這一課兩個都用：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>方法</th><th>做什麼</th><th>什麼時候用</th></tr>
+  <tr><td><code>LogTo</code>（3-4 設好的）</td><td>每一句<strong>真的送出去</strong>的 SQL 都印出來，含參數值、花了幾毫秒</td><td>觀察「這段程式到底送了幾句、送了什麼」。N+1 這種問題只有它看得到</td></tr>
+  <tr><td><code>query.ToQueryString()</code></td><td>把一個<strong>還沒執行</strong>的 <code>IQueryable</code> 翻成 SQL 字串，不送出</td><td>只想看某個 query 會變成什麼，不想真的跑。對 <code>CountAsync</code> 這種直接回值的方法用不了</td></tr>
+</table>
+</div>
+<p>每個實驗的流程：<strong>先寫 LINQ → 先猜 SQL 長什麼樣 → 跑 → 對答案</strong>。猜錯最有價值，那就是你的 LINQ 直覺和 SQL 對不上的地方。</p>
+
+<!-- ============================================================ -->
+<h2 id="level1">5. Level 1：單表（12 個實驗）</h2>
+<p>這一層只碰 <code>Products</code>、<code>Customers</code>、<code>Orders</code> 各自一張表。每題的方法簽章都是 <code>public static async Task 名稱(ShopDbContext db)</code>，寫在 <code>Level1.cs</code>，寫完記得去 <code>Catalog</code> 加一行。</p>
+
+<div class="exercise">
+<h3 id="l1-01">L1-01：Where + OrderBy</h3>
+<p>任務：價格 ≥ 40 的商品，由貴到便宜。印出名稱和價格。</p>
+<p>先猜：SQL 的 WHERE 和 ORDER BY 各長什麼樣？<code>40</code> 會變成參數 <code>@p</code> 還是直接寫在 SQL 裡？</p>
+<p class="accept">✅ 驗收：巧克力 80、咖啡 60、筆記本 50、洋芋片 45</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task WhereOrderBy(ShopDbContext db)
+{
+    var products = await db.Products
+        .Where(p =&gt; p.Price &gt;= 40)
+        .OrderByDescending(p =&gt; p.Price)
+        .ToListAsync();
+
+    Lab.Show(products.Select(p =&gt; $"{p.Name} {p.Price}"));
+}</code></pre>
+<pre><code class="language-sql">SELECT [p].[Id], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]
+FROM [Products] AS [p]
+WHERE [p].[Price] &gt;= 40.0
+ORDER BY [p].[Price] DESC</code></pre>
+<ul>
+  <li>沒有 <code>Select</code>，所以 SELECT 把 <code>Product</code> 的<strong>每個欄位</strong>都拿回來，才能組出完整的物件</li>
+  <li><code>40</code> 直接寫進 SQL（<code>40.0</code>），不是參數。因為它是寫死在程式裡的<strong>常數</strong>；L1-12 會看到變數的情況</li>
+  <li><code>OrderByDescending</code> → <code>ORDER BY … DESC</code></li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-02">L1-02：FirstOrDefault</h3>
+<p>任務：最便宜的商品一筆。用 <code>OrderBy</code> + <code>FirstOrDefaultAsync</code>。</p>
+<p>先猜：SQL 怎麼表達「只要一筆」？</p>
+<p class="accept">✅ 驗收：原子筆 15</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task FirstOrDefault(ShopDbContext db)
+{
+    var cheapest = await db.Products
+        .OrderBy(p =&gt; p.Price)
+        .FirstOrDefaultAsync();
+
+    Lab.Show($"最便宜：{cheapest?.Name} {cheapest?.Price}");
+}</code></pre>
+<pre><code class="language-sql">SELECT TOP(1) [p].[Id], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]
+FROM [Products] AS [p]
+ORDER BY [p].[Price]</code></pre>
+<ul>
+  <li><code>FirstOrDefault</code> → <code>TOP(1)</code>。資料庫只回一列，不是撈全部回來再挑第一個</li>
+  <li><code>OrDefault</code>：沒資料時回 <code>null</code>，不丟例外；沒有 <code>OrDefault</code> 的 <code>First</code> 會丟。所以回傳型別是 <code>Product?</code>，印的時候用 <code>?.</code></li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-03">L1-03：SingleOrDefault</h3>
+<p>任務：名稱是「可樂」的那一筆，用 <code>SingleOrDefaultAsync(p =&gt; …)</code>。</p>
+<p>先猜：<code>Single</code> 的意思是「剛好一筆」，SQL 的 TOP 會是幾？</p>
+<p class="accept">✅ 驗收：可樂 庫存 100</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task SingleOrDefault(ShopDbContext db)
+{
+    var cola = await db.Products.SingleOrDefaultAsync(p =&gt; p.Name == "可樂");
+    Lab.Show($"{cola?.Name} 庫存 {cola?.Stock}");
+}</code></pre>
+<pre><code class="language-sql">SELECT TOP(2) [p].[Id], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]
+FROM [Products] AS [p]
+WHERE [p].[Name] = N'可樂'</code></pre>
+<ul>
+  <li><strong><code>TOP(2)</code></strong>，不是 1。<code>Single</code> 承諾「剛好一筆」，要驗證這件事，拿 2 筆就夠：拿到 2 筆代表不只一筆，丟 <code>InvalidOperationException: Sequence contains more than one element</code>；拿到 0 筆回 <code>null</code>。不用撈全部</li>
+  <li>查主鍵或唯一欄位用 <code>Single</code>（多一筆就是資料有問題，寧可爆）；只是想要「隨便一筆符合的」用 <code>First</code></li>
+  <li>字串常數前面的 <code>N</code>：SQL Server 的 Unicode 字串標記，中文一定要有</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-04">L1-04：Any</h3>
+<p>任務：有沒有任何商品缺貨（<code>Stock == 0</code>）？用 <code>AnyAsync</code>，結果是 <code>bool</code>。</p>
+<p>先猜：SQL 沒有 bool 型別，它會怎麼回傳 true／false？</p>
+<p class="accept">✅ 驗收：True（綠茶缺貨）</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task Any(ShopDbContext db)
+{
+    bool soldOut = await db.Products.AnyAsync(p =&gt; p.Stock == 0);
+    Lab.Show($"有商品缺貨嗎？{soldOut}");
+}</code></pre>
+<pre><code class="language-sql">SELECT CASE
+    WHEN EXISTS (
+        SELECT 1
+        FROM [Products] AS [p]
+        WHERE [p].[Stock] = 0) THEN CAST(1 AS bit)
+    ELSE CAST(0 AS bit)
+END</code></pre>
+<ul>
+  <li><code>Any</code> → <code>EXISTS (SELECT 1 …)</code>：資料庫找到第一筆符合的就停，不會數完整張表。要問「有沒有」就用 <code>Any</code>，不要用 <code>Count() &gt; 0</code></li>
+  <li>外面包一層 <code>CASE WHEN … THEN 1 ELSE 0</code> 是因為 SQL 沒有 bool，用 <code>bit</code> 代替</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-05">L1-05：Count</h3>
+<p>任務：類別 1（飲料）有幾個商品？用 <code>CountAsync(p =&gt; …)</code>。</p>
+<p class="accept">✅ 驗收：3</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task Count(ShopDbContext db)
+{
+    int n = await db.Products.CountAsync(p =&gt; p.CategoryId == 1);
+    Lab.Show($"類別 1 有 {n} 個商品");
+}</code></pre>
+<pre><code class="language-sql">SELECT COUNT(*)
+FROM [Products] AS [p]
+WHERE [p].[CategoryId] = 1</code></pre>
+<p><code>Count</code> → <code>COUNT(*)</code>，數的動作在資料庫做，回來的只有一個數字。對比 L4-02：先 <code>ToListAsync()</code> 再 <code>.Count</code>，會把整張表撈回來才數。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-06">L1-06：StartsWith / Contains / EndsWith</h3>
+<p>任務：客戶名字「小」開頭的、含「明」的、「強」結尾的，各查一次，只拿名字。</p>
+<p>先猜：三種各對應 <code>LIKE</code> 的哪種寫法？<code>%</code> 放哪邊？</p>
+<p class="accept">✅ 驗收：小明、小華、小美、小芳／小明／阿強</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task Like(ShopDbContext db)
+{
+    var starts = await db.Customers.Where(c =&gt; c.Name.StartsWith("小")).Select(c =&gt; c.Name).ToListAsync();
+    var contains = await db.Customers.Where(c =&gt; c.Name.Contains("明")).Select(c =&gt; c.Name).ToListAsync();
+    var ends = await db.Customers.Where(c =&gt; c.Name.EndsWith("強")).Select(c =&gt; c.Name).ToListAsync();
+
+    Lab.Show($"StartsWith 小：{string.Join("、", starts)}");
+    Lab.Show($"Contains 明：{string.Join("、", contains)}");
+    Lab.Show($"EndsWith 強：{string.Join("、", ends)}");
+}</code></pre>
+<pre><code class="language-sql">WHERE [c].[Name] LIKE N'小%'      -- StartsWith
+WHERE [c].[Name] LIKE N'%明%'     -- Contains
+WHERE [c].[Name] LIKE N'%強'      -- EndsWith</code></pre>
+<ul>
+  <li><code>%</code> 代表「任意長度的任意字」。<code>StartsWith</code> 只有結尾有 <code>%</code>，<code>Contains</code> 兩邊都有</li>
+  <li>效能差很多：<code>LIKE '小%'</code> 可以用索引（像翻字典從「小」開始找）；<code>LIKE '%明%'</code> 用不到索引，整張表每一列都要比。部落格的關鍵字搜尋就是 <code>Contains</code>，第 4 課談效能會回來看</li>
+  <li>有沒有分大小寫，由資料庫欄位的 collation 決定，不是 C# 決定。SQL Server 預設不分</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-07">L1-07：&amp;&amp; / || / 疊兩次 Where</h3>
+<p>任務：三個查詢只拿名稱：(a) 類別 1 <strong>而且</strong>價格 &lt; 50；(b) 缺貨<strong>或</strong>價格 &gt; 70；(c) 把 (a) 改成兩個 <code>Where</code> 接著寫。</p>
+<p>先猜：(a) 和 (c) 的 SQL 會一樣嗎？</p>
+<p class="accept">✅ 驗收：可樂、綠茶／綠茶、巧克力／可樂、綠茶</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task AndOr(ShopDbContext db)
+{
+    var and = await db.Products.Where(p =&gt; p.CategoryId == 1 &amp;&amp; p.Price &lt; 50).Select(p =&gt; p.Name).ToListAsync();
+    var or = await db.Products.Where(p =&gt; p.Stock == 0 || p.Price &gt; 70).Select(p =&gt; p.Name).ToListAsync();
+    var twice = await db.Products.Where(p =&gt; p.CategoryId == 1).Where(p =&gt; p.Price &lt; 50).Select(p =&gt; p.Name).ToListAsync();
+
+    Lab.Show($"&amp;&amp;：{string.Join("、", and)}");
+    Lab.Show($"||：{string.Join("、", or)}");
+    Lab.Show($"疊兩次 Where：{string.Join("、", twice)}");
+}</code></pre>
+<pre><code class="language-sql">WHERE [p].[CategoryId] = 1 AND [p].[Price] &lt; 50.0    -- (a) &amp;&amp;
+WHERE [p].[Stock] = 0 OR [p].[Price] &gt; 70.0          -- (b) ||
+WHERE [p].[CategoryId] = 1 AND [p].[Price] &lt; 50.0    -- (c) 疊兩次 Where，和 (a) 一模一樣</code></pre>
+<p>(a) 和 (c) 的 SQL <strong>完全相同</strong>。這就是 01 題 6 GET 列表那個 <code>query = query.Where(…)</code> 寫法的根據：條件可以一段一段疊上去，最後合成一句 <code>AND</code>。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-08">L1-08：OrderBy + ThenByDescending</h3>
+<p>任務：先依類別、同類別內再依價格由高到低。只投影 <code>CategoryId</code>、<code>Name</code>、<code>Price</code>。</p>
+<p>先猜：<code>ThenBy</code> 在 SQL 裡是第二個 ORDER BY，還是同一個 ORDER BY 裡的第二個欄位？</p>
+<p class="accept">✅ 驗收：咖啡、可樂、綠茶、巧克力、洋芋片、餅乾、筆記本、原子筆</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task ThenBy(ShopDbContext db)
+{
+    var list = await db.Products
+        .OrderBy(p =&gt; p.CategoryId)
+        .ThenByDescending(p =&gt; p.Price)
+        .Select(p =&gt; new { p.CategoryId, p.Name, p.Price })
+        .ToListAsync();
+
+    Lab.Show(list);
+}</code></pre>
+<pre><code class="language-sql">SELECT [p].[CategoryId], [p].[Name], [p].[Price]
+FROM [Products] AS [p]
+ORDER BY [p].[CategoryId], [p].[Price] DESC</code></pre>
+<ul>
+  <li><code>OrderBy(...).ThenBy(...)</code> → 一個 <code>ORDER BY a, b</code>。寫成 <code>OrderBy(...).OrderBy(...)</code> 是錯的，第二個會蓋掉第一個</li>
+  <li><code>new { p.CategoryId, p.Name, p.Price }</code> 是<strong>匿名型別</strong>：只拿三個欄位，SELECT 就只有三個欄位。第 4 課的「投影」就是這個</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-09">L1-09：Skip / Take（分頁）</h3>
+<p>任務：每頁 3 筆，拿第 2 頁，依 Id 排序，只拿名稱。然後再寫一個<strong>沒有 OrderBy</strong> 的版本，看 SQL 差在哪。</p>
+<p class="accept">✅ 驗收：第 2 頁是洋芋片、巧克力、餅乾</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task SkipTake(ShopDbContext db)
+{
+    int page = 2, pageSize = 3;
+
+    var paged = await db.Products
+        .OrderBy(p =&gt; p.Id)
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
+        .Select(p =&gt; p.Name)
+        .ToListAsync();
+    Lab.Show($"第 {page} 頁：{string.Join("、", paged)}");
+
+    Lab.Note("沒有 OrderBy 的版本");
+    var noOrder = await db.Products.Skip(3).Take(3).Select(p =&gt; p.Name).ToListAsync();
+    Lab.Show(string.Join("、", noOrder));
+}</code></pre>
+<pre><code class="language-sql">-- 有 OrderBy。Parameters=[@p='3']
+SELECT [p].[Name]
+FROM [Products] AS [p]
+ORDER BY [p].[Id]
+OFFSET @p ROWS FETCH NEXT @p ROWS ONLY
+
+-- 沒有 OrderBy
+SELECT [p].[Name]
+FROM [Products] AS [p]
+ORDER BY (SELECT 1)
+OFFSET @p ROWS FETCH NEXT @p ROWS ONLY</code></pre>
+<ul>
+  <li><code>Skip</code> → <code>OFFSET</code>、<code>Take</code> → <code>FETCH NEXT</code>。這次 <code>3</code> 變成參數 <code>@p</code>，因為它是從變數算出來的；而且 Skip 和 Take 剛好都是 3，EF Core 合併成同一個參數</li>
+  <li>SQL Server 規定 <code>OFFSET</code> 一定要有 <code>ORDER BY</code>。你沒寫，EF Core 就塞一個 <code>ORDER BY (SELECT 1)</code>，意思是「不排序」，<strong>每次拿到的第 2 頁可能不一樣</strong>。分頁一定要給排序</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-10">L1-10：Select 投影</h3>
+<p>任務：(a) 只拿所有商品的名稱；(b) 拿名稱和價格。</p>
+<p class="accept">✅ 驗收：兩次 SELECT 的欄位數不一樣</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task Select(ShopDbContext db)
+{
+    var names = await db.Products.Select(p =&gt; p.Name).ToListAsync();
+    Lab.Show(string.Join("、", names));
+
+    var pairs = await db.Products.Select(p =&gt; new { p.Name, p.Price }).ToListAsync();
+    Lab.Show(pairs);
+}</code></pre>
+<pre><code class="language-sql">SELECT [p].[Name]
+FROM [Products] AS [p]
+
+SELECT [p].[Name], [p].[Price]
+FROM [Products] AS [p]</code></pre>
+<p>對照 L1-01 的 <code>SELECT [p].[Id], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]</code>：有 <code>Select</code> 就只拿需要的欄位。列表頁不需要文章內文時，這一招可以省很多流量，第 4 課會用在部落格上。</p>
+<p>(b) 回傳的是 <code>List&lt;匿名型別&gt;</code>，只能在這個方法裡用，不能當方法的回傳值；要傳出去就宣告一個 record（01 題 6 的 <code>PostRequest</code> 那種）。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-11">L1-11：Max / Average / Sum</h3>
+<p>任務：最高價、平均價、總庫存。</p>
+<p class="accept">✅ 驗收：80、42.5、448</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task Aggregates(ShopDbContext db)
+{
+    decimal max = await db.Products.MaxAsync(p =&gt; p.Price);
+    decimal avg = await db.Products.AverageAsync(p =&gt; p.Price);
+    int stock = await db.Products.SumAsync(p =&gt; p.Stock);
+
+    Lab.Show($"最高價 {max}、平均價 {avg}、總庫存 {stock}");
+}</code></pre>
+<pre><code class="language-sql">SELECT MAX([p].[Price]) FROM [Products] AS [p]
+SELECT AVG([p].[Price]) FROM [Products] AS [p]
+SELECT COALESCE(SUM([p].[Stock]), 0) FROM [Products] AS [p]</code></pre>
+<ul>
+  <li>三個方法三句 SQL，各回一個數字。同一個方法裡呼叫幾次 <code>…Async</code>，就送幾句</li>
+  <li><code>SUM</code> 外面包 <code>COALESCE(…, 0)</code>：表是空的時候 SQL 的 SUM 會回 NULL，但 C# 的 <code>int</code> 不能是 null，EF Core 先把 NULL 換成 0</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l1-12">L1-12：日期區間</h3>
+<p>任務：2026 年 9 月的訂單。用兩個 <code>DateTime</code> 變數 <code>from</code>、<code>to</code>（下個月 1 號），條件 <code>&gt;= from &amp;&amp; &lt; to</code>。</p>
+<p>先猜：這次 SQL 裡的日期是直接寫進去，還是參數？</p>
+<p class="accept">✅ 驗收：訂單 2、6、7</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task DateRange(ShopDbContext db)
+{
+    var from = new DateTime(2026, 9, 1);
+    var to = from.AddMonths(1);
+
+    var september = await db.Orders
+        .Where(o =&gt; o.OrderedAt &gt;= from &amp;&amp; o.OrderedAt &lt; to)
+        .Select(o =&gt; new { o.Id, o.OrderedAt })
+        .ToListAsync();
+
+    Lab.Show(september);
+}</code></pre>
+<pre><code class="language-sql">-- Parameters=[@from='2026-09-01T00:00:00.0000000', @to='2026-10-01T00:00:00.0000000']
+SELECT [o].[Id], [o].[OrderedAt]
+FROM [Orders] AS [o]
+WHERE [o].[OrderedAt] &gt;= @from AND [o].[OrderedAt] &lt; @to</code></pre>
+<ul>
+  <li>這次是<strong>參數</strong> <code>@from</code>、<code>@to</code>。規則：lambda 裡用到<strong>外面的變數</strong>就變參數，寫死的<strong>常數</strong>（L1-01 的 40）就直接寫進 SQL。使用者輸入的東西永遠是變數，所以永遠是參數，不會有 SQL Injection</li>
+  <li>區間用 <code>&gt;= 月初 &amp;&amp; &lt; 下月初</code>，不要用 <code>&lt;= 9/30</code>：9/30 23:59 的訂單會漏掉</li>
+</ul>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="level2">6. Level 2：關聯（8 個實驗）</h2>
+<p>這一層開始跨表。EF Core 把導覽屬性翻成 JOIN 或子查詢，你不用自己寫 ON 條件，它從外鍵知道。寫在 <code>Level2.cs</code>。</p>
+
+<div class="exercise">
+<h3 id="l2-01">L2-01：Include 多對一</h3>
+<p>任務：所有訂單，連同下單的客戶（<code>Include(o =&gt; o.Customer)</code>）。印「訂單 1：小明（台北）」。</p>
+<p>先猜：會是 INNER JOIN 還是 LEFT JOIN？為什麼？</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task IncludeManyToOne(ShopDbContext db)
+{
+    var orders = await db.Orders
+        .Include(o =&gt; o.Customer)
+        .ToListAsync();
+
+    Lab.Show(orders.Select(o =&gt; $"訂單 {o.Id}：{o.Customer.Name}（{o.Customer.City}）"));
+}</code></pre>
+<pre><code class="language-sql">SELECT [o].[Id], [o].[CustomerId], [o].[OrderedAt], [o].[Status], [c].[Id], [c].[City], [c].[JoinedAt], [c].[Name]
+FROM [Orders] AS [o]
+INNER JOIN [Customers] AS [c] ON [o].[CustomerId] = [c].[Id]</code></pre>
+<ul>
+  <li><code>Include</code> → <code>JOIN</code>，SELECT 多了 <code>[c].…</code> 整組客戶欄位，EF Core 拿回來後組成 <code>o.Customer</code> 物件</li>
+  <li><strong>INNER JOIN</strong>：因為 <code>CustomerId</code> 是 <code>int</code>（不可為 null），每筆訂單一定有客戶，不會有對不到的列。如果宣告成 <code>int?</code>（可以沒有客戶），EF Core 會改用 LEFT JOIN</li>
+  <li>沒有 <code>Include</code> 的話，<code>o.Customer</code> 是 <code>null</code>（第 2 課的延遲載入會講為什麼）</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l2-02">L2-02：Include 一對多</h3>
+<p>任務：所有客戶，連同各自的訂單（<code>Include(c =&gt; c.Orders)</code>）。印「小明 有 3 筆訂單」。</p>
+<p>先猜：這次是哪種 JOIN？小芳沒有訂單，會不會消失？</p>
+<p class="accept">✅ 驗收：五個客戶都在，小芳 0 筆</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task IncludeOneToMany(ShopDbContext db)
+{
+    var customers = await db.Customers
+        .Include(c =&gt; c.Orders)
+        .ToListAsync();
+
+    Lab.Show(customers.Select(c =&gt; $"{c.Name} 有 {c.Orders.Count} 筆訂單"));
+}</code></pre>
+<pre><code class="language-sql">SELECT [c].[Id], [c].[City], [c].[JoinedAt], [c].[Name], [o].[Id], [o].[CustomerId], [o].[OrderedAt], [o].[Status]
+FROM [Customers] AS [c]
+LEFT JOIN [Orders] AS [o] ON [c].[Id] = [o].[CustomerId]
+ORDER BY [c].[Id]</code></pre>
+<ul>
+  <li><strong>LEFT JOIN</strong>：客戶可以沒有訂單，LEFT JOIN 讓小芳也留在結果裡（訂單欄位是 NULL）</li>
+  <li>結果有 <strong>9 列</strong>（小明 3 + 小華 2 + 小美 2 + 阿強 1 + 小芳 1），不是 5 列。客戶的欄位在每一列重複出現。EF Core 拿回來後依 <code>Id</code> 把同一個客戶的列合併成一個物件、訂單塞進 <code>Orders</code> 清單</li>
+  <li>多出來的 <code>ORDER BY [c].[Id]</code> 就是為了讓同一個客戶的列連在一起，合併起來才方便</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l2-03">L2-03：ThenInclude</h3>
+<p>任務：訂單 → 明細 → 商品，三層。印「訂單 1：可樂×2、洋芋片×1」。</p>
+<p>先猜：兩層 Include 會變成幾個 JOIN？</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task ThenInclude(ShopDbContext db)
+{
+    var orders = await db.Orders
+        .Include(o =&gt; o.Items)
+            .ThenInclude(i =&gt; i.Product)
+        .ToListAsync();
+
+    foreach (var o in orders)
+    {
+        Lab.Show($"訂單 {o.Id}：{string.Join("、", o.Items.Select(i =&gt; $"{i.Product.Name}×{i.Quantity}"))}");
+    }
+}</code></pre>
+<pre><code class="language-sql">SELECT [o].[Id], [o].[CustomerId], [o].[OrderedAt], [o].[Status], [s].[Id], [s].[OrderId], [s].[ProductId], [s].[Quantity], [s].[UnitPrice], [s].[Id0], [s].[CategoryId], [s].[Name], [s].[Price], [s].[Stock]
+FROM [Orders] AS [o]
+LEFT JOIN (
+    SELECT [o0].[Id], [o0].[OrderId], [o0].[ProductId], [o0].[Quantity], [o0].[UnitPrice], [p].[Id] AS [Id0], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]
+    FROM [OrderItems] AS [o0]
+    INNER JOIN [Products] AS [p] ON [o0].[ProductId] = [p].[Id]
+) AS [s] ON [o].[Id] = [s].[OrderId]
+ORDER BY [o].[Id], [s].[Id]</code></pre>
+<ul>
+  <li><code>Include(Items)</code> 是一對多 → LEFT JOIN；<code>ThenInclude(Product)</code> 是多對一 → INNER JOIN。EF Core 先把「明細 JOIN 商品」包成子查詢 <code>[s]</code>，再 LEFT JOIN 到訂單</li>
+  <li><code>Include</code> 越疊越多，一句 SQL 的欄位和列數會爆炸（笛卡兒積）。只需要幾個欄位時，第 4 課的 <code>Select</code> 投影比 <code>Include</code> 划算</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l2-04">L2-04：導覽屬性放進 Where</h3>
+<p>任務：台北客戶的訂單。<strong>不用 Include</strong>，直接在 <code>Where</code> 裡寫 <code>o.Customer.City == "台北"</code>，投影訂單 Id 和客戶名。</p>
+<p>先猜：沒有 Include，EF Core 還會 JOIN 嗎？</p>
+<p class="accept">✅ 驗收：訂單 1～5（小明 3 筆、小華 2 筆）</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task NavigationInWhere(ShopDbContext db)
+{
+    var taipei = await db.Orders
+        .Where(o =&gt; o.Customer.City == "台北")
+        .Select(o =&gt; new { o.Id, o.Customer.Name })
+        .ToListAsync();
+
+    Lab.Show(taipei);
+}</code></pre>
+<pre><code class="language-sql">SELECT [o].[Id], [c].[Name]
+FROM [Orders] AS [o]
+INNER JOIN [Customers] AS [c] ON [o].[CustomerId] = [c].[Id]
+WHERE [c].[City] = N'台北'</code></pre>
+<p>會 JOIN，但 SELECT 只有兩個欄位。<code>Include</code> 的意思是「把整個關聯物件<strong>載回來</strong>」；在 <code>Where</code>／<code>Select</code> 裡<strong>用到</strong>導覽屬性，EF Core 自己會 JOIN，但只拿你指定的欄位。要過濾或投影，不需要 Include。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l2-05">L2-05：集合的 Any</h3>
+<p>任務：三個查詢只拿客戶名：(a) 下過單的（<code>c.Orders.Any()</code>）；(b) 沒下過單的（<code>!c.Orders.Any()</code>）；(c) 取消過訂單的（<code>c.Orders.Any(o =&gt; o.Status == OrderStatus.Cancelled)</code>）。</p>
+<p class="accept">✅ 驗收：小明、小華、小美、阿強／小芳／小華</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task CollectionAny(ShopDbContext db)
+{
+    var withOrders = await db.Customers.Where(c =&gt; c.Orders.Any()).Select(c =&gt; c.Name).ToListAsync();
+    var noOrders = await db.Customers.Where(c =&gt; !c.Orders.Any()).Select(c =&gt; c.Name).ToListAsync();
+    var cancelled = await db.Customers.Where(c =&gt; c.Orders.Any(o =&gt; o.Status == OrderStatus.Cancelled)).Select(c =&gt; c.Name).ToListAsync();
+
+    Lab.Show($"下過單：{string.Join("、", withOrders)}");
+    Lab.Show($"沒下過單：{string.Join("、", noOrders)}");
+    Lab.Show($"取消過訂單：{string.Join("、", cancelled)}");
+}</code></pre>
+<pre><code class="language-sql">-- (a)
+SELECT [c].[Name]
+FROM [Customers] AS [c]
+WHERE EXISTS (
+    SELECT 1
+    FROM [Orders] AS [o]
+    WHERE [c].[Id] = [o].[CustomerId])
+
+-- (b)
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM [Orders] AS [o]
+    WHERE [c].[Id] = [o].[CustomerId])
+
+-- (c)
+WHERE EXISTS (
+    SELECT 1
+    FROM [Orders] AS [o]
+    WHERE [c].[Id] = [o].[CustomerId] AND [o].[Status] = 3)</code></pre>
+<ul>
+  <li>集合上的 <code>Any</code> → <code>EXISTS</code> 子查詢，<code>!</code> → <code>NOT EXISTS</code>。這是「找出沒有 X 的 Y」最標準的寫法，比 LEFT JOIN 再判 NULL 直覺</li>
+  <li>enum <code>OrderStatus.Cancelled</code> 變成 <code>3</code>，因為資料庫存的是數字</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l2-06">L2-06：Select 裡算集合的數量</h3>
+<p>任務：每個客戶的名字和訂單數，一句查詢。<code>Select(c =&gt; new { c.Name, OrderCount = c.Orders.Count })</code>。</p>
+<p>先猜：會是 JOIN + GROUP BY，還是別的？</p>
+<p class="accept">✅ 驗收：小明 3、小華 2、小美 2、阿強 1、小芳 0</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task CountInSelect(ShopDbContext db)
+{
+    var stats = await db.Customers
+        .Select(c =&gt; new { c.Name, OrderCount = c.Orders.Count })
+        .ToListAsync();
+
+    Lab.Show(stats);
+}</code></pre>
+<pre><code class="language-sql">SELECT [c].[Name], (
+    SELECT COUNT(*)
+    FROM [Orders] AS [o]
+    WHERE [c].[Id] = [o].[CustomerId]) AS [OrderCount]
+FROM [Customers] AS [c]</code></pre>
+<p>變成 SELECT 裡的<strong>子查詢</strong>：每個客戶算一次 COUNT。一句 SQL 就拿到五個數字。記住這一題，L4-04 會用「錯的寫法」做同一件事，對比一下送了幾句。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l2-07">L2-07：SelectMany 攤平</h3>
+<p>任務：把所有訂單的明細攤成一列一列：訂單 Id、商品名、數量。用 <code>SelectMany(o =&gt; o.Items, (o, i) =&gt; new { … })</code>。</p>
+<p class="accept">✅ 驗收：14 列</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task SelectMany(ShopDbContext db)
+{
+    var lines = await db.Orders
+        .SelectMany(o =&gt; o.Items, (o, i) =&gt; new { OrderId = o.Id, i.Product.Name, i.Quantity })
+        .ToListAsync();
+
+    Lab.Show(lines);
+}</code></pre>
+<pre><code class="language-sql">SELECT [o].[Id] AS [OrderId], [p].[Name], [o0].[Quantity]
+FROM [Orders] AS [o]
+INNER JOIN [OrderItems] AS [o0] ON [o].[Id] = [o0].[OrderId]
+INNER JOIN [Products] AS [p] ON [o0].[ProductId] = [p].[Id]</code></pre>
+<ul>
+  <li><code>Select</code> 是一對一（一筆訂單 → 一個結果）；<code>SelectMany</code> 是一對多<strong>攤平</strong>（一筆訂單 → 它的每個明細各一列）。SQL 裡就是普通的 INNER JOIN</li>
+  <li>第二個 lambda <code>(o, i) =&gt; …</code> 同時拿得到外層的訂單和內層的明細</li>
+  <li>8 筆訂單攤成 14 列，剛好是 OrderItems 的筆數</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l2-08">L2-08：每筆訂單的總金額</h3>
+<p>任務：每筆訂單的 Id 和總金額（數量 × 單價加總）。<code>o.Items.Sum(i =&gt; i.Quantity * i.UnitPrice)</code>。</p>
+<p class="accept">✅ 驗收：訂單 5 是 400（可樂 180 + 餅乾 70 + 原子筆 150）</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task SumPerOrder(ShopDbContext db)
+{
+    var totals = await db.Orders
+        .Select(o =&gt; new { o.Id, Total = o.Items.Sum(i =&gt; i.Quantity * i.UnitPrice) })
+        .ToListAsync();
+
+    Lab.Show(totals);
+}</code></pre>
+<pre><code class="language-sql">SELECT [o].[Id], (
+    SELECT COALESCE(SUM(CAST([o0].[Quantity] AS decimal(18,2)) * [o0].[UnitPrice]), 0.0)
+    FROM [OrderItems] AS [o0]
+    WHERE [o].[Id] = [o0].[OrderId]) AS [Total]
+FROM [Orders] AS [o]</code></pre>
+<ul>
+  <li>和 L2-06 一樣是子查詢，差別是 COUNT 換成 SUM，計算在資料庫做，C# 拿到的是算好的數字</li>
+  <li><code>CAST([Quantity] AS decimal(18,2))</code>：<code>int × decimal</code> 在 C# 會自動升型，EF Core 把這件事翻成 SQL 的 CAST，讓兩邊算出來一樣</li>
+</ul>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="level3">7. Level 3：彙總（5 個實驗）</h2>
+<p><code>GroupBy</code> 是 LINQ 裡最容易寫出「翻不過去」的地方。規則：<strong><code>GroupBy</code> 後面緊接 <code>Select</code>，Select 裡只用 <code>g.Key</code> 和彙總函數（Count、Sum、Max…）</strong>，就一定翻得成 GROUP BY。寫在 <code>Level3.cs</code>。</p>
+
+<div class="exercise">
+<h3 id="l3-01">L3-01：GroupBy + Count</h3>
+<p>任務：每個類別有幾個商品。<code>GroupBy(p =&gt; p.CategoryId).Select(g =&gt; new { CategoryId = g.Key, Count = g.Count() })</code>。</p>
+<p class="accept">✅ 驗收：1→3、2→3、3→2</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task GroupByCount(ShopDbContext db)
+{
+    var perCategory = await db.Products
+        .GroupBy(p =&gt; p.CategoryId)
+        .Select(g =&gt; new { CategoryId = g.Key, Count = g.Count() })
+        .ToListAsync();
+
+    Lab.Show(perCategory);
+}</code></pre>
+<pre><code class="language-sql">SELECT [p].[CategoryId], COUNT(*) AS [Count]
+FROM [Products] AS [p]
+GROUP BY [p].[CategoryId]</code></pre>
+<p><code>g.Key</code> 就是 GROUP BY 的那個欄位，<code>g.Count()</code> 就是 <code>COUNT(*)</code>。<code>g</code> 代表「同一組的所有列」，但你不能在 Select 裡直接把 <code>g</code> 整個拿出來（那會是「每一組有哪些商品」，SQL 的 GROUP BY 做不到）。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l3-02">L3-02：GroupBy 導覽屬性 + Sum</h3>
+<p>任務：每位客戶的消費總額。從 <code>OrderItems</code> 出發，<code>GroupBy(i =&gt; i.Order.Customer.Name)</code>，Sum 數量 × 單價。</p>
+<p>先猜：從明細一路到客戶名，要 JOIN 幾張表？</p>
+<p class="accept">✅ 驗收：小明 340、小華 480、小美 215、阿強 270</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task GroupBySum(ShopDbContext db)
+{
+    var spending = await db.OrderItems
+        .GroupBy(i =&gt; i.Order.Customer.Name)
+        .Select(g =&gt; new { Customer = g.Key, Total = g.Sum(i =&gt; i.Quantity * i.UnitPrice) })
+        .ToListAsync();
+
+    Lab.Show(spending);
+}</code></pre>
+<pre><code class="language-sql">SELECT [c].[Name] AS [Customer], COALESCE(SUM(CAST([o].[Quantity] AS decimal(18,2)) * [o].[UnitPrice]), 0.0) AS [Total]
+FROM [OrderItems] AS [o]
+INNER JOIN [Orders] AS [o0] ON [o].[OrderId] = [o0].[Id]
+INNER JOIN [Customers] AS [c] ON [o0].[CustomerId] = [c].[Id]
+GROUP BY [c].[Name]</code></pre>
+<p>兩個 INNER JOIN（明細 → 訂單 → 客戶）加一個 GROUP BY，全部由 <code>i.Order.Customer.Name</code> 這一串導覽屬性推出來。小華雖然取消了一筆，金額還是算進去了，因為沒有過濾 Status；要排除的話在 <code>GroupBy</code> 前面加 <code>Where(i =&gt; i.Order.Status != OrderStatus.Cancelled)</code>。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l3-03">L3-03：HAVING</h3>
+<p>任務：下過超過一筆訂單的客戶 Id 和筆數。<code>GroupBy(o =&gt; o.CustomerId)</code> 之後接 <code>Where(g =&gt; g.Count() &gt; 1)</code>。</p>
+<p>先猜：GroupBy 後面的 Where 會變成 WHERE 還是別的？</p>
+<p class="accept">✅ 驗收：客戶 1、2、3</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task Having(ShopDbContext db)
+{
+    var frequent = await db.Orders
+        .GroupBy(o =&gt; o.CustomerId)
+        .Where(g =&gt; g.Count() &gt; 1)
+        .Select(g =&gt; new { CustomerId = g.Key, Count = g.Count() })
+        .ToListAsync();
+
+    Lab.Show(frequent);
+}</code></pre>
+<pre><code class="language-sql">SELECT [o].[CustomerId], COUNT(*) AS [Count]
+FROM [Orders] AS [o]
+GROUP BY [o].[CustomerId]
+HAVING COUNT(*) &gt; 1</code></pre>
+<p>同樣是 <code>Where</code>，放在 <code>GroupBy</code> <strong>前面</strong>是 <code>WHERE</code>（過濾列），放在 <strong>後面</strong>是 <code>HAVING</code>（過濾組）。LINQ 只有一個 Where，位置決定它翻成什麼。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l3-04">L3-04：依年月分組</h3>
+<p>任務：每個月有幾筆訂單。<code>GroupBy(o =&gt; new { o.OrderedAt.Year, o.OrderedAt.Month })</code>，依年月排序。</p>
+<p class="accept">✅ 驗收：8 月 2 筆、9 月 3 筆、10 月 3 筆</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task GroupByMonth(ShopDbContext db)
+{
+    var byMonth = await db.Orders
+        .GroupBy(o =&gt; new { o.OrderedAt.Year, o.OrderedAt.Month })
+        .Select(g =&gt; new { g.Key.Year, g.Key.Month, Count = g.Count() })
+        .OrderBy(x =&gt; x.Year).ThenBy(x =&gt; x.Month)
+        .ToListAsync();
+
+    Lab.Show(byMonth);
+}</code></pre>
+<pre><code class="language-sql">SELECT [o0].[Year], [o0].[Month], COUNT(*) AS [Count]
+FROM (
+    SELECT DATEPART(year, [o].[OrderedAt]) AS [Year], DATEPART(month, [o].[OrderedAt]) AS [Month]
+    FROM [Orders] AS [o]
+) AS [o0]
+GROUP BY [o0].[Year], [o0].[Month]
+ORDER BY [o0].[Year], [o0].[Month]</code></pre>
+<ul>
+  <li>C# 的 <code>.Year</code>、<code>.Month</code> → SQL 的 <code>DATEPART(year, …)</code>。EF Core 有一張「C# 成員 → SQL 函數」的對照表，常用的日期、字串方法都在裡面</li>
+  <li>用匿名型別當 Key 就是多欄位 GROUP BY；EF Core 先用子查詢算出年月兩欄，再對它們分組</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l3-05">L3-05：依彙總排序、取前幾名</h3>
+<p>任務：賣最多的前 3 名商品（依數量加總）。從 <code>OrderItems</code> 依 <code>i.Product.Name</code> 分組。</p>
+<p class="accept">✅ 驗收：原子筆 13、可樂 9、巧克力 4</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task TopN(ShopDbContext db)
+{
+    var top = await db.OrderItems
+        .GroupBy(i =&gt; i.Product.Name)
+        .Select(g =&gt; new { Product = g.Key, Quantity = g.Sum(i =&gt; i.Quantity) })
+        .OrderByDescending(x =&gt; x.Quantity)
+        .Take(3)
+        .ToListAsync();
+
+    Lab.Show(top);
+}</code></pre>
+<pre><code class="language-sql">-- Parameters=[@p='3']
+SELECT TOP(@p) [p].[Name] AS [Product], COALESCE(SUM([o].[Quantity]), 0) AS [Quantity]
+FROM [OrderItems] AS [o]
+INNER JOIN [Products] AS [p] ON [o].[ProductId] = [p].[Id]
+GROUP BY [p].[Name]
+ORDER BY COALESCE(SUM([o].[Quantity]), 0) DESC</code></pre>
+<p><code>Take(3)</code> 沒有 <code>Skip</code> 時翻成 <code>TOP(@p)</code>，不是 OFFSET FETCH。<code>OrderByDescending(x =&gt; x.Quantity)</code> 裡的 <code>Quantity</code> 是上一行 Select 算出來的，EF Core 把整個 SUM 運算式重複寫進 ORDER BY。「排行榜」這種需求就是這個形狀。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="level4">8. Level 4：陷阱與觀察（6 個實驗）</h2>
+<p>前三層看「翻成什麼」，這一層看「什麼時候翻、翻不過去怎麼辦、怎麼寫會多送 SQL」。寫在 <code>Level4.cs</code>。</p>
+
+<div class="exercise">
+<h3 id="l4-01">L4-01：翻不過去的 LINQ</h3>
+<p>任務：在 <code>Level4</code> 裡寫一個自己的方法 <code>private static bool IsCheap(Product p) =&gt; p.Price &lt; 40;</code>，然後 <code>db.Products.Where(p =&gt; IsCheap(p)).ToListAsync()</code>，用 <code>try/catch</code> 接住例外、印出訊息。再改寫成 EF Core 看得懂的版本。</p>
+<p>先猜：會在哪一行爆？<code>Where</code> 那行還是 <code>ToListAsync</code>？</p>
+<details class="answer">
+<summary>LINQ 與實測結果（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">private static bool IsCheap(Product p) =&gt; p.Price &lt; 40;
+
+public static async Task CannotTranslate(ShopDbContext db)
+{
+    try
+    {
+        var cheap = await db.Products.Where(p =&gt; IsCheap(p)).ToListAsync();
+        Lab.Show(cheap.Count);
+    }
+    catch (InvalidOperationException ex)
+    {
+        Lab.Show($"✖ {ex.GetType().Name}");
+        Lab.Show(ex.Message);
+    }
+
+    Lab.Note("改寫成 EF Core 看得懂的條件");
+    var cheap2 = await db.Products.Where(p =&gt; p.Price &lt; 40).Select(p =&gt; p.Name).ToListAsync();
+    Lab.Show(string.Join("、", cheap2));
+}</code></pre>
+<pre><code class="nohighlight">✖ InvalidOperationException
+The LINQ expression 'DbSet&lt;Product&gt;()
+    .Where(p =&gt; Level4.IsCheap(p))' could not be translated. Either rewrite the query in a form
+that can be translated, or switch to client evaluation explicitly by inserting a call to
+'AsEnumerable', 'AsAsyncEnumerable', 'ToList', or 'ToListAsync'.</code></pre>
+<ul>
+  <li>爆在 <code>ToListAsync()</code>，不是 <code>Where</code>。<code>Where</code> 只是把 <code>IsCheap(p)</code> 記進運算式樹；要翻譯時 EF Core 發現它不認識你的方法（它只看得到「呼叫 Level4.IsCheap」，看不到裡面寫什麼），就放棄</li>
+  <li>例外訊息給了兩條路：<strong>改寫</strong>成它看得懂的運算式（<code>p.Price &lt; 40</code>），或者在前面加 <code>AsEnumerable()</code> 切到<strong>用戶端評估</strong>（整張表撈回來在 C# 裡跑 <code>IsCheap</code>）。幾乎永遠選前者</li>
+  <li>這是初學 EF Core 最常撞到的例外。看到 <code>could not be translated</code>，就找 lambda 裡有沒有自己的方法、複雜的 C# 邏輯</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l4-02">L4-02：太早 ToList</h3>
+<p>任務：先 <code>ToListAsync()</code> 拿到所有商品，再對那個 List 用 <code>Where(p =&gt; p.Price &lt; 40)</code>。印撈回幾筆、過濾剩幾筆。</p>
+<p>先猜：SQL 裡有沒有 WHERE？</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task ToListTooEarly(ShopDbContext db)
+{
+    var all = await db.Products.ToListAsync();          // 這裡就送 SQL 了，而且沒有 WHERE
+    var cheap = all.Where(p =&gt; p.Price &lt; 40).ToList();  // 這行是在記憶體裡過濾，不是資料庫
+
+    Lab.Show($"撈回 {all.Count} 筆，記憶體裡過濾剩 {cheap.Count} 筆");
+}</code></pre>
+<pre><code class="language-sql">SELECT [p].[Id], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]
+FROM [Products] AS [p]</code></pre>
+<p>撈回 8 筆，記憶體裡過濾剩 4 筆。SQL <strong>沒有 WHERE</strong>。<code>ToListAsync()</code> 之後 <code>all</code> 是 <code>List&lt;Product&gt;</code>，它的 <code>Where</code> 是 <code>System.Linq.Enumerable</code> 的版本，在 C# 裡一筆一筆跑，資料庫完全不知道你要過濾。8 筆看不出差別，8 萬筆就是整張表搬回來。</p>
+<p>規則：<strong><code>Where</code>、<code>OrderBy</code>、<code>Select</code>、<code>Skip/Take</code> 全部寫在 <code>ToListAsync()</code> 之前。</strong>這和 01 的 2-4 補充說的「<code>IQueryable</code> 的 Where」vs「<code>List</code> 的 Where」是同一件事，兩個 <code>Where</code> 同名，但一個翻成 SQL、一個在記憶體跑。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l4-03">L4-03：延遲執行</h3>
+<p>任務：先把 <code>IQueryable&lt;Product&gt; query = db.Products.Where(p =&gt; p.Stock &gt; 0);</code> 存起來，印一行「query 建好了」；然後對同一個 <code>query</code> 呼叫兩次 <code>ToListAsync()</code>，每次之間印一行。看 SQL 出現在哪些時間點。</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task Deferred(ShopDbContext db)
+{
+    IQueryable&lt;Product&gt; query = db.Products.Where(p =&gt; p.Stock &gt; 0);
+    Lab.Note("query 建好了，上面沒有印出任何 SQL");
+
+    var first = await query.ToListAsync();
+    Lab.Note("第一次 ToListAsync");
+
+    var second = await query.ToListAsync();
+    Lab.Note("第二次 ToListAsync：同一個 query，又送了一次");
+
+    Lab.Show($"{first.Count} 筆 / {second.Count} 筆");
+}</code></pre>
+<pre><code class="nohighlight">  (query 建好了，上面沒有印出任何 SQL)
+SELECT [p].[Id], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]
+FROM [Products] AS [p]
+WHERE [p].[Stock] &gt; 0
+  (第一次 ToListAsync)
+SELECT [p].[Id], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]
+FROM [Products] AS [p]
+WHERE [p].[Stock] &gt; 0
+  (第二次 ToListAsync：同一個 query，又送了一次)
+  → 7 筆 / 7 筆</code></pre>
+<ul>
+  <li>宣告 <code>query</code> 那行<strong>沒有</strong> SQL；兩次 <code>ToListAsync</code> 各送一句。<code>IQueryable</code> 是「查詢的描述」，不是「查詢的結果」，每次要結果都重新去問資料庫</li>
+  <li>所以要重複用結果就存 <code>ToListAsync()</code> 回來的 <code>List</code>，不要重複用 <code>query</code></li>
+  <li>反過來說，這也是 01 題 6 可以先建 <code>query</code>、依條件疊 <code>Where</code>、最後才執行的原因</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l4-04">L4-04：N+1 預覽</h3>
+<p>任務：先 <code>ToListAsync()</code> 拿到所有客戶，再用 <code>foreach</code> 對每個客戶 <code>CountAsync</code> 他的訂單數。結果要和 L2-06 一樣。</p>
+<p>先猜：總共會送幾句 SQL？</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task NPlusOne(ShopDbContext db)
+{
+    var customers = await db.Customers.ToListAsync();   // 1 句
+    foreach (var c in customers)
+    {
+        int n = await db.Orders.CountAsync(o =&gt; o.CustomerId == c.Id);   // 每個客戶 1 句，共 N 句
+        Lab.Show($"{c.Name}：{n} 筆");
+    }
+}</code></pre>
+<pre><code class="language-sql">SELECT [c].[Id], [c].[City], [c].[JoinedAt], [c].[Name]
+FROM [Customers] AS [c]
+
+-- Parameters=[@c_Id='1']
+SELECT COUNT(*) FROM [Orders] AS [o] WHERE [o].[CustomerId] = @c_Id
+-- Parameters=[@c_Id='2']
+SELECT COUNT(*) FROM [Orders] AS [o] WHERE [o].[CustomerId] = @c_Id
+-- @c_Id='3'、'4'、'5' 各一句…</code></pre>
+<p><strong>1 + 5 = 6 句</strong>，結果和 L2-06 的 <strong>1 句</strong>一模一樣。這就是 N+1：先 1 句拿清單，再對清單的每一筆各送 1 句。5 個客戶是 6 句，5000 個客戶就是 5001 句。每一句都要在網路上來回一趟，慢的不是 SQL 本身，是來回的次數。</p>
+<p>只要看到「<code>foreach</code> 裡面有 <code>await db.…Async()</code>」，就是 N+1。解法是改成 L2-06 那種一句算完的寫法，或是 L2-02 的 <code>Include</code>。第 4 課會在部落格的「文章列表顯示作者」上重現這個問題。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l4-05">L4-05：AsNoTracking</h3>
+<p>任務：查一次所有商品，印 <code>db.ChangeTracker.Entries().Count()</code>；再 <code>new</code> 一個新的 DbContext，用 <code>AsNoTracking()</code> 查一次，印同樣的數字。</p>
+<p>先猜：兩次的 SQL 會不一樣嗎？</p>
+<details class="answer">
+<summary>LINQ 與實測結果（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task NoTracking(ShopDbContext db)
+{
+    var tracked = await db.Products.ToListAsync();
+    Lab.Show($"一般查詢：ChangeTracker 追蹤了 {db.ChangeTracker.Entries().Count()} 個物件");
+
+    await using var db2 = new ShopDbContext();
+    var untracked = await db2.Products.AsNoTracking().ToListAsync();
+    Lab.Show($"AsNoTracking：ChangeTracker 追蹤了 {db2.ChangeTracker.Entries().Count()} 個物件");
+}</code></pre>
+<pre><code class="nohighlight">SELECT [p].[Id], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]
+FROM [Products] AS [p]
+  → 一般查詢：ChangeTracker 追蹤了 8 個物件
+SELECT [p].[Id], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]
+FROM [Products] AS [p]
+  → AsNoTracking：ChangeTracker 追蹤了 0 個物件</code></pre>
+<ul>
+  <li>SQL <strong>一模一樣</strong>。<code>AsNoTracking</code> 不影響資料庫，影響的是拿回來之後：一般查詢會把每個物件登記到 01 2-6 講的記帳本（ChangeTracker），之後改屬性才能被 <code>SaveChanges</code> 發現；<code>AsNoTracking</code> 跳過登記，省記憶體和時間</li>
+  <li>只讀不改的查詢（列表頁、報表）加 <code>AsNoTracking</code>；查出來要改再存的（01 的 PUT）不能加，加了 <code>SaveChanges</code> 什麼都不會做</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l4-06">L4-06：ExecuteUpdate vs 查出來改再存</h3>
+<p>任務：把類別 1 的商品庫存全部 +10，用兩種寫法：(a) 查出來、<code>foreach</code> 改 <code>Stock</code>、<code>SaveChangesAsync</code>；(b) <code>ExecuteUpdateAsync(s =&gt; s.SetProperty(p =&gt; p.Stock, p =&gt; p.Stock - 10))</code> 再減回來。比較各送了幾句、長什麼樣。</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task ExecuteUpdate(ShopDbContext db)
+{
+    Lab.Note("方法一：查出來、改屬性、SaveChanges");
+    var drinks = await db.Products.Where(p =&gt; p.CategoryId == 1).ToListAsync();
+    foreach (var p in drinks) p.Stock += 10;
+    await db.SaveChangesAsync();
+
+    Lab.Note("方法二：ExecuteUpdateAsync，一句 UPDATE");
+    int affected = await db.Products
+        .Where(p =&gt; p.CategoryId == 1)
+        .ExecuteUpdateAsync(s =&gt; s.SetProperty(p =&gt; p.Stock, p =&gt; p.Stock - 10));
+    Lab.Show($"影響 {affected} 筆");
+}</code></pre>
+<pre><code class="language-sql">-- 方法一：1 句 SELECT + 1 批 UPDATE（每筆一句，Parameters=[@p1='1', @p0='110', @p3='2', @p2='10', @p5='3', @p4='30']）
+SELECT [p].[Id], [p].[CategoryId], [p].[Name], [p].[Price], [p].[Stock]
+FROM [Products] AS [p]
+WHERE [p].[CategoryId] = 1
+
+UPDATE [Products] SET [Stock] = @p0 OUTPUT 1 WHERE [Id] = @p1;
+UPDATE [Products] SET [Stock] = @p2 OUTPUT 1 WHERE [Id] = @p3;
+UPDATE [Products] SET [Stock] = @p4 OUTPUT 1 WHERE [Id] = @p5;
+
+-- 方法二：只有 1 句，不用先 SELECT
+UPDATE [p]
+SET [p].[Stock] = [p].[Stock] - 10
+FROM [Products] AS [p]
+WHERE [p].[CategoryId] = 1</code></pre>
+<ul>
+  <li>方法一要先把資料撈回 C#，在記憶體改，再把<strong>算好的值</strong>一筆一筆寫回去（<code>Stock = 110</code>、<code>10</code>、<code>30</code>）。3 筆還好，3 萬筆就是撈 3 萬筆、送 3 萬句 UPDATE</li>
+  <li>方法二把「+10」這個運算交給資料庫，一句搞定，回傳影響筆數。不經過 ChangeTracker，所以 DbContext 裡已經追蹤的物件<strong>不會跟著更新</strong>（方法一撈回來的 <code>drinks</code> 還是 110、10、30）</li>
+  <li>「批次改一堆」用 <code>ExecuteUpdate</code>／<code>ExecuteDelete</code>；「改一筆、而且改法依賴 C# 邏輯」用方法一。01 的 PUT 是後者</li>
+</ul>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="cheatsheet">9. LINQ ↔ SQL 對照總表</h2>
+<p>31 個實驗的結論整理成一張表，之後每課學到新的就往這裡加。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>LINQ</th><th>SQL</th><th>實驗</th></tr>
+  <tr><td><code>Where(p =&gt; …)</code></td><td><code>WHERE</code>；疊兩次 = <code>AND</code></td><td>L1-01、L1-07</td></tr>
+  <tr><td><code>&amp;&amp;</code>／<code>||</code>／<code>!</code></td><td><code>AND</code>／<code>OR</code>／<code>NOT</code></td><td>L1-07</td></tr>
+  <tr><td><code>OrderBy().ThenBy()</code></td><td>一個 <code>ORDER BY a, b</code></td><td>L1-08</td></tr>
+  <tr><td><code>FirstOrDefault</code></td><td><code>TOP(1)</code></td><td>L1-02</td></tr>
+  <tr><td><code>SingleOrDefault</code></td><td><code>TOP(2)</code>（拿到 2 筆就丟例外）</td><td>L1-03</td></tr>
+  <tr><td><code>Any()</code></td><td><code>CASE WHEN EXISTS (…) THEN 1 ELSE 0</code></td><td>L1-04</td></tr>
+  <tr><td><code>Count()</code>／<code>Max</code>／<code>Average</code>／<code>Sum</code></td><td><code>COUNT(*)</code>／<code>MAX</code>／<code>AVG</code>／<code>COALESCE(SUM(…), 0)</code></td><td>L1-05、L1-11</td></tr>
+  <tr><td><code>StartsWith</code>／<code>Contains</code>／<code>EndsWith</code></td><td><code>LIKE 'x%'</code>／<code>'%x%'</code>／<code>'%x'</code></td><td>L1-06</td></tr>
+  <tr><td><code>Skip(n).Take(m)</code></td><td><code>OFFSET n ROWS FETCH NEXT m ROWS ONLY</code>（要有 ORDER BY）</td><td>L1-09</td></tr>
+  <tr><td><code>Take(n)</code> 沒有 Skip</td><td><code>TOP(n)</code></td><td>L3-05</td></tr>
+  <tr><td><code>Select(p =&gt; p.Name)</code>／<code>new { … }</code></td><td>只 SELECT 那些欄位</td><td>L1-10</td></tr>
+  <tr><td>lambda 裡的常數／外面的變數</td><td>直接寫進 SQL／變成 <code>@參數</code></td><td>L1-01、L1-12</td></tr>
+  <tr><td><code>.Year</code>、<code>.Month</code></td><td><code>DATEPART(year, …)</code></td><td>L3-04</td></tr>
+  <tr><td><code>Include(多對一)</code></td><td><code>INNER JOIN</code>（外鍵不可 null）</td><td>L2-01</td></tr>
+  <tr><td><code>Include(一對多)</code></td><td><code>LEFT JOIN</code> + <code>ORDER BY 主鍵</code></td><td>L2-02</td></tr>
+  <tr><td><code>Include().ThenInclude()</code></td><td>JOIN 包子查詢再 JOIN</td><td>L2-03</td></tr>
+  <tr><td>Where／Select 裡用 <code>o.Customer.City</code></td><td>自動 JOIN，只拿用到的欄位</td><td>L2-04</td></tr>
+  <tr><td><code>c.Orders.Any()</code>／<code>!c.Orders.Any()</code></td><td><code>EXISTS</code>／<code>NOT EXISTS</code> 子查詢</td><td>L2-05</td></tr>
+  <tr><td>Select 裡的 <code>c.Orders.Count</code>／<code>.Sum()</code></td><td>SELECT 裡的子查詢</td><td>L2-06、L2-08</td></tr>
+  <tr><td><code>SelectMany</code></td><td><code>INNER JOIN</code> 攤平</td><td>L2-07</td></tr>
+  <tr><td><code>GroupBy(k).Select(g =&gt; g.Key, g.Count())</code></td><td><code>GROUP BY</code></td><td>L3-01、L3-02</td></tr>
+  <tr><td>GroupBy 後面的 <code>Where(g =&gt; …)</code></td><td><code>HAVING</code></td><td>L3-03</td></tr>
+  <tr><td><code>GroupBy(new { a, b })</code></td><td>多欄位 GROUP BY</td><td>L3-04</td></tr>
+  <tr><td><code>ExecuteUpdateAsync</code>／<code>ExecuteDeleteAsync</code></td><td>一句 <code>UPDATE … FROM</code>／<code>DELETE</code></td><td>L4-06</td></tr>
+  <tr><td><code>AsNoTracking()</code></td><td>SQL 不變，只是不登記到 ChangeTracker</td><td>L4-05</td></tr>
+  <tr><td>lambda 裡呼叫自己的方法</td><td>❌ <code>could not be translated</code></td><td>L4-01</td></tr>
+  <tr><td><code>ToList()</code> 之後的 Where</td><td>❌ SQL 沒有 WHERE，在記憶體過濾</td><td>L4-02</td></tr>
+  <tr><td><code>foreach</code> 裡 <code>await db.…Async()</code></td><td>❌ N+1 句</td><td>L4-04</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="next">延伸問題</h2>
+<ol>
+  <li>L1-03：<code>Single</code> 翻成 <code>TOP(2)</code>。如果 EF Core 翻成 <code>TOP(1)</code>，<code>Single</code> 的「剛好一筆」承諾哪裡會失效？</li>
+  <li>L1-06：部落格的關鍵字搜尋用 <code>Contains</code>，變成 <code>LIKE '%關鍵字%'</code>，用不到索引。文章到了 100 萬篇要怎麼辦？（提示：全文檢索、或換成 <code>StartsWith</code> 之類的限制）</li>
+  <li>L2-03 vs L1-10：要顯示「訂單列表，每筆只要訂單 Id、客戶名、總金額」，用 <code>Include</code> 還是 <code>Select</code> 投影？各會拿回多少欄位？（第 4 課的核心問題）</li>
+  <li>L4-04 的 N+1 如果客戶有 5000 個，和 L2-06 的一句 SQL 比，慢在哪裡？是 SQL Server 算得慢，還是別的？</li>
+  <li>把 3-5 的 <code>EnsureCreated</code> 改成 01 學的 Migration：要裝什麼套件、<code>dotnet ef</code> 怎麼找到 <code>ShopDbContext</code>（它沒有 <code>Program.cs</code> 的 host builder）？</li>
+</ol>
+
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://learn.microsoft.com/ef/core/querying/" target="_blank">Querying Data</a>（EF Core 查詢總覽）、<a href="https://learn.microsoft.com/ef/core/querying/how-query-works" target="_blank">How Queries Work</a>（運算式樹、延遲執行）</li>
+  <li><a href="https://learn.microsoft.com/ef/core/querying/client-eval" target="_blank">Client vs. Server Evaluation</a>（L4-01、L4-02）</li>
+  <li><a href="https://learn.microsoft.com/ef/core/querying/related-data/eager" target="_blank">Eager Loading of Related Data</a>（Include、ThenInclude）</li>
+  <li><a href="https://learn.microsoft.com/ef/core/querying/complex-query-operators" target="_blank">Complex Query Operators</a>（GroupBy、SelectMany、Join）</li>
+  <li><a href="https://learn.microsoft.com/ef/core/querying/tracking" target="_blank">Tracking vs. No-Tracking Queries</a></li>
+  <li><a href="https://learn.microsoft.com/ef/core/saving/execute-insert-update-delete" target="_blank">ExecuteUpdate and ExecuteDelete</a></li>
+  <li><a href="https://learn.microsoft.com/ef/core/logging-events-diagnostics/simple-logging" target="_blank">Simple Logging</a>（<code>LogTo</code>）、<a href="https://learn.microsoft.com/ef/core/dbcontext-configuration/" target="_blank">DbContext Configuration</a>（<code>OnConfiguring</code>）</li>
+  <li><a href="https://learn.microsoft.com/ef/core/managing-schemas/ensure-created" target="_blank">Create and Drop APIs</a>（<code>EnsureCreated</code> vs Migration）</li>
+</ul>
+</div>
+
+<nav class="footer-nav">
+  <a href="01-efcore-crud.html">← 01 文章 CRUD</a>
+  <a href="../index.html">回目錄</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>
