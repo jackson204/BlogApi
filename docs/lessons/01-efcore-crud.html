@@ -371,6 +371,87 @@ dotnet ef database update --context AnalyticsDbContext</code></pre>
 <p>官方文件：<a href="https://learn.microsoft.com/ef/core/cli/dotnet#common-options" target="_blank">dotnet ef 的 --context 參數</a>、<a href="https://learn.microsoft.com/ef/core/managing-schemas/migrations/projects" target="_blank">Migration 放在不同位置</a></p>
 
 <h3 id="migration">2-5. Migration：C# 改了，資料表怎麼跟著改？</h3>
+
+<h4 id="code-first">先講名稱：這門課用的是 Code First</h4>
+<p>這一課的流程是：先寫 <code>Post.cs</code>，再用指令讓資料庫長出對應的資料表。這種「<strong>C# class 是正本，資料庫跟著 class 變</strong>」的做法叫 <strong>Code First</strong>。反過來，資料庫是正本、C# class 從資料庫產生的做法叫 <strong>Database First</strong>。</p>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    subgraph CF["Code First（這門課）"]
+        direction LR
+        A1["C# class<br>Post.cs<br>⭐ 正本"] -- "migrations add<br>database update" --> B1[("資料表")]
+    end
+    subgraph DF["Database First"]
+        direction LR
+        B2[("資料表<br>⭐ 正本")] -- "dbcontext scaffold" --> A2["C# class<br>（自動產生）"]
+    end
+</div>
+<div class="diagram-caption">兩種做法只差在：改結構時先改哪一邊，另一邊再用指令同步</div>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>Code First</th><th>Database First</th></tr>
+  <tr><td>正本</td><td>C# class</td><td>資料庫</td></tr>
+  <tr><td>要加一個欄位時</td><td>改 class → <code>migrations add</code> → <code>database update</code></td><td>先在資料庫加（或請 DBA 加）→ 重新 <code>dotnet ef dbcontext scaffold</code> 產生 class</td></tr>
+  <tr><td>結構變更的紀錄</td><td>Migrations 檔案放在專案裡，跟著 git commit，每次變更都查得到</td><td>要另外管理 SQL 腳本</td></tr>
+  <tr><td>新同事、CI 要建資料庫</td><td>執行 <code>database update</code>，建出一模一樣的結構</td><td>要拿到 SQL 腳本或資料庫備份</td></tr>
+  <tr><td>適合</td><td>新專案、後端自己管資料庫</td><td>資料庫已經存在、由 DBA 管、好幾個系統共用同一個資料庫</td></tr>
+</table>
+</div>
+<p><strong>Code First 的目的</strong>：讓資料庫結構跟著程式碼一起被版本控制。改了什麼、什麼時候改的、要怎麼退回，都在 git 裡看得到。BlogApi 是新專案，後端自己管資料庫，所以選 Code First。</p>
+<div class="callout">
+<p>🏢 <strong>Database First 什麼時候會遇到</strong>：進公司時，資料庫常常早就存在，由 DBA 管理。這時用 <code>dotnet ef dbcontext scaffold "連線字串" Microsoft.EntityFrameworkCore.SqlServer</code> 讀資料庫，產生 Entity class 和 DbContext。</p>
+<p>⚠️ 重新 scaffold 時，產生的檔案會<strong>整個被覆蓋</strong>，你直接寫在裡面的程式碼會不見。要加自己的程式碼，寫在另一個檔案的 <code>partial class</code> 裡。官方說明：<a href="https://learn.microsoft.com/ef/core/managing-schemas/scaffolding/" target="_blank">Scaffolding (Reverse Engineering)</a>、<a href="https://learn.microsoft.com/ef/core/managing-schemas/" target="_blank">Managing Database Schemas</a>。</p>
+</div>
+
+<h4 id="dbcontext-vs-migration">DbContext 和 Migration 是什麼關係</h4>
+<p>容易搞混的原因：<code>BlogDbContext</code> 這一個類別，在<strong>兩個完全不同的時間點</strong>被兩個不同的人使用，而 Migration 只在其中一個時間點出現。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>詞</th><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td><strong>DbContext</strong></td><td>描述資料庫<strong>現在應該</strong>長什麼樣子：有哪些 <code>DbSet</code>、<code>OnModelCreating</code> 裡的設定</td><td>藍圖。程式和工具都從它讀模型</td></tr>
+  <tr><td><strong>Migration</strong></td><td>描述資料庫要<strong>怎麼從上一版變成這一版</strong>：一份一份的變更紀錄（C# 檔）</td><td>施工紀錄。從藍圖算出來的，不是反過來</td></tr>
+</table>
+</div>
+<div class="diagram">
+<div class="mermaid">
+flowchart TB
+    subgraph DT["設計階段：你在終端機打 dotnet ef"]
+        CLI["dotnet ef migrations add"] -->|"① 跑你的 Program.cs，跟 DI 要一個 BlogDbContext"| CTX1["BlogDbContext 物件"]
+        CTX1 -->|"② 讀它的模型：DbSet、OnModelCreating"| MODEL["現在的模型"]
+        MODEL -->|"③ 和上次的快照比對，差異寫成檔案"| MIG["Migrations/xxx_InitialCreate.cs<br>BlogDbContextModelSnapshot.cs"]
+    end
+    subgraph RT["執行階段：API 跑起來、請求進來"]
+        CTRL["PostsController"] -->|"跟 DI 要一個 BlogDbContext"| CTX2["BlogDbContext 物件"]
+        CTX2 -->|"LINQ 翻成 SQL"| DB[("Posts 表")]
+    end
+    MIG -.->|"database update 把表建好"| DB
+</div>
+<div class="diagram-caption">上下兩邊拿到的是同一個類別的物件，但一邊只讀模型，一邊拿來查資料</div>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>設計階段</th><th>執行階段</th></tr>
+  <tr><td>誰要 DbContext</td><td><code>dotnet ef</code> 工具</td><td>Controller（每個請求一個）</td></tr>
+  <tr><td>拿來做什麼</td><td><strong>讀模型</strong>，和快照比對，產生 Migration 檔</td><td><strong>查資料、寫資料</strong></td></tr>
+  <tr><td>Migration 檔有沒有參與</td><td>有，就是在這裡被產生、被套用</td><td><strong>沒有</strong>。DbContext 執行時完全不讀 Migrations 資料夾</td></tr>
+</table>
+</div>
+<p>這就是 <a href="#wiring">3-8</a> 最後一句說的「<code>dotnet ef</code> 指令也會要一個 BlogDbContext」。工具不是憑空知道你的模型，它真的把你的 <code>Program.cs</code> 跑起來、從 DI 拿一個 <code>BlogDbContext</code> 出來看。這也是為什麼需要 Design 套件，以及為什麼 <code>dotnet ef</code> 也會去讀連線字串。</p>
+
+<p><strong>兩者怎麼綁在一起</strong>：打開產生的 Migration 檔，最上面有兩個 attribute，就是綁定的證據：</p>
+<pre><code class="language-csharp">[DbContext(typeof(BlogDbContext))]          // 這份紀錄屬於哪個 DbContext
+[Migration("20261030xxxxxx_InitialCreate")] // 這份紀錄的版本號
+public partial class InitialCreate : Migration</code></pre>
+<p>快照檔的名稱也直接叫 <code>BlogDbContextModelSnapshot.cs</code>。一個 DbContext 有自己的一串 Migration；專案有兩個 DbContext 時各自一串，所以才需要 <a href="#dbcontext">2-4</a> 提到的 <code>--context</code>。</p>
+
+<p><strong>用兩個「如果」驗證有沒有懂</strong>：</p>
+<ul>
+  <li><strong>把 Migrations 資料夾整個刪掉，API 還能跑嗎？</strong>能。執行階段 DbContext 不讀那些檔案，資料表早就建好了，查詢照常。但下次 <code>migrations add</code> 時沒有快照可以比對，會把整個模型當成全新的，產生一份從零 <code>CREATE TABLE</code> 的紀錄</li>
+  <li><strong>在 <code>Post.cs</code> 加了 <code>Summary</code> 屬性，但沒跑 migration，API 會怎樣？</strong>可以編譯、可以啟動，因為 DbContext <strong>信任</strong>資料庫已經和它的模型一致。等到查詢時 EF Core 產生 <code>SELECT … [Summary] …</code>，SQL Server 回 <code>Invalid column name 'Summary'</code>。錯誤在執行階段才爆出來，這就是 Migration 要負責補上的那一步</li>
+</ul>
+
+<h4>Migration 怎麼運作</h4>
 <p>你修改 Entity class 後，資料庫不會自己變。<strong>Migration</strong> 會比對「現在的 class」和「上一次的快照」，產生一份變更紀錄（C# 檔），再由它產生 SQL 去改資料庫。</p>
 <div class="diagram">
 <div class="mermaid">
@@ -705,12 +786,85 @@ dotnet user-secrets list                       # 看目前存了什麼</code></p
 <p>📖 <strong>這行的語法看不懂？</strong><code>Action&lt;…&gt;</code>、<code>=&gt;</code>、第一個參數的 <code>this</code>（擴充方法）、<code>&lt;TContext&gt;</code>（泛型）、怎麼在 Rider 查方法簽章，都整理在「<a href="csharp-delegates-signature.html">C# 補充：委派（Action / Func）與方法簽章</a>」。這些是 C# 語法，之後每一課都會用到，建議找時間讀一次。</p>
 </div>
 
-<h3>3-6. Migration 指令</h3>
+<h3 id="migration-cmd">3-6. Migration 指令</h3>
 <pre><code class="language-plaintext">dotnet ef migrations add 名稱          # 產生變更紀錄（名稱自己取，例如 InitialCreate、AddPostSummary）
 dotnet ef database update              # 套用到資料庫
 dotnet ef migrations script            # 只印出 SQL，不執行（想看它會做什麼時很好用）
 dotnet ef migrations remove            # 移除「最後一個還沒套用」的 migration</code></pre>
 <p>這些指令要在<strong>專案資料夾</strong>（有 .csproj 的那層）執行，或加上 <code>--project 專案資料夾</code>。</p>
+
+<p><strong>為什麼需要這些指令</strong>：你改了 <code>Post.cs</code>（例如加一個 <code>Summary</code> 屬性），資料庫不會自己跟著變。C# 的 class 和 SQL Server 的資料表是兩個分開的東西，中間需要有人做三件事：找出 class 改了什麼、把差異寫成可以執行的變更、真的去改資料表。上面四個指令就是分工做這些事的。</p>
+
+<h4>每個指令動到哪裡</h4>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    subgraph CODE["① 你的 C# 程式碼"]
+        A["Post.cs<br>BlogDbContext.cs"]
+    end
+    subgraph MIG["② Migrations 資料夾（檔案）"]
+        B["20261030_InitialCreate.cs<br>（Up / Down）"]
+        S["BlogDbContextModelSnapshot.cs<br>（上一次的模型快照）"]
+    end
+    subgraph DB["③ SQL Server 資料庫"]
+        T[("Posts 表")]
+        H[("__EFMigrationsHistory<br>已套用清單")]
+    end
+    TERM["④ 終端機畫面"]
+    A -- "migrations add<br>比對 class 和快照，產生新檔案" --> B
+    A -. "add 時一併更新" .-> S
+    B -- "database update<br>執行 SQL、記錄到清單" --> T
+    B -. "update 時一併寫入" .-> H
+    B -- "migrations script<br>只印出 SQL，不執行" --> TERM
+    B -- "migrations remove<br>刪掉最後一個檔案、還原快照" --> X["🗑️"]
+</div>
+<div class="diagram-caption">add 和 remove 只動檔案；update 才動資料庫；script 什麼都不改，只印出來</div>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th>指令</th><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td><code>migrations add 名稱</code></td><td>比對現在的 class 和快照，在 Migrations 資料夾產生一個 C# 檔（<code>Up()</code> 套用、<code>Down()</code> 退回），並更新快照。不碰資料庫</td><td>把「class 改了什麼」寫成一份可以讀、可以 commit 的變更紀錄</td></tr>
+  <tr><td><code>database update</code></td><td>查 <code>__EFMigrationsHistory</code> 看哪些還沒套用，把它們翻成 SQL 執行，再各記一筆</td><td>真的去改資料表</td></tr>
+  <tr><td><code>migrations script</code></td><td>把變更紀錄翻成 SQL 印在終端機，不執行</td><td>套用之前先看會執行什麼；正式環境常把這份 SQL 交給 DBA 審核後再執行</td></tr>
+  <tr><td><code>migrations remove</code></td><td>刪掉最後一個 migration 檔，快照還原成前一版</td><td><code>add</code> 完發現寫錯（名稱打錯、屬性忘了加）時收回</td></tr>
+</table>
+</div>
+<p>重點是 <strong><code>add</code> 和 <code>update</code> 分成兩步</strong>：<code>add</code> 產生的是檔案，你可以先讀、先 commit，確定沒問題再 <code>update</code> 去動資料庫。</p>
+
+<h4>一次典型的流程</h4>
+<div class="diagram">
+<div class="mermaid">
+flowchart TD
+    A["改 Post.cs<br>例如加 Summary 屬性"] --> B["dotnet ef migrations add AddPostSummary"]
+    B --> C{"打開產生的檔案<br>Up() 寫的對嗎？"}
+    C -- "不對（名稱錯、漏屬性）" --> D["dotnet ef migrations remove"]
+    D --> A
+    C -- "對" --> E["dotnet ef migrations script<br>（選擇性）看 SQL"]
+    E --> F["dotnet ef database update"]
+    F --> G["資料表多了 Summary 欄位<br>__EFMigrationsHistory 多一筆"]
+</div>
+</div>
+
+<h4>remove 只能收回「還沒套用」的</h4>
+<div class="diagram">
+<div class="mermaid">
+stateDiagram-v2
+    state "只有檔案（還沒套用）" as Pending
+    state "已套用到資料庫" as Applied
+    [*] --> Pending: migrations add
+    Pending --> [*]: migrations remove
+    Pending --> Applied: database update
+    Applied --> Pending: database update 上一個名稱（執行 Down 退回）
+</div>
+<div class="diagram-caption">已套用的 migration 不能直接 remove，要先退回成「只有檔案」</div>
+</div>
+<ul>
+  <li><strong>還沒 <code>update</code></strong>：直接 <code>remove</code>，檔案刪掉就好</li>
+  <li><strong>已經 <code>update</code> 過</strong>：資料庫已經改了，直接 <code>remove</code> 會被擋下。先執行 <code>dotnet ef database update 上一個migration名稱</code>，EF Core 會執行最後那份檔案的 <code>Down()</code> 把資料表改回去，回到「只有檔案」的狀態，才能 <code>remove</code>。如果要退回的就是第一個 migration（前面沒有別的），名稱寫 <code>0</code>，代表退回到一個都沒套用</li>
+</ul>
+<div class="callout">
+<p>🔁 <strong>比喻</strong>：和 git 很像。<code>add</code> 像在本機 commit，<code>update</code> 像 push 出去。push 之前要改很容易，push 之後就要多做一步才能收回。</p>
+</div>
 
 <h3>3-7. Controller 骨架</h3>
 <pre><code class="language-csharp">[ApiController]                       // 自動做模型驗證、自動從 body 讀 JSON
