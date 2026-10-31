@@ -552,6 +552,189 @@ EndProject</code></pre>
 <p>💡 .NET 10 的 <code>dotnet new sln</code> 預設產生新格式 <code>.slnx</code>（XML，一個專案只佔一行 <code>&lt;Project Path="…" /&gt;</code>），Rider 可能產生舊格式 <code>.sln</code>。兩種都能用 <code>dotnet sln add</code>。</p>
 <p>官方文件：<a href="https://learn.microsoft.com/dotnet/core/tools/dotnet-sln" target="_blank">dotnet sln</a></p>
 
+<h4 id="template-controller">範本產生了什麼：GET /weatherforecast 是怎麼被找到的</h4>
+<p>範本建好之後先別急著刪 <code>WeatherForecastController</code>。它是一支完整的 API，拿來看懂「一個請求怎麼找到你的方法」剛剛好。兩個檔案，各看幾行（.NET 10 範本，實測節錄）：</p>
+<p class="file-label">Program.cs</p>
+<pre><code class="language-csharp">var builder = WebApplication.CreateBuilder(args);   // 準備階段（這一節最後「Program.cs 的四個階段」）
+
+builder.Services.AddControllers();   // (1) 登記：這個專案要用 Controller
+
+var app = builder.Build();           // 登記定案，做出 app
+app.MapControllers();                // (2) 掃描所有 Controller，建一張路由表
+app.Run();                           // 開始聽 port，卡在這行直到關掉</code></pre>
+<p class="file-label">Controllers/WeatherForecastController.cs</p>
+<pre><code class="language-csharp">[ApiController]                                          // (4) 幫 API 自動做幾件事（下方「ApiController 做了什麼」）
+[Route("[controller]")]                                  // (3) 路徑：[controller] 換成類別名去掉 Controller → weatherforecast
+public class WeatherForecastController : ControllerBase  // (5) 繼承 ControllerBase，(2) 才會把它當成 Controller
+{
+    [HttpGet(Name = "GetWeatherForecast")]               // (3) 動詞：GET。所以這支 API 是 GET /weatherforecast
+    public IEnumerable&lt;WeatherForecast&gt; Get()
+    {
+        return Enumerable.Range(1, 5).Select(index =&gt; new WeatherForecast { … }).ToArray();
+    }
+}</code></pre>
+<p>(1) 到 (5) 分成下面四段講。<code>CreateBuilder</code>、<code>Build()</code>、<code>Run()</code> 各是什麼、port 從哪裡來，在這一節最後的「<a href="#program-lifecycle">Program.cs 的四個階段</a>」和「<a href="#launchsettings">launchSettings.json</a>」。</p>
+
+<h4 id="verbs">一支 API = 動詞 + 路徑</h4>
+<p>HTTP 請求的第一行是「<strong>動詞 路徑</strong>」，例如 <code>GET /weatherforecast</code>。路徑說<strong>對誰做</strong>，動詞說<strong>做什麼</strong>。這一課的五支 API 用到四個動詞：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>動詞</th><th>做什麼</th><th>例子</th><th>請求要帶 body 嗎</th></tr>
+  <tr><td><code>GET</code></td><td>拿資料，不改任何東西</td><td><code>GET /weatherforecast</code>、<code>GET /api/posts</code>（列表）、<code>GET /api/posts/5</code>（第 5 篇）</td><td>不帶</td></tr>
+  <tr><td><code>POST</code></td><td>新增一筆</td><td><code>POST /api/posts</code></td><td>帶：新文章的 JSON</td></tr>
+  <tr><td><code>PUT</code></td><td>整筆換掉</td><td><code>PUT /api/posts/5</code></td><td>帶：改完的 JSON</td></tr>
+  <tr><td><code>DELETE</code></td><td>刪掉</td><td><code>DELETE /api/posts/5</code></td><td>不帶</td></tr>
+</table>
+</div>
+<p><code>GET /api/posts/5</code> 和 <code>DELETE /api/posts/5</code> 路徑一樣，但是<strong>兩支不同的 API</strong>，各自對應 Controller 裡不同的方法。對範本實測：對 <code>/weatherforecast</code> 送 <code>POST</code> 會回 <code>405 Method Not Allowed</code>，意思是「這條路徑有人認領，但沒有方法接 POST」。</p>
+
+<h4 id="routing">路由：請求怎麼找到你的方法</h4>
+<p>分兩個時間點：<strong>啟動時</strong>建表，<strong>每個請求</strong>查表。</p>
+<div class="diagram">
+<div class="mermaid">
+flowchart TD
+    subgraph BOOT["啟動時：app.MapControllers()"]
+        SCAN["找出專案裡所有繼承 ControllerBase 的類別"] --> READ["讀每個方法上的 Route、HttpGet 這些 attribute"]
+        READ --> TABLE["路由表<br>GET /weatherforecast → WeatherForecastController.Get()"]
+    end
+    subgraph REQ["每個請求進來"]
+        R["GET /weatherforecast"] --> MATCH{"動詞＋路徑<br>在路由表裡嗎？"}
+        MATCH -- "有" --> NEW["建立 WeatherForecastController 物件（3-8）"] --> CALL["呼叫 Get()"] --> JSON["回傳值轉成 JSON，200 OK"]
+        MATCH -- "路徑沒有人認領" --> NF["404 Not Found"]
+        MATCH -- "路徑有、動詞沒有" --> MNA["405 Method Not Allowed"]
+    end
+    TABLE -.-> MATCH
+</div>
+<div class="diagram-caption">啟動時掃一次建表，之後每個請求只是查表；表裡沒有的路徑就是 404</div>
+</div>
+<p>路徑怎麼算出來的：<code>[Route("[controller]")]</code> 裡的 <code>[controller]</code> 會換成<strong>類別名去掉結尾的 Controller</strong>，再接上方法的 <code>[HttpGet("…")]</code>：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>類別</th><th>[Route]</th><th>方法</th><th>算出來的 API</th></tr>
+  <tr><td><code>WeatherForecastController</code></td><td><code>[controller]</code></td><td><code>[HttpGet]</code></td><td><code>GET /weatherforecast</code></td></tr>
+  <tr><td><code>PostsController</code>（題 6）</td><td><code>api/[controller]</code></td><td><code>[HttpGet]</code></td><td><code>GET /api/posts</code></td></tr>
+  <tr><td><code>PostsController</code></td><td><code>api/[controller]</code></td><td><code>[HttpGet("{id}")]</code></td><td><code>GET /api/posts/5</code>（<code>{id}</code> 是佔位符，5 會填進參數 <code>id</code>）</td></tr>
+  <tr><td><code>PostsController</code></td><td><code>api/[controller]</code></td><td><code>[HttpDelete("{id}")]</code></td><td><code>DELETE /api/posts/5</code></td></tr>
+</table>
+</div>
+<p>對範本實測幾個網址，對照上面的圖：</p>
+<pre><code class="nohighlight">GET  /                      → 404   路由表裡沒有「/」，沒有人認領
+GET  /weatherforecast       → 200   命中
+GET  /WeatherForecast       → 200   路徑不分大小寫
+GET  /weatherforecast/5     → 404   範本的 Get() 沒有宣告 {id}，所以 /weatherforecast/5 不在表裡
+POST /weatherforecast       → 405   路徑有，但沒有方法標 [HttpPost]</code></pre>
+<p>這就是題 1 打開 <code>http://localhost:5107/</code> 看到 404 的原因：伺服器有在跑，只是 <code>/</code> 這條路徑沒有任何方法認領。</p>
+
+<h4 id="binding">參數從哪裡來</h4>
+<p>範本的 <code>Get()</code> 沒有參數。題 6 會用到三種參數，各自從請求的不同地方來：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>方法參數長什麼樣</th><th>從請求的哪裡拿</th><th>例子</th></tr>
+  <tr><td>名稱出現在路徑樣板裡：<code>[HttpGet("{id}")]</code> + <code>int id</code></td><td><strong>路徑</strong></td><td><code>GET /api/posts/5</code> → <code>id = 5</code></td></tr>
+  <tr><td>簡單型別，但沒出現在路徑樣板：<code>string? keyword</code></td><td><strong>query string</strong>（<code>?</code> 後面）</td><td><code>GET /api/posts?keyword=Docker</code> → <code>keyword = "Docker"</code></td></tr>
+  <tr><td>物件型別：<code>PostRequest request</code></td><td><strong>body 的 JSON</strong></td><td><code>POST /api/posts</code> + <code>{"title":"…","content":"…"}</code> → 轉成一個 <code>PostRequest</code></td></tr>
+</table>
+</div>
+<p>這套「看參數長相決定去哪裡拿」的規則是 <code>[ApiController]</code> 提供的，所以題 6 通常<strong>不用</strong>寫 <code>[FromRoute]</code>、<code>[FromQuery]</code>、<code>[FromBody]</code>；只有想要和規則不同時才寫。JSON 文字變成 C# 物件這一步叫<strong>反序列化</strong>，字串和中文怎麼處理見「<a href="encoding-json-html.html">補充：編碼器</a>」。</p>
+
+<h4 id="controllerbase">為什麼繼承 ControllerBase、[ApiController] 做了什麼</h4>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th><code>ControllerBase</code></th><th><code>Controller</code></th></tr>
+  <tr><td>給你什麼</td><td><code>Ok()</code>、<code>NotFound()</code>、<code>CreatedAtAction()</code>、<code>NoContent()</code> 這些回傳方法；<code>Request</code>、<code>Response</code>（Cookie 那頁用到）；<code>ModelState</code></td><td><code>ControllerBase</code> 的全部，再加 <code>View()</code>、<code>ViewBag</code>、<code>PartialView()</code> 這些<strong>產生 HTML 畫面</strong>用的東西</td></tr>
+  <tr><td>用在</td><td>Web API：回 JSON</td><td>MVC 網站：回 HTML 頁面</td></tr>
+</table>
+</div>
+<p><code>Controller</code> 本身就是繼承 <code>ControllerBase</code> 再加東西。Web API 不產生畫面，所以選 <code>ControllerBase</code>，不會多出一堆用不到的方法。另外 (2) 的掃描認的就是「繼承 <code>ControllerBase</code> 的類別」，沒繼承的話，就算類別名叫 <code>XxxController</code>、方法上有 <code>[HttpGet]</code>，也不會進路由表。</p>
+<p><code>[ApiController]</code> 加在類別上，幫 API 自動做三件事：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td>參數驗證失敗（例如題 6 的 <code>[Required]</code> 沒填）時<strong>自動回 400</strong>，方法不會被呼叫</td><td>不用在每個方法開頭寫 <code>if (!ModelState.IsValid) return BadRequest();</code></td></tr>
+  <tr><td>照上一節的規則<strong>自動推斷參數來源</strong></td><td>不用每個參數都標 <code>[FromBody]</code> 等</td></tr>
+  <tr><td>錯誤回應用統一的 <strong>ProblemDetails</strong> JSON 格式（有 <code>type</code>、<code>title</code>、<code>status</code>、<code>errors</code> 欄位）</td><td>前端收到的錯誤長得都一樣，好處理</td></tr>
+</table>
+</div>
+<p>看完這四段，題 1 確認範本能跑之後就可以刪掉 WeatherForecast 那兩個檔案；題 6 的 <code>PostsController</code> 用的是同一套規則，只是路徑改成 <code>api/[controller]</code>、方法變成五個。</p>
+
+<h4 id="program-lifecycle">Program.cs 的四個階段：CreateBuilder → Build → Use／Map → Run</h4>
+<p>把範本的 <code>Program.cs</code> 從頭看一遍，它是四個階段，順序不能換：</p>
+<pre><code class="language-csharp">var builder = WebApplication.CreateBuilder(args);   // 階段 1 準備：讀設定檔、準備一本空的登記簿
+
+builder.Services.AddControllers();                  // 階段 1 往登記簿寫（3-5 的 AddDbContext 也寫在這裡）
+builder.Services.AddOpenApi();
+
+var app = builder.Build();                          // 階段 2 定案：登記簿鎖起來，做出 app
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();                               // 階段 3 排管線：請求進來之後依序經過什麼
+}
+app.UseHttpsRedirection();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();                                          // 階段 4 開門：開始聽 port，卡在這行直到關掉</code></pre>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    A["1 CreateBuilder<br>讀設定、空登記簿"] --> B["AddControllers<br>AddDbContext<br>往登記簿寫"] --> C["2 Build<br>登記簿定案<br>做出 app"] --> D["3 Use / Map<br>排請求的管線"] --> E["4 Run<br>聽 port<br>卡住直到關掉"]
+    E -. "之後每個請求" .-> P["管線 → 路由表 → Controller"]
+</div>
+<div class="diagram-caption">Build 之前決定「有什麼東西」，Build 之後決定「請求怎麼走」，Run 之後才真的有請求進來</div>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th>那一行</th><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td><code>WebApplication.CreateBuilder(args)</code></td><td>做一個 <code>builder</code>。它會先讀 <code>appsettings.json</code>、<code>appsettings.Development.json</code>、環境變數、命令列參數（3-4 的連線字串就是這樣被讀到的），設定好 log，並準備一本空的登記簿 <code>builder.Services</code></td><td>準備階段：收集設定、準備登記簿</td></tr>
+  <tr><td><code>builder.Services.AddXxx()</code></td><td>往登記簿寫「之後有人要 X 時，怎麼做一個」。這時<strong>還沒做出任何東西</strong>（3-8 的流程圖）</td><td>決定這個程式「有哪些東西可以用」</td></tr>
+  <tr><td><code>builder.Build()</code></td><td>登記簿定案，做出 <code>app</code>（型別是 <code>WebApplication</code>）。之後再 <code>builder.Services.Add…</code> 會丟例外（實測）：<br><code>InvalidOperationException: The service collection cannot be modified because it is read-only.</code></td><td>把「準備」和「執行」分成兩段，Build 是分界線</td></tr>
+  <tr><td><code>app.UseXxx()</code> / <code>app.MapXxx()</code></td><td>排請求的管線。<code>Use…</code> 是<strong>每個請求都會經過的關卡</strong>（http 轉 https、檢查授權）；<code>Map…</code> 是<strong>終點</strong>：哪條路徑交給誰（<code>MapControllers</code> 就是建上面的路由表）</td><td>決定請求進來之後依序經過什麼</td></tr>
+  <tr><td><code>app.Run()</code></td><td>啟動 Kestrel 伺服器，開始聽 port，然後<strong>卡在這一行</strong>，直到 Ctrl+C 或程序被關掉。寫在 <code>Run()</code> 後面的程式碼要等伺服器關掉才會執行（實測）</td><td>開門營業。到這裡之前，一個請求都還沒進來</td></tr>
+</table>
+</div>
+<p>所以 3-8 說「<code>Build</code> 和 <code>Run</code> 之後一個 DbContext 都沒有」：階段 1 只是寫登記簿，階段 4 之後有請求進來、路由表命中 Controller，才會照登記簿做出第一個 DbContext。</p>
+
+<h4 id="launchsettings">Run() 要聽哪個 port：Properties/launchSettings.json</h4>
+<p><code>app.Run()</code> 沒有寫網址，它聽的 port 是哪裡來的？答案在 <code>Properties\launchSettings.json</code>。這是<strong>開發機專用</strong>的啟動設定，Rider 的 ▶ 和 <code>dotnet run</code> 會讀它；發佈到正式環境時不會帶著它。題 1 建好的範本長這樣：</p>
+<p class="file-label">BlogApi/Properties/launchSettings.json</p>
+<pre><code class="language-json">{
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5107",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "https": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:7078;http://localhost:5107",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>欄位</th><th>做什麼</th><th>影響到哪裡</th></tr>
+  <tr><td><code>profiles</code> 底下的 <code>http</code>、<code>https</code></td><td>兩組啟動設定。Rider 執行按鈕旁的下拉選單選的就是這個；<code>dotnet run</code> 沒指定時用第一個</td><td>題 1 答案說「選 <code>BlogApi: http</code> 按 ▶」就是在選 profile</td></tr>
+  <tr><td><code>commandName: "Project"</code></td><td>用「執行這個專案」的方式啟動，相當於 <code>dotnet run</code></td><td>一般不用動</td></tr>
+  <tr><td><code>applicationUrl</code></td><td><code>Run()</code> 要聽的網址和 port。port 數字是建專案時<strong>隨機抽的</strong>，所以每個人的不一樣</td><td>終端機印的 <code>Now listening on: http://localhost:5107</code>；題 7 <code>.http</code> 檔的 <code>@BlogApi_HostAddress</code> 要填這個</td></tr>
+  <tr><td><code>environmentVariables</code> 裡的 <code>ASPNETCORE_ENVIRONMENT</code></td><td>啟動時設一個環境變數，值是 <code>Development</code></td><td><code>app.Environment.IsDevelopment()</code> 回 <code>true</code>；會多讀 <code>appsettings.Development.json</code>；3-4 的 User Secrets 只在這個環境生效</td></tr>
+  <tr><td><code>launchBrowser</code></td><td>啟動時要不要自動開瀏覽器</td><td>API 專案通常 <code>false</code></td></tr>
+  <tr><td><code>dotnetRunMessages</code></td><td><code>dotnet run</code> 時要不要印 Building… 這類訊息</td><td>只影響終端機輸出</td></tr>
+</table>
+</div>
+<p>兩件事對起來：選 <code>http</code> profile 時 <code>Run()</code> 只聽 <code>5107</code>，<code>UseHttpsRedirection()</code> 找不到 https 的 port，才會印題 1 看到的 <code>Failed to determine the https port for redirect</code> 警告；換成 <code>https</code> profile 就同時聽 <code>7078</code> 和 <code>5107</code>，警告消失。</p>
+<p>不是用 <code>dotnet run</code> 啟動時（例如發佈後直接跑 <code>dotnet BlogApi.dll</code>，或放進 Docker），<code>launchSettings.json</code> 不會被讀，port 改由環境變數 <code>ASPNETCORE_URLS</code> 或參數 <code>--urls http://…</code> 決定。這一課先知道有這件事就好。</p>
+<p>官方文件：<a href="https://learn.microsoft.com/aspnet/core/mvc/controllers/routing" target="_blank">Routing to controller actions</a>、<a href="https://learn.microsoft.com/aspnet/core/mvc/models/model-binding" target="_blank">Model Binding</a>、<a href="https://learn.microsoft.com/aspnet/core/web-api/#apicontroller-attribute" target="_blank">ApiController attribute</a>、<a href="https://learn.microsoft.com/aspnet/core/fundamentals/middleware/" target="_blank">Middleware（Use／Map 管線）</a>、<a href="https://learn.microsoft.com/aspnet/core/fundamentals/environments#development-and-launchsettingsjson" target="_blank">launchSettings.json 與環境</a></p>
+
 <h3>3-2. 安裝套件和工具</h3>
 <pre><code class="language-plaintext">dotnet add package 套件名稱 [--version 版本]
 dotnet tool install --global dotnet-ef      # 第一次安裝
@@ -866,7 +1049,8 @@ stateDiagram-v2
 <p>🔁 <strong>比喻</strong>：和 git 很像。<code>add</code> 像在本機 commit，<code>update</code> 像 push 出去。push 之前要改很容易，push 之後就要多做一步才能收回。</p>
 </div>
 
-<h3>3-7. Controller 骨架</h3>
+<h3 id="controller-skeleton">3-7. Controller 骨架</h3>
+<p>動詞、路由、參數從哪裡來、為什麼繼承 <code>ControllerBase</code>，都在 <a href="#template-controller">3-1 用範本講過</a>，這裡只列題 6 要用的骨架：</p>
 <pre><code class="language-csharp">[ApiController]                       // 自動做模型驗證、自動從 body 讀 JSON
 [Route("api/[controller]")]           // [controller] 會換成類別名稱去掉 Controller → api/posts
 public class PostsController : ControllerBase
@@ -1527,7 +1711,7 @@ dotnet sln add BlogApi/BlogApi.csproj   # 用 Rider 建立的話可以略過（�
     └─ Properties\launchSettings.json   ← 執行時用的網址和 port</code></pre>
 <p>每個專案的 port 是隨機產生的，看 <code>launchSettings.json</code> 的 <code>applicationUrl</code> 就知道。</p>
 <div class="callout">
-<p>❓ <strong>瀏覽器打開 <code>http://localhost:5107/</code> 出現 404，是不是壞了？</strong>沒壞。Web API 只回應<strong>有定義的路徑</strong>，範本只有 <code>/weatherforecast</code>，根目錄 <code>/</code> 沒有人處理，所以回 404。這也代表伺服器有在運作，真的沒啟動的話會是「無法連線」。網址改成 <code>http://localhost:5107/weatherforecast</code> 就會看到 JSON。</p>
+<p>❓ <strong>瀏覽器打開 <code>http://localhost:5107/</code> 出現 404，是不是壞了？</strong>沒壞。Web API 只回應<strong>有定義的路徑</strong>，範本只有 <code>/weatherforecast</code>，根目錄 <code>/</code> 沒有人處理，所以回 404。這也代表伺服器有在運作，真的沒啟動的話會是「無法連線」。網址改成 <code>http://localhost:5107/weatherforecast</code> 就會看到 JSON。為什麼 <code>/</code> 是 404、<code>/weatherforecast</code> 怎麼被找到，見 3-1 的「<a href="#routing">路由</a>」。</p>
 <p>❓ <strong>終端機出現 <code>warn: … Failed to determine the https port for redirect.</code></strong>：<code>Program.cs</code> 有 <code>app.UseHttpsRedirection()</code>，它想把 http 導向 https，但你用的是 <code>http</code> 這個啟動設定，只開了 http，找不到 https 的 port，所以不導向，只發出警告。開發時可以忽略；想讓它消失，可以改用 <code>https</code> 啟動設定。</p>
 </div>
 </div>
@@ -1875,7 +2059,7 @@ Done.</code></pre>
   <tr><td>DELETE</td><td><code>FindAsync</code> → <code>Remove</code> → <code>SaveChangesAsync</code></td><td>204 <code>NoContent</code></td></tr>
 </table>
 </div>
-<p>Controller 怎麼拿到 <code>BlogDbContext</code>：寫法在 3-7 的「<a href="#inject">Controller 怎麼拿到 BlogDbContext</a>」。</p>
+<p>Controller 怎麼拿到 <code>BlogDbContext</code>：寫法在 3-7 的「<a href="#inject">Controller 怎麼拿到 BlogDbContext</a>」。動詞、路由、<code>id</code> / <code>keyword</code> / JSON body 各從哪裡來：見 3-1 的「<a href="#verbs">一支 API = 動詞 + 路徑</a>」到「<a href="#binding">參數從哪裡來</a>」。</p>
 <p>「前端只能傳 title 和 content」：另外寫一個只有這兩個屬性的 <code>record</code> 當參數型別，不要直接用 <code>Post</code>。</p>
 <p>「必填、最多 200 字，不符合回 400」：在 record 的參數上加 <strong>Data Annotations</strong> 的 <code>[Required]</code>、<code>[MaxLength(200)]</code>（<code>using System.ComponentModel.DataAnnotations;</code>）。<code>[ApiController]</code> 收到請求時會自動檢查，不符合就直接回 400，連你的方法都不會進去。</p>
 <div class="callout warn">
