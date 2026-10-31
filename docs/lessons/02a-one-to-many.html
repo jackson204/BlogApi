@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>02a｜作者與文章：一對多</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 階段 2</div>
+<h1>02a｜作者與文章：一對多</h1>
+<p class="subtitle">文章要有作者。這一課加上 <code>Author</code>，讓每篇文章歸屬一位作者：外鍵怎麼放、導覽屬性什麼時候有值、為什麼直接回傳 Entity 會爆、刪作者時文章怎麼辦。三個地方會故意弄壞再修好。</p>
+<div class="tags">
+  <span class="tag">一對多</span><span class="tag">Foreign Key</span><span class="tag">導覽屬性</span><span class="tag">Include</span><span class="tag">INNER JOIN</span>
+  <span class="tag">HasOne / WithMany</span><span class="tag">OnDelete</span><span class="tag">Cascade / Restrict</span><span class="tag">循環參照</span><span class="tag">Response DTO</span>
+  <span class="tag">ValidationProblem</span><span class="tag">409 Conflict</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>開始前</strong>：01 的題 1～7 做完，<code>BlogDb</code> 裡有 <code>Posts</code> 表和幾篇測試文章（題 2 會用到它們）。Docker 的 <code>blog-mssql</code> 要開著。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#problem">這一課要解決的問題</a></li>
+    <li><a href="#concept">原理：關聯在資料庫和 EF Core 裡長什麼樣</a></li>
+    <li><a href="#usage">用法：每一步的正式寫法</a></li>
+    <li><a href="#exercise">練習題（7 題）</a></li>
+    <li><a href="#sql">觀察 SQL</a></li>
+    <li><a href="#pitfalls">優缺點 &amp; 常見坑</a></li>
+    <li><a href="#next">延伸問題</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="problem">1. 這一課要解決的問題</h2>
+<div class="callout">
+<p>📋 <strong>情境</strong>：主管打開文章列表，問「這篇是誰寫的？」現在的 <code>Post</code> 只有標題和內容，答不出來。</p>
+</div>
+<p>要做到：有作者這個東西、每篇文章歸屬一位作者、列表直接顯示作者名、能查某位作者的所有文章、刪作者時不能把文章弄丟。對應的 API：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>API</th><th>做什麼</th><th>新／改</th></tr>
+  <tr><td><code>POST /api/authors</code></td><td>新增作者</td><td>新</td></tr>
+  <tr><td><code>GET /api/authors</code></td><td>作者列表，每位附文章數</td><td>新</td></tr>
+  <tr><td><code>GET /api/authors/{id}</code></td><td>單一作者</td><td>新</td></tr>
+  <tr><td><code>GET /api/authors/{id}/posts</code></td><td>某位作者的所有文章</td><td>新</td></tr>
+  <tr><td><code>DELETE /api/authors/{id}</code></td><td>刪作者；底下還有文章時回 409</td><td>新</td></tr>
+  <tr><td><code>POST / PUT /api/posts</code></td><td>要帶 <code>authorId</code>；作者不存在回 400</td><td>改</td></tr>
+  <tr><td><code>GET /api/posts</code>、<code>GET /api/posts/{id}</code></td><td>回應多一個 <code>authorName</code></td><td>改</td></tr>
+</table>
+</div>
+<p>第 5 課做登入之後，<code>authorId</code> 會改成從登入的人身上拿，前端不用傳也不能傳。這一課還沒有登入，先讓前端傳。</p>
+
+<!-- ============================================================ -->
+<h2 id="concept">2. 原理：關聯在資料庫和 EF Core 裡長什麼樣</h2>
+
+<h3 id="fk">2-1. 關聯在資料庫怎麼存：外鍵放在「多」的那一邊</h3>
+<p>一位作者有很多文章，一篇文章只有一位作者，這叫<strong>一對多</strong>。資料庫記這件事的方法只有一種：在「多」的那張表（Posts）加一個欄位，存「一」那邊的主鍵（Authors.Id）。這個欄位叫<strong>外鍵（Foreign Key）</strong>。</p>
+<div class="diagram">
+<div class="mermaid">
+erDiagram
+    Author ||--o{ Post : "寫了"
+    Author {
+        int Id PK
+        string Name
+        string Bio "可為 NULL"
+    }
+    Post {
+        int Id PK
+        string Title
+        string Content
+        datetime CreatedAt
+        datetime UpdatedAt "可為 NULL"
+        int AuthorId FK
+    }
+</div>
+<div class="diagram-caption">Posts 多一個 AuthorId 欄位指向 Authors.Id；Authors 這邊什麼都不用加</div>
+</div>
+<p>為什麼不是反過來、在 Authors 存一串文章編號？因為一個欄位只能放一個值，「一串」放不進去；而且文章新增時要去改作者那一列，兩張表會互相牽制。外鍵放在多的那邊，新增文章只要填一個數字，資料庫還會幫你檢查這個數字真的存在（這就是題 2 和題 6 會撞到的 <code>FOREIGN KEY constraint</code>）。</p>
+
+<h3 id="parts">2-2. EF Core 的三個零件：外鍵屬性、參考導覽、集合導覽</h3>
+<p>資料庫只有一個 <code>AuthorId</code> 欄位，C# 這邊卻要寫三個東西：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>零件</th><th>寫在哪</th><th>做什麼</th><th>會變成資料表欄位嗎</th></tr>
+  <tr><td><strong>外鍵屬性</strong></td><td><code>Post</code>：<code>public int AuthorId { get; set; }</code></td><td>存作者的 Id，對應 Posts.AuthorId</td><td>會</td></tr>
+  <tr><td><strong>參考導覽屬性</strong></td><td><code>Post</code>：<code>public Author Author { get; set; }</code></td><td>讓你寫 <code>post.Author.Name</code>，不用自己拿 Id 去查</td><td>不會</td></tr>
+  <tr><td><strong>集合導覽屬性</strong></td><td><code>Author</code>：<code>public List&lt;Post&gt; Posts { get; set; }</code></td><td>讓你寫 <code>author.Posts.Count</code></td><td>不會</td></tr>
+</table>
+</div>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    subgraph CS["C# 類別"]
+        A["Author<br>Id、Name、Bio<br>List#lt;Post#gt; Posts ← 集合導覽"]
+        P["Post<br>Id、Title、Content…<br>int AuthorId ← 外鍵屬性<br>Author Author ← 參考導覽"]
+    end
+    subgraph DB["資料表"]
+        TA[("Authors<br>Id、Name、Bio")]
+        TP[("Posts<br>Id、Title、Content…、AuthorId")]
+    end
+    A -.-> TA
+    P -.-> TP
+    TP -- "FK_Posts_Authors_AuthorId" --> TA
+</div>
+<div class="diagram-caption">兩個導覽屬性是 C# 這邊的方便，資料表裡只有 AuthorId 一個欄位和一條外鍵約束</div>
+</div>
+<p>EF Core 靠<strong>慣例</strong>把三個零件對起來：看到 <code>Post</code> 有一個 <code>Author</code> 型別的屬性叫 <code>Author</code>，又有一個 <code>int</code> 叫 <code>AuthorId</code>（導覽屬性名 + Id），就認定這是外鍵。名字對不上時，要用 3-2 的 Fluent API 明講。這一課就算名字對得上也會用 Fluent API 寫一次，因為 <code>OnDelete</code> 只能在那裡設。</p>
+<p><strong><code>int</code> 還是 <code>int?</code></strong>，決定這段關聯是「必填」還是「可以沒有」：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>外鍵屬性型別</th><th>意思</th><th>資料表欄位</th><th><code>Include</code> 翻成</th><th>刪作者的預設行為</th></tr>
+  <tr><td><code>int AuthorId</code></td><td>每篇文章一定有作者</td><td><code>NOT NULL</code></td><td><code>INNER JOIN</code></td><td>Cascade：文章跟著刪</td></tr>
+  <tr><td><code>int? AuthorId</code></td><td>文章可以沒有作者</td><td><code>NULL</code></td><td><code>LEFT JOIN</code></td><td>SetNull：文章的 AuthorId 變 NULL</td></tr>
+</table>
+</div>
+<p>這一課用 <code>int</code>：部落格的文章一定有人寫。</p>
+
+<h3 id="loading">2-3. 導覽屬性什麼時候有值</h3>
+<p>查出一篇 <code>Post</code>，它的 <code>Author</code> 屬性是 <code>null</code>，<strong>除非你明講要載</strong>。EF Core 不會自動多發一句 SQL 幫你把作者抓回來，原因在 01b 的 L4-04：如果每次碰到 <code>post.Author</code> 都偷偷去查一次，列表 100 篇就是 101 句 SQL（N+1）。所以導覽屬性預設是「寫好的空位」，有三種填法：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>做法</th><th>寫法</th><th>SQL</th><th>這一課</th></tr>
+  <tr><td><strong>Include</strong>（預先載入）</td><td><code>_db.Posts.Include(p =&gt; p.Author)</code></td><td>一句 JOIN，把作者的<strong>所有欄位</strong>一起撈回來，組成完整的 <code>Author</code> 物件</td><td>要用整個物件時</td></tr>
+  <tr><td><strong>Select 投影</strong></td><td><code>_db.Posts.Select(p =&gt; new { p.Title, p.Author.Name })</code></td><td>一句 JOIN，但只拿你點名的欄位</td><td><strong>主要用這個</strong>：回 API 只需要作者名</td></tr>
+  <tr><td>延遲載入（Lazy Loading）</td><td>碰到 <code>post.Author</code> 時自動查</td><td>每碰一次一句 SQL，就是 N+1</td><td>不開。要裝額外套件，而且正是效能問題的來源，第 4 課會示範它有多慢</td></tr>
+</table>
+</div>
+<p>在 <code>Where</code> 或 <code>Select</code> 裡<strong>用到</strong>導覽屬性（<code>p.Author.Name</code>），EF Core 自己會 JOIN，不需要 <code>Include</code>。<code>Include</code> 是「把整個關聯物件載回來放在 <code>post.Author</code>」才需要。</p>
+
+<h3 id="cycle">2-4. 直接回傳 Entity 會爆：循環參照</h3>
+<p>01 的延伸問題 3 問過：加上作者之後，直接回傳 <code>Post</code> 會怎樣？現在可以回答了。<code>Include(p =&gt; p.Author)</code> 撈回來之後，EF Core 會做一件貼心的事叫 <strong>fix-up</strong>：把 <code>post.Author</code> 指向作者物件，<strong>同時</strong>把那篇文章塞進 <code>author.Posts</code>。於是：</p>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    P1["Post #5"] -- ".Author" --> A["Author #1"]
+    A -- ".Posts[0]" --> P1
+    A -- ".Posts[1]" --> P2["Post #6"]
+    P2 -- ".Author" --> A
+</div>
+<div class="diagram-caption">物件之間互相指來指去是正常的，記憶體裡沒問題；問題出在要把它寫成 JSON 的時候</div>
+</div>
+<p>JSON 是一棵樹，沒有「指回去」這種東西。System.Text.Json 從 <code>Post</code> 走到 <code>Author</code>，再走到 <code>Author.Posts[0]</code>，又是那篇 <code>Post</code>，再走到它的 <code>Author</code>……走到第 32 層放棄，丟出例外（實測，題 4 會親眼看到）：</p>
+<pre><code class="nohighlight">System.Text.Json.JsonException: A possible object cycle was detected. This can either be due to a cycle
+or if the object depth is larger than the maximum allowed depth of 32. Consider using ReferenceHandler.Preserve
+on JsonSerializerOptions to support cycles. Path: $.Author.Posts.Author.Posts.Author.Posts.Author.Posts…</code></pre>
+<p>三種解法：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>解法</th><th>做什麼</th><th>評價</th></tr>
+  <tr><td><strong>Response DTO</strong>（這一課用）</td><td>另外寫一個 <code>PostResponse</code> record，只放要回給前端的欄位（<code>AuthorName</code> 是字串，不是整個 Author），用 <code>Select</code> 投影出來</td><td>✅ 一次解決循環、多撈欄位、暴露內部欄位三個問題。01 題 6 那個 callout 說「輸出之後會分開」，就是現在</td></tr>
+  <tr><td><code>[JsonIgnore]</code></td><td>在 <code>Author.Posts</code> 上標 <code>[JsonIgnore]</code>，序列化時跳過</td><td>⚠️ 快，但 Entity 開始背負「API 要怎麼輸出」的知識，之後兩邊互相牽制</td></tr>
+  <tr><td><code>ReferenceHandler.IgnoreCycles</code></td><td><code>AddJsonOptions</code> 設定，遇到循環時輸出 <code>null</code></td><td>⚠️ 全域生效，前端拿到莫名其妙的 <code>null</code>，查問題很痛苦</td></tr>
+</table>
+</div>
+
+<h3 id="delete">2-5. 刪作者時，文章怎麼辦</h3>
+<p>外鍵約束保證「每篇文章的 AuthorId 一定指向存在的作者」。那把作者刪掉，他的文章怎麼辦？資料庫給三種選擇，EF Core 用 <code>DeleteBehavior</code> 表示：</p>
+<div class="table-wrap">
+<table>
+  <tr><th><code>DeleteBehavior</code></th><th>刪作者時</th><th>資料表的 <code>ON DELETE</code></th><th>適合</th></tr>
+  <tr><td><code>Cascade</code></td><td>他的文章<strong>一起刪</strong>，不會問你</td><td><code>CASCADE</code></td><td>子資料離開父資料就沒意義（訂單刪了，明細也該刪）</td></tr>
+  <tr><td><code>Restrict</code></td><td>還有文章就<strong>不准刪</strong>，資料庫報錯</td><td><code>NO ACTION</code></td><td>文章有獨立價值，不能跟著作者消失 ← 這一課用</td></tr>
+  <tr><td><code>SetNull</code></td><td>文章留著，<code>AuthorId</code> 變 NULL</td><td><code>SET NULL</code></td><td>外鍵是 <code>int?</code> 才能用</td></tr>
+</table>
+</div>
+<p>EF Core 的預設：外鍵是必填（<code>int</code>）就 <strong>Cascade</strong>。這表示你什麼都不設，<code>DELETE /api/authors/1</code> 會把小明的文章全部默默刪光，回 204，沒有任何警告。題 6 會先讓你看到這件事，再改成 Restrict。</p>
+
+<h3 id="existing">2-6. 資料表已經有資料，再加一個必填外鍵</h3>
+<p>Posts 表裡已經有 01 的測試文章。現在要加一個 <code>AuthorId NOT NULL</code> 欄位，舊的那幾列要填什麼？Migration 的做法是給預設值 <code>0</code>：</p>
+<pre><code class="language-csharp">migrationBuilder.AddColumn&lt;int&gt;(name: "AuthorId", table: "Posts", type: "int", nullable: false, defaultValue: 0);</code></pre>
+<p>然後再加外鍵約束。但 Authors 表裡沒有 Id 是 0 的作者，約束一加上去就被資料庫擋下來。題 2 會撞到這個，兩種處理方式：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>情況</th><th>做法</th></tr>
+  <tr><td>那幾列是測試資料（這一課）</td><td>先 <code>DELETE FROM Posts</code> 清掉，再 <code>database update</code></td></tr>
+  <tr><td>正式環境，資料不能丟</td><td>拆成兩步：先把 <code>AuthorId</code> 加成 <code>int?</code>（可以 NULL）跑一次 migration → 寫 SQL 或程式把每篇文章的作者填好 → 再改成 <code>int</code> 跑第二次 migration</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="usage">3. 用法：每一步的正式寫法</h2>
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://learn.microsoft.com/ef/core/modeling/relationships/one-to-many" target="_blank">One-to-many relationships</a>（這一課的主題）、<a href="https://learn.microsoft.com/ef/core/modeling/relationships/navigations" target="_blank">Navigations</a></li>
+  <li><a href="https://learn.microsoft.com/ef/core/saving/cascade-delete" target="_blank">Cascade Delete</a>（<code>DeleteBehavior</code> 每一種的說明）</li>
+  <li><a href="https://learn.microsoft.com/ef/core/querying/related-data/eager" target="_blank">Eager Loading of Related Data</a>（<code>Include</code>）、<a href="https://learn.microsoft.com/ef/core/querying/related-data/lazy" target="_blank">Lazy Loading</a>（為什麼預設關）</li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/web-api/handle-errors" target="_blank">Handle errors in ASP.NET Core web APIs</a>（<code>ValidationProblem</code>、<code>Problem</code>）</li>
+</ul>
+</div>
+
+<h3 id="entities">3-1. Entity：兩邊各寫什麼</h3>
+<p class="file-label">Models/Author.cs（新）</p>
+<pre><code class="language-csharp">public class Author
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Bio { get; set; }                        // 可以沒有 → 資料表欄位允許 NULL
+
+    public List&lt;Post&gt; Posts { get; set; } = new();          // 集合導覽屬性：一個作者有很多文章
+}</code></pre>
+<p class="file-label">Models/Post.cs（加兩個屬性）</p>
+<pre><code class="language-csharp">public int AuthorId { get; set; }                           // 外鍵屬性：會變成 Posts.AuthorId 欄位
+public Author Author { get; set; } = null!;                 // 參考導覽屬性：查詢時由 EF Core 填，所以用 null! 關掉警告</code></pre>
+<p><code>= null!</code> 的意思是「我知道它一開始是 null，不用警告我」。<code>Nullable</code> 開著的時候，不加會有「可能是 null」的警告；它的值不是我們 new 的，是 2-3 說的 <code>Include</code> 填進來的。</p>
+
+<h3 id="fluent">3-2. Fluent API：明講關聯和刪除行為</h3>
+<pre><code class="language-csharp">modelBuilder.Entity&lt;Post&gt;(entity =&gt;
+{
+    entity.HasOne(p =&gt; p.Author)              // 一篇文章有一個作者
+          .WithMany(a =&gt; a.Posts)             // 一個作者有很多文章
+          .HasForeignKey(p =&gt; p.AuthorId)     // 外鍵是 AuthorId
+          .OnDelete(DeleteBehavior.Restrict); // 還有文章時不准刪作者
+});</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>方法</th><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td><code>HasOne(p =&gt; p.Author)</code></td><td>從 Post 這邊開始：它有一個 Author</td><td>指定參考導覽屬性</td></tr>
+  <tr><td><code>WithMany(a =&gt; a.Posts)</code></td><td>反過來：Author 有很多 Post</td><td>指定集合導覽屬性。沒有集合導覽時可以寫 <code>WithMany()</code> 空的</td></tr>
+  <tr><td><code>HasForeignKey(p =&gt; p.AuthorId)</code></td><td>外鍵欄位是哪一個</td><td>名字照慣例時可以省略，寫出來比較清楚</td></tr>
+  <tr><td><code>OnDelete(DeleteBehavior.Restrict)</code></td><td>刪作者時的行為（2-5）</td><td>只能在 Fluent API 設，Data Annotations 做不到</td></tr>
+  <tr><td><code>Entity&lt;Author&gt;().Property(a =&gt; a.Name).HasMaxLength(50)</code></td><td>作者名最長 50</td><td>和 01 的 <code>Title</code> 一樣，管資料庫欄位</td></tr>
+</table>
+</div>
+<p>關聯只要在<strong>一邊</strong>設定就好（這裡選 Post 這邊），EF Core 會知道兩邊是同一條關聯。</p>
+
+<h3 id="query">3-3. 查詢：Include 和 Select 投影</h3>
+<pre><code class="language-csharp">// Include：把整個 Author 物件載回來。回傳型別還是 Post，post.Author 有值
+var posts = await _db.Posts
+    .Include(p =&gt; p.Author)
+    .ToListAsync();
+
+// Select 投影：只拿需要的欄位，直接組成要回給前端的 record
+var posts = await _db.Posts
+    .Select(p =&gt; new PostResponse(p.Id, p.Title, p.Content, p.CreatedAt, p.UpdatedAt, p.AuthorId, p.Author.Name))
+    .ToListAsync();
+
+// 集合導覽屬性在 Select 裡可以直接算，會變成子查詢
+var authors = await _db.Authors
+    .Select(a =&gt; new AuthorResponse(a.Id, a.Name, a.Bio, a.Posts.Count))
+    .ToListAsync();
+
+// 查單筆要投影時，用 Where + FirstOrDefaultAsync；FindAsync 回的是整個 Entity，沒辦法投影
+var post = await _db.Posts
+    .Where(p =&gt; p.Id == id)
+    .Select(p =&gt; new PostResponse(…))
+    .FirstOrDefaultAsync();
+
+// 檢查存在：Any → EXISTS，不會把整列撈回來
+bool exists = await _db.Authors.AnyAsync(a =&gt; a.Id == id);</code></pre>
+
+<h3 id="dto">3-4. Request 和 Response：四個 record</h3>
+<p class="file-label">Models/PostRequest.cs（加 AuthorId）、PostResponse.cs、AuthorRequest.cs、AuthorResponse.cs</p>
+<pre><code class="language-csharp">public record PostRequest(
+    [Required, MaxLength(200)] string Title,
+    [Required] string Content,
+    [Range(1, int.MaxValue)] int AuthorId);                 // 前端要指定作者
+
+public record PostResponse(
+    int Id, string Title, string Content, DateTime CreatedAt, DateTime? UpdatedAt,
+    int AuthorId, string AuthorName);                       // 作者只給名字，不給整個物件
+
+public record AuthorRequest(
+    [Required, MaxLength(50)] string Name,
+    [MaxLength(500)] string? Bio);
+
+public record AuthorResponse(int Id, string Name, string? Bio, int PostCount);</code></pre>
+<div class="callout warn">
+<p>⚠️ <strong><code>int</code> 上面標 <code>[Required]</code> 沒有用。</strong><code>int</code> 不可能是 null，前端沒帶 <code>authorId</code> 時它就是 <code>0</code>，<code>[Required]</code> 看到 0 覺得「有值啊」就放行。要擋「沒帶」，用 <code>[Range(1, int.MaxValue)]</code>：0 不在範圍內，自動回 400。</p>
+</div>
+
+<h3 id="responses">3-5. Controller 的三種回應和巢狀路由</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>要做的事</th><th>寫法</th><th>狀態碼</th></tr>
+  <tr><td>前端傳的資料驗證過了，但「作者不存在」這種要查資料庫才知道的錯</td><td><code>ModelState.AddModelError(nameof(request.AuthorId), "作者不存在");</code><br><code>return ValidationProblem();</code></td><td>400，格式和 <code>[ApiController]</code> 自動產生的驗證錯誤一模一樣（<code>errors.AuthorId</code>）</td></tr>
+  <tr><td>請求合理，但現在的狀態不允許（作者還有文章）</td><td><code>return Conflict(new { message = "…" });</code></td><td>409 Conflict</td></tr>
+  <tr><td>某位作者底下的文章</td><td><code>[HttpGet("{id}/posts")]</code>，寫在 <code>AuthorsController</code> 裡</td><td>路徑變成 <code>api/authors/5/posts</code>，<code>id</code> 照 01 3-1 的規則從路徑來</td></tr>
+</table>
+</div>
+<p>為什麼不是 404：404 是「你要的東西不存在」。作者存在、請求也合法，只是「現在不能刪」，這種狀態衝突用 409。</p>
+
+<h3 id="migrations">3-6. 這一課會產生兩個 Migration</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>名稱</th><th><code>Up()</code> 裡會有什麼</th><th>在哪一題</th></tr>
+  <tr><td><code>AddAuthor</code></td><td><code>AddColumn</code>（Posts.AuthorId，預設 0）、<code>CreateTable</code>（Authors）、<code>CreateIndex</code>（IX_Posts_AuthorId）、<code>AddForeignKey</code>（onDelete: Cascade）</td><td>題 2</td></tr>
+  <tr><td><code>RestrictAuthorDelete</code></td><td><code>DropForeignKey</code> 再 <code>AddForeignKey</code>（onDelete: Restrict）。改刪除行為就是把外鍵約束拆掉重建</td><td>題 6</td></tr>
+</table>
+</div>
+<p>外鍵欄位會自動建索引（<code>IX_Posts_AuthorId</code>），因為 JOIN 和「某作者的文章」這種查詢都靠它。</p>
+
+<!-- ============================================================ -->
+<h2 id="exercise">4. 練習題</h2>
+
+<!-- 題 1 -->
+<div class="exercise">
+<h3>題 1：Author Entity 和關聯設定</h3>
+<p>需求：</p>
+<ol>
+  <li>新增 <code>Models/Author.cs</code>：<code>Id</code>、<code>Name</code>（必填）、<code>Bio</code>（可空）、集合導覽屬性 <code>Posts</code></li>
+  <li><code>Post</code> 加外鍵屬性 <code>AuthorId</code> 和參考導覽屬性 <code>Author</code></li>
+  <li><code>BlogDbContext</code> 加 <code>DbSet&lt;Author&gt; Authors</code></li>
+  <li><code>OnModelCreating</code> 用 Fluent API 設定關聯；<code>Name</code> 最長 50。<strong>先不要設 <code>OnDelete</code></strong>，題 6 要用預設行為做實驗</li>
+</ol>
+<p><strong>💡 提示</strong>：3-1、3-2。</p>
+<p class="accept">✅ 驗收：建置成功，沒有「可能是 null」的警告</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Models/Author.cs</p>
+<pre><code class="language-csharp">namespace BlogApi.Models;
+
+public class Author
+{
+    public int Id { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public string? Bio { get; set; }
+
+    // 一對多：一個作者有很多文章。這是「集合導覽屬性」，不會變成資料表的欄位
+    public List&lt;Post&gt; Posts { get; set; } = new();
+}</code></pre>
+<p class="file-label">BlogApi/Models/Post.cs（加在 UpdatedAt 後面）</p>
+<pre><code class="language-csharp">// 多對一：這篇文章屬於哪個作者。AuthorId 是外鍵欄位（會變成資料表的欄位），Author 是參考導覽屬性（不會）
+public int AuthorId { get; set; }
+
+public Author Author { get; set; } = null!;</code></pre>
+<p class="file-label">BlogApi/Data/BlogDbContext.cs</p>
+<pre><code class="language-csharp">public DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();
+
+public DbSet&lt;Author&gt; Authors =&gt; Set&lt;Author&gt;();
+
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity&lt;Post&gt;(entity =&gt;
+    {
+        entity.Property(p =&gt; p.Title).HasMaxLength(200);
+
+        // 一篇文章有一個作者，一個作者有很多文章，外鍵是 AuthorId
+        entity.HasOne(p =&gt; p.Author)
+              .WithMany(a =&gt; a.Posts)
+              .HasForeignKey(p =&gt; p.AuthorId);
+    });
+
+    modelBuilder.Entity&lt;Author&gt;(entity =&gt;
+    {
+        entity.Property(a =&gt; a.Name).HasMaxLength(50);
+    });
+}</code></pre>
+</div>
+</details>
+</div>
+
+<!-- 題 2 -->
+<div class="exercise">
+<h3>題 2：Migration AddAuthor（會撞牆一次）</h3>
+<p>需求：</p>
+<ol>
+  <li><code>dotnet ef migrations add AddAuthor</code>，<strong>先打開產生的檔案讀 <code>Up()</code></strong>：它對 Posts 表做了什麼？新欄位的 <code>defaultValue</code> 是多少？</li>
+  <li>想一下：Posts 表裡現在有幾篇文章？這些文章的 <code>AuthorId</code> 會是多少？Authors 表裡有這個 Id 嗎？</li>
+  <li>執行 <code>dotnet ef database update</code>，看結果和你想的一樣嗎</li>
+  <li>處理掉問題，再 update 一次</li>
+</ol>
+<p><strong>💡 提示</strong>：2-6。清資料可以用 Rider 的 Database 視窗對 <code>BlogDb</code> 開 Query Console 執行 SQL。</p>
+<p class="accept">✅ 驗收：Rider 看到 <code>Authors</code> 表（Id、Name、Bio）；<code>Posts</code> 多了 <code>AuthorId</code>；<code>__EFMigrationsHistory</code> 有兩筆</p>
+<details class="answer">
+<summary>參考答案（試完再打開）</summary>
+<div class="answer-body">
+<p><code>Up()</code> 的四個動作（節錄）：</p>
+<pre><code class="language-csharp">migrationBuilder.AddColumn&lt;int&gt;(
+    name: "AuthorId", table: "Posts", type: "int",
+    nullable: false,
+    defaultValue: 0);                       // ← 舊的文章會被填 0
+
+migrationBuilder.CreateTable(name: "Authors", … Name = nvarchar(50) NOT NULL, Bio = nvarchar(max) NULL …);
+
+migrationBuilder.CreateIndex(name: "IX_Posts_AuthorId", table: "Posts", column: "AuthorId");
+
+migrationBuilder.AddForeignKey(
+    name: "FK_Posts_Authors_AuthorId",
+    table: "Posts", column: "AuthorId",
+    principalTable: "Authors", principalColumn: "Id",
+    onDelete: ReferentialAction.Cascade);   // ← 題 1 沒設 OnDelete，預設 Cascade</code></pre>
+<p>第一次 <code>database update</code> 的結果（實測）：前三個動作成功，第四個被擋下來，整個 migration 回滾：</p>
+<pre><code class="nohighlight">Microsoft.Data.SqlClient.SqlException (0x80131904):
+The ALTER TABLE statement conflicted with the FOREIGN KEY constraint "FK_Posts_Authors_AuthorId".
+The conflict occurred in database "BlogDb", table "dbo.Authors", column 'Id'.
+Error Number:547,State:0,Class:16</code></pre>
+<p>意思是：Posts 裡有幾列的 <code>AuthorId = 0</code>，但 Authors 沒有 Id 是 0 的作者，外鍵約束不允許這種「指向不存在的東西」的列存在。</p>
+<p>這幾篇是 01 的測試文章，清掉就好。Rider → Database → 對 BlogDb 按右鍵 → <em>New Query Console</em>：</p>
+<pre><code class="language-sql">DELETE FROM Posts;</code></pre>
+<p>再執行一次 <code>dotnet ef database update</code>，會從頭套用整個 migration（剛才的回滾很乾淨），這次 <code>Done.</code>。</p>
+<div class="callout">
+<p>📌 之後新增的文章，<code>id</code> 會從 <strong>5</strong> 開始，不是 1。自動編號的計數器不會因為刪資料而歸零，這是正常的。</p>
+</div>
+<details class="aside">
+<summary>📎 補充：正式環境資料不能刪，怎麼做</summary>
+<div class="aside-body">
+<p>拆成兩個 migration：</p>
+<ol>
+  <li><code>Post.AuthorId</code> 先宣告成 <code>int?</code>（<code>Author?</code> 也跟著可空）→ <code>migrations add AddAuthorNullable</code> → update。這時欄位允許 NULL，舊文章的 AuthorId 是 NULL，外鍵不會抱怨</li>
+  <li>用 SQL 或一支小程式把每篇文章的 AuthorId 填好（例如全部先掛給一個「系統」作者）</li>
+  <li>改回 <code>int</code> → <code>migrations add MakeAuthorRequired</code> → update。這次 <code>AlterColumn</code> 改成 NOT NULL，因為每一列都有值了，會成功</li>
+</ol>
+<p>原則：<strong>加必填欄位到有資料的表，一定要想「舊資料填什麼」</strong>。Migration 給的 <code>defaultValue</code> 只是讓 SQL 語法過關，不代表那個值合理。</p>
+</div>
+</details>
+</div>
+</details>
+</div>
+
+<!-- 題 3 -->
+<div class="exercise">
+<h3>題 3：AuthorsController（新增、列表、單筆）</h3>
+<p>需求：</p>
+<ul>
+  <li>新增 <code>AuthorRequest</code>、<code>AuthorResponse</code> 兩個 record（3-4）</li>
+  <li><code>POST /api/authors</code>：建立作者，回 201 + <code>AuthorResponse</code>（<code>PostCount</code> 是 0）</li>
+  <li><code>GET /api/authors</code>：全部作者，依 Id 排序，每位附 <code>PostCount</code>，<strong>一句 SQL</strong></li>
+  <li><code>GET /api/authors/{id}</code>：單一作者，找不到 404</li>
+</ul>
+<p><strong>💡 提示</strong>：<code>PostCount</code> 在 <code>Select</code> 裡寫 <code>a.Posts.Count</code>（3-3）；單筆要投影，用 <code>Where</code> + <code>FirstOrDefaultAsync</code>。</p>
+<p class="accept">✅ 驗收：先建兩位作者，<code>GET /api/authors</code> 回兩筆、<code>postCount</code> 都是 0；Run 視窗那句 SQL 裡有子查詢 <code>SELECT COUNT(*)</code></p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Models/AuthorRequest.cs</p>
+<pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
+
+namespace BlogApi.Models;
+
+public record AuthorRequest(
+    [Required, MaxLength(50)] string Name,
+    [MaxLength(500)] string? Bio);</code></pre>
+<p class="file-label">BlogApi/Models/AuthorResponse.cs</p>
+<pre><code class="language-csharp">namespace BlogApi.Models;
+
+// 回給前端的作者：多了文章數，少了會循環的 Posts 集合
+public record AuthorResponse(
+    int Id,
+    string Name,
+    string? Bio,
+    int PostCount);</code></pre>
+<p class="file-label">BlogApi/Controllers/AuthorsController.cs（題 5、題 6 會再加方法）</p>
+<pre><code class="language-csharp">using BlogApi.Data;
+using BlogApi.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace BlogApi.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class AuthorsController : ControllerBase
+{
+    private readonly BlogDbContext _db;
+
+    public AuthorsController(BlogDbContext db)
+    {
+        _db = db;
+    }
+
+    // GET api/authors
+    [HttpGet]
+    public async Task&lt;ActionResult&lt;List&lt;AuthorResponse&gt;&gt;&gt; GetAll()
+    {
+        var authors = await _db.Authors
+            .OrderBy(a =&gt; a.Id)
+            .Select(a =&gt; new AuthorResponse(a.Id, a.Name, a.Bio, a.Posts.Count))
+            .ToListAsync();
+
+        return authors;
+    }
+
+    // GET api/authors/5
+    [HttpGet("{id}")]
+    public async Task&lt;ActionResult&lt;AuthorResponse&gt;&gt; GetById(int id)
+    {
+        var author = await _db.Authors
+            .Where(a =&gt; a.Id == id)
+            .Select(a =&gt; new AuthorResponse(a.Id, a.Name, a.Bio, a.Posts.Count))
+            .FirstOrDefaultAsync();
+
+        if (author is null)
+        {
+            return NotFound();
+        }
+
+        return author;
+    }
+
+    // POST api/authors
+    [HttpPost]
+    public async Task&lt;ActionResult&lt;AuthorResponse&gt;&gt; Create(AuthorRequest request)
+    {
+        var author = new Author
+        {
+            Name = request.Name,
+            Bio = request.Bio
+        };
+
+        _db.Authors.Add(author);
+        await _db.SaveChangesAsync();
+
+        var response = new AuthorResponse(author.Id, author.Name, author.Bio, 0);
+        return CreatedAtAction(nameof(GetById), new { id = author.Id }, response);
+    }
+}</code></pre>
+<p><code>GET /api/authors</code> 的 SQL（實測）：<code>a.Posts.Count</code> 變成 SELECT 裡的子查詢，一句搞定，不是先撈作者再一個一個數。</p>
+<pre><code class="language-sql">SELECT [a].[Id], [a].[Name], [a].[Bio], (
+    SELECT COUNT(*)
+    FROM [Posts] AS [p]
+    WHERE [a].[Id] = [p].[AuthorId])
+FROM [Authors] AS [a]
+ORDER BY [a].[Id]</code></pre>
+</div>
+</details>
+</div>
+
+<!-- 題 4 -->
+<div class="exercise">
+<h3>題 4：PostsController 改版（先爆一次循環參照）</h3>
+<p>需求：</p>
+<ul>
+  <li><code>PostRequest</code> 加 <code>AuthorId</code>，沒帶或是 0 要回 400</li>
+  <li><code>POST</code>、<code>PUT</code>：作者不存在時回 400，錯誤放在 <code>errors.AuthorId</code></li>
+  <li>新增 <code>PostResponse</code>，<code>GET</code> 列表、<code>GET</code> 單筆、<code>POST</code> 的回應都改用它，多一個 <code>authorName</code></li>
+</ul>
+<p>🧪 <strong>先故意做錯一次</strong>：寫 <code>PostResponse</code> 之前，先把 <code>GetAll</code> 的回傳型別留著 <code>List&lt;Post&gt;</code>，只加上 <code>.Include(p =&gt; p.Author)</code>，啟動後打 <code>GET /api/posts</code>（要先有至少一篇文章；暫時用 <code>POST</code> 建一篇，<code>authorId</code> 填題 3 建的作者）。猜：回應會是什麼？看完再改成 <code>PostResponse</code>。</p>
+<p><strong>💡 提示</strong>：3-3 的投影寫法、3-4 的 <code>[Range]</code>、3-5 的 <code>ValidationProblem</code>。<code>POST</code> 回應需要作者名，用 <code>FindAsync(request.AuthorId)</code> 拿作者，順便就能判斷存不存在。</p>
+<p class="accept">✅ 驗收：<code>POST</code> 帶不存在的 <code>authorId</code> 回 400 且 <code>errors.AuthorId</code> 是「作者不存在」；不帶 <code>authorId</code> 回 400；列表每筆有 <code>authorName</code>；Run 視窗的 SQL 是 <code>INNER JOIN</code> 而且只 SELECT 了 <code>[a].[Name]</code></p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p><strong>🧪 故意做錯的結果</strong>（實測）：<code>GET /api/posts</code> 回 500，Run 視窗：</p>
+<pre><code class="nohighlight">System.Text.Json.JsonException: A possible object cycle was detected. This can either be due to a cycle
+or if the object depth is larger than the maximum allowed depth of 32. Consider using ReferenceHandler.Preserve
+on JsonSerializerOptions to support cycles.
+Path: $.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Id.</code></pre>
+<p>看 <code>Path</code>：<code>Author.Posts.Author.Posts…</code> 一直繞，就是 2-4 的圖。而且這句 SQL 把作者的<strong>所有欄位</strong>都撈了（<code>[a].[Id], [a].[Bio], [a].[Name]</code>），前端只需要名字。</p>
+<p class="file-label">BlogApi/Models/PostRequest.cs</p>
+<pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
+
+namespace BlogApi.Models;
+
+// 新增、修改文章時，前端只能傳這三個欄位
+public record PostRequest(
+    [Required, MaxLength(200)] string Title,
+    [Required] string Content,
+    [Range(1, int.MaxValue)] int AuthorId);</code></pre>
+<p class="file-label">BlogApi/Models/PostResponse.cs</p>
+<pre><code class="language-csharp">namespace BlogApi.Models;
+
+// 回給前端的文章：比 Post 多了作者名字，少了會循環的 Author 導覽屬性
+public record PostResponse(
+    int Id,
+    string Title,
+    string Content,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt,
+    int AuthorId,
+    string AuthorName);</code></pre>
+<p class="file-label">BlogApi/Controllers/PostsController.cs（改的方法；Delete 不變）</p>
+<pre><code class="language-csharp">// GET api/posts?keyword=docker
+[HttpGet]
+public async Task&lt;ActionResult&lt;List&lt;PostResponse&gt;&gt;&gt; GetAll(string? keyword)
+{
+    IQueryable&lt;Post&gt; query = _db.Posts;
+
+    if (!string.IsNullOrWhiteSpace(keyword))
+    {
+        query = query.Where(p =&gt; p.Title.Contains(keyword));
+    }
+
+    var posts = await query
+        .OrderByDescending(p =&gt; p.CreatedAt)
+        .Select(p =&gt; new PostResponse(p.Id, p.Title, p.Content, p.CreatedAt, p.UpdatedAt, p.AuthorId, p.Author.Name))
+        .ToListAsync();
+
+    return posts;
+}
+
+// GET api/posts/5
+[HttpGet("{id}")]
+public async Task&lt;ActionResult&lt;PostResponse&gt;&gt; GetById(int id)
+{
+    var post = await _db.Posts
+        .Where(p =&gt; p.Id == id)
+        .Select(p =&gt; new PostResponse(p.Id, p.Title, p.Content, p.CreatedAt, p.UpdatedAt, p.AuthorId, p.Author.Name))
+        .FirstOrDefaultAsync();
+
+    if (post is null)
+    {
+        return NotFound();
+    }
+
+    return post;
+}
+
+// POST api/posts
+[HttpPost]
+public async Task&lt;ActionResult&lt;PostResponse&gt;&gt; Create(PostRequest request)
+{
+    var author = await _db.Authors.FindAsync(request.AuthorId);
+    if (author is null)
+    {
+        ModelState.AddModelError(nameof(request.AuthorId), "作者不存在");
+        return ValidationProblem();
+    }
+
+    var post = new Post
+    {
+        Title = request.Title,
+        Content = request.Content,
+        CreatedAt = DateTime.UtcNow,
+        AuthorId = request.AuthorId
+    };
+
+    _db.Posts.Add(post);
+    await _db.SaveChangesAsync();
+
+    var response = new PostResponse(post.Id, post.Title, post.Content, post.CreatedAt, post.UpdatedAt, post.AuthorId, author.Name);
+    return CreatedAtAction(nameof(GetById), new { id = post.Id }, response);
+}
+
+// PUT api/posts/5
+[HttpPut("{id}")]
+public async Task&lt;IActionResult&gt; Update(int id, PostRequest request)
+{
+    var post = await _db.Posts.FindAsync(id);
+    if (post is null)
+    {
+        return NotFound();
+    }
+
+    bool authorExists = await _db.Authors.AnyAsync(a =&gt; a.Id == request.AuthorId);
+    if (!authorExists)
+    {
+        ModelState.AddModelError(nameof(request.AuthorId), "作者不存在");
+        return ValidationProblem();
+    }
+
+    post.Title = request.Title;
+    post.Content = request.Content;
+    post.AuthorId = request.AuthorId;
+    post.UpdatedAt = DateTime.UtcNow;
+
+    await _db.SaveChangesAsync();
+    return NoContent();
+}</code></pre>
+<p>作者不存在的 400（實測），格式和 <code>[ApiController]</code> 自動產生的一樣：</p>
+<pre><code class="language-json">{ "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1", "title": "One or more validation errors occurred.",
+  "status": 400, "errors": { "AuthorId": ["作者不存在"] }, "traceId": "…" }</code></pre>
+<p>沒帶 <code>authorId</code> 的 400 是 <code>[Range]</code> 擋的：<code>"AuthorId": ["The field AuthorId must be between 1 and 2147483647."]</code>。</p>
+<p>列表的 SQL（實測）：INNER JOIN，作者只拿 <code>[a].[Name]</code>：</p>
+<pre><code class="language-sql">SELECT [p].[Id], [p].[Title], [p].[Content], [p].[CreatedAt], [p].[UpdatedAt], [p].[AuthorId], [a].[Name]
+FROM [Posts] AS [p]
+INNER JOIN [Authors] AS [a] ON [p].[AuthorId] = [a].[Id]
+ORDER BY [p].[CreatedAt] DESC</code></pre>
+<ul>
+  <li><code>Create</code> 用 <code>FindAsync</code> 而不是 <code>AnyAsync</code>，因為回應需要 <code>author.Name</code>，順便拿；<code>Update</code> 只要知道存不存在，用 <code>AnyAsync</code>（EXISTS）</li>
+  <li><code>GetById</code> 從 <code>FindAsync</code> 改成 <code>Where + Select + FirstOrDefaultAsync</code>，因為 <code>FindAsync</code> 回的是整個 Entity，沒辦法投影出 <code>AuthorName</code></li>
+</ul>
+</div>
+</details>
+</div>
+
+<!-- 題 5 -->
+<div class="exercise">
+<h3>題 5：某位作者的所有文章</h3>
+<p>需求：<code>GET /api/authors/{id}/posts</code>，作者不存在回 404；文章依 <code>CreatedAt</code> 新到舊，回 <code>List&lt;PostResponse&gt;</code>。</p>
+<p><strong>💡 提示</strong>：寫在 <code>AuthorsController</code>，路由見 3-5。先用 <code>AnyAsync</code> 確認作者存在，再查 <code>_db.Posts.Where(p =&gt; p.AuthorId == id)</code>。不需要 <code>Include</code>。</p>
+<p class="accept">✅ 驗收：<code>GET /api/authors/1/posts</code> 回該作者的文章；<code>/api/authors/99/posts</code> 回 404；Run 視窗是兩句 SQL：一句 <code>EXISTS</code>、一句帶 <code>WHERE [p].[AuthorId] = @id</code> 的 JOIN</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">// GET api/authors/5/posts
+[HttpGet("{id}/posts")]
+public async Task&lt;ActionResult&lt;List&lt;PostResponse&gt;&gt;&gt; GetPosts(int id)
+{
+    bool exists = await _db.Authors.AnyAsync(a =&gt; a.Id == id);
+    if (!exists)
+    {
+        return NotFound();
+    }
+
+    var posts = await _db.Posts
+        .Where(p =&gt; p.AuthorId == id)
+        .OrderByDescending(p =&gt; p.CreatedAt)
+        .Select(p =&gt; new PostResponse(p.Id, p.Title, p.Content, p.CreatedAt, p.UpdatedAt, p.AuthorId, p.Author.Name))
+        .ToListAsync();
+
+    return posts;
+}</code></pre>
+<pre><code class="language-sql">-- 第一句：作者存在嗎
+SELECT CASE WHEN EXISTS (SELECT 1 FROM [Authors] AS [a] WHERE [a].[Id] = @id) THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END
+
+-- 第二句：他的文章
+SELECT [p].[Id], [p].[Title], [p].[Content], [p].[CreatedAt], [p].[UpdatedAt], [p].[AuthorId], [a].[Name]
+FROM [Posts] AS [p]
+INNER JOIN [Authors] AS [a] ON [p].[AuthorId] = [a].[Id]
+WHERE [p].[AuthorId] = @id
+ORDER BY [p].[CreatedAt] DESC</code></pre>
+<p>為什麼要先查作者存不存在：沒有這一步，不存在的作者會回 200 和空陣列 <code>[]</code>，前端分不出「這位作者沒寫文章」和「這位作者根本不存在」。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 6 -->
+<div class="exercise">
+<h3>題 6：刪除作者（預設行為會嚇到你）</h3>
+<p>需求：<code>DELETE /api/authors/{id}</code>，找不到 404；底下還有文章時回 409。</p>
+<p>🧪 <strong>分三步做，每一步都先猜再試</strong>：</p>
+<ol>
+  <li>先寫最單純的版本：<code>FindAsync</code> → 沒有就 404 → <code>Remove</code> → <code>SaveChangesAsync</code> → 204。建一位作者、幫他建一篇文章，然後刪這位作者。猜：會成功嗎？成功的話，他的文章去哪了？用 <code>GET /api/posts</code> 看</li>
+  <li>在 <code>OnModelCreating</code> 加 <code>.OnDelete(DeleteBehavior.Restrict)</code>，<code>migrations add RestrictAuthorDelete</code>（先讀 <code>Up()</code>），update。再建一位作者和一篇文章，再刪作者。猜：這次是幾？</li>
+  <li>加上檢查：刪之前用 <code>AnyAsync</code> 看有沒有文章，有就回 409 加一句說明</li>
+</ol>
+<p class="accept">✅ 驗收：刪有文章的作者回 409；刪沒文章的作者回 204；Rider 看 <code>Posts</code> 表的外鍵，<code>ON DELETE</code> 是 <code>NO ACTION</code></p>
+<details class="answer">
+<summary>參考答案（三步都試完再打開）</summary>
+<div class="answer-body">
+<p><strong>第 1 步（預設 Cascade）</strong>：回 <strong>204</strong>，<code>GET /api/posts</code> 那篇文章<strong>不見了</strong>。EF Core 只送了一句 <code>DELETE FROM [Authors] WHERE [Id] = @p0</code>，文章是資料庫依照外鍵的 <code>ON DELETE CASCADE</code> 自己刪的，程式碼裡完全看不到。這就是 2-5 說的：什麼都不設，就是這個結果。</p>
+<p><strong>第 2 步（Restrict）</strong>：<code>RestrictAuthorDelete</code> 的 <code>Up()</code> 是把外鍵拆掉重建：</p>
+<pre><code class="language-csharp">migrationBuilder.DropForeignKey(name: "FK_Posts_Authors_AuthorId", table: "Posts");
+
+migrationBuilder.AddForeignKey(
+    name: "FK_Posts_Authors_AuthorId",
+    table: "Posts", column: "AuthorId",
+    principalTable: "Authors", principalColumn: "Id",
+    onDelete: ReferentialAction.Restrict);</code></pre>
+<p>再刪有文章的作者，回 <strong>500</strong>，Run 視窗（實測）：</p>
+<pre><code class="nohighlight">Microsoft.EntityFrameworkCore.DbUpdateException: An error occurred while saving the entity changes. See the inner exception for details.
+ ---&gt; Microsoft.Data.SqlClient.SqlException (0x80131904): The DELETE statement conflicted with the REFERENCE constraint "FK_Posts_Authors_AuthorId".
+      The conflict occurred in database "BlogDb", table "dbo.Posts", column 'AuthorId'.
+Error Number:547,State:0,Class:16</code></pre>
+<p>資料庫擋下來了（文章安全），但前端拿到的是 500，不知道發生什麼事。<code>DbUpdateException</code> 是 EF Core 在 <code>SaveChangesAsync</code> 失敗時包的例外，裡面的 <code>SqlException</code> 才是資料庫真正說的話。</p>
+<p><strong>第 3 步（檢查後回 409）</strong>：</p>
+<pre><code class="language-csharp">// DELETE api/authors/5
+[HttpDelete("{id}")]
+public async Task&lt;IActionResult&gt; Delete(int id)
+{
+    var author = await _db.Authors.FindAsync(id);
+    if (author is null)
+    {
+        return NotFound();
+    }
+
+    bool hasPosts = await _db.Posts.AnyAsync(p =&gt; p.AuthorId == id);
+    if (hasPosts)
+    {
+        return Conflict(new { message = "這位作者還有文章，先刪除或轉移文章再刪作者" });
+    }
+
+    _db.Authors.Remove(author);
+    await _db.SaveChangesAsync();
+    return NoContent();
+}</code></pre>
+<p>回應（實測）：<code>409</code>，body 是 <code>{"message":"這位作者還有文章，先刪除或轉移文章再刪作者"}</code>。</p>
+<p>Restrict 留著當最後一道防線：就算以後有人忘了寫檢查，資料庫也不會讓文章消失。兩層都要：資料庫保證資料對，程式負責把錯誤講清楚。</p>
+<p class="file-label">BlogApi/Data/BlogDbContext.cs（關聯設定的最終版）</p>
+<pre><code class="language-csharp">entity.HasOne(p =&gt; p.Author)
+      .WithMany(a =&gt; a.Posts)
+      .HasForeignKey(p =&gt; p.AuthorId)
+      // 作者底下還有文章時不准刪作者（預設是 Cascade：刪作者會連文章一起刪）
+      .OnDelete(DeleteBehavior.Restrict);</code></pre>
+</div>
+</details>
+</div>
+
+<!-- 題 7 -->
+<div class="exercise">
+<h3>題 7：用 .http 檔走一遍，並觀察 SQL</h3>
+<p>需求：把 <code>BlogApi.http</code> 改成這一課的流程，每送一個就看 Run 視窗的 SQL：</p>
+<ol>
+  <li>新增兩位作者</li>
+  <li>新增三篇文章（兩篇作者 1、一篇作者 2）；再送一篇作者不存在的、一篇沒帶 <code>authorId</code> 的</li>
+  <li>文章列表、作者列表（看 <code>postCount</code>）、作者 1 的文章、不存在作者的文章</li>
+  <li>修改一篇文章，把作者換成作者 2</li>
+  <li>刪作者 1（有文章）；新增作者 3 再刪掉（沒文章）</li>
+</ol>
+<p class="accept">✅ 驗收：狀態碼依序 201、201、201、201、201、400、400、200、200、200、404、204、409、201、204</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/BlogApi.http</p>
+<pre><code class="language-plaintext">@BlogApi_HostAddress = http://localhost:5107
+
+### 新增作者 1 → 201
+POST {{BlogApi_HostAddress}}/api/authors
+Content-Type: application/json
+
+{ "name": "小明", "bio": "寫 .NET 的人" }
+
+### 新增作者 2 → 201
+POST {{BlogApi_HostAddress}}/api/authors
+Content-Type: application/json
+
+{ "name": "小華" }
+
+### 新增文章（作者 1）→ 201
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{ "title": "EF Core 關聯：一對多", "content": "外鍵放在多的那一邊", "authorId": 1 }
+
+### 新增文章（作者 1）→ 201
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{ "title": "Include 是哪種 JOIN", "content": "必填外鍵是 INNER JOIN", "authorId": 1 }
+
+### 新增文章（作者 2）→ 201
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{ "title": "小華的第一篇", "content": "hello", "authorId": 2 }
+
+### 作者不存在 → 400
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{ "title": "作者不存在", "content": "x", "authorId": 99 }
+
+### 沒帶 authorId → 400
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{ "title": "沒帶作者", "content": "x" }
+
+### 文章列表 → 200，每筆有 authorName
+GET {{BlogApi_HostAddress}}/api/posts
+
+### 作者列表 → 200，postCount 是 2 和 1
+GET {{BlogApi_HostAddress}}/api/authors
+
+### 作者 1 的文章 → 200
+GET {{BlogApi_HostAddress}}/api/authors/1/posts
+
+### 不存在作者的文章 → 404
+GET {{BlogApi_HostAddress}}/api/authors/99/posts
+
+### 修改文章 5，換成作者 2 → 204
+PUT {{BlogApi_HostAddress}}/api/posts/5
+Content-Type: application/json
+
+{ "title": "EF Core 關聯：一對多（修訂）", "content": "改內容", "authorId": 2 }
+
+### 刪有文章的作者 1 → 409
+DELETE {{BlogApi_HostAddress}}/api/authors/1
+
+### 新增作者 3 → 201
+POST {{BlogApi_HostAddress}}/api/authors
+Content-Type: application/json
+
+{ "name": "小芳" }
+
+### 刪沒文章的作者 3 → 204
+DELETE {{BlogApi_HostAddress}}/api/authors/3</code></pre>
+<p>文章的 <code>id</code> 從 5 開始（題 2 清掉了 1～4），所以修改的是 <code>/api/posts/5</code>。你的編號不一樣的話照自己的改。</p>
+<p>值得停下來看的 SQL：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>請求</th><th>看什麼</th></tr>
+  <tr><td>新增文章</td><td>兩句：先 <code>SELECT TOP(1) … FROM [Authors] WHERE [Id] = @p</code>（<code>FindAsync</code> 查作者），再 <code>INSERT INTO [Posts] ([AuthorId], …)</code></td></tr>
+  <tr><td>文章列表</td><td>一句 <code>INNER JOIN</code>，SELECT 只有 <code>[a].[Name]</code> 一個作者欄位</td></tr>
+  <tr><td>作者列表</td><td>一句，<code>postCount</code> 是子查詢 <code>SELECT COUNT(*)</code></td></tr>
+  <tr><td>修改文章換作者</td><td>三句：<code>SELECT TOP(1)</code> 文章、<code>EXISTS</code> 查作者、<code>UPDATE … SET [AuthorId] = @p0, …</code></td></tr>
+  <tr><td>刪有文章的作者</td><td>兩句 SELECT（<code>FindAsync</code>、<code>EXISTS</code>），<strong>沒有 DELETE</strong>，因為被 409 擋在前面</td></tr>
+</table>
+</div>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="sql">5. 觀察 SQL：導覽屬性變成什麼</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>C#</th><th>產生的 SQL</th></tr>
+  <tr>
+    <td><pre><code class="language-csharp">.Select(p =&gt; new PostResponse(
+    …, p.Author.Name))</code></pre></td>
+    <td><pre><code class="language-sql">SELECT [p].[Id], …, [p].[AuthorId], [a].[Name]
+FROM [Posts] AS [p]
+INNER JOIN [Authors] AS [a] ON [p].[AuthorId] = [a].[Id]</code></pre></td>
+  </tr>
+  <tr>
+    <td><pre><code class="language-csharp">.Include(p =&gt; p.Author)</code></pre></td>
+    <td><pre><code class="language-sql">SELECT [p].[Id], [p].[AuthorId], [p].[Content], …,
+       [a].[Id], [a].[Bio], [a].[Name]      -- 作者全部欄位
+FROM [Posts] AS [p]
+INNER JOIN [Authors] AS [a] ON [p].[AuthorId] = [a].[Id]</code></pre></td>
+  </tr>
+  <tr>
+    <td><pre><code class="language-csharp">.Select(a =&gt; new AuthorResponse(
+    …, a.Posts.Count))</code></pre></td>
+    <td><pre><code class="language-sql">SELECT [a].[Id], [a].[Name], [a].[Bio], (
+    SELECT COUNT(*) FROM [Posts] AS [p]
+    WHERE [a].[Id] = [p].[AuthorId])
+FROM [Authors] AS [a]</code></pre></td>
+  </tr>
+  <tr>
+    <td><pre><code class="language-csharp">_db.Authors.AnyAsync(a =&gt; a.Id == id)</code></pre></td>
+    <td><pre><code class="language-sql">SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM [Authors] AS [a] WHERE [a].[Id] = @id)
+THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END</code></pre></td>
+  </tr>
+  <tr>
+    <td><pre><code class="language-csharp">_db.Authors.Remove(author);
+await _db.SaveChangesAsync();
+// Restrict + 還有文章</code></pre></td>
+    <td><pre><code class="language-sql">DELETE FROM [Authors] OUTPUT 1 WHERE [Id] = @p0;
+-- SqlException 547: The DELETE statement conflicted
+-- with the REFERENCE constraint "FK_Posts_Authors_AuthorId"</code></pre></td>
+  </tr>
+</table>
+</div>
+<h3>從 SQL 看出來的重點</h3>
+<ul>
+  <li><strong>必填外鍵 → INNER JOIN</strong>：<code>int AuthorId</code> 保證每篇文章都對得到作者，不需要 LEFT JOIN。改成 <code>int?</code> 就會變 LEFT JOIN（01b 的 L2-01、L2-02 有對照）</li>
+  <li><strong>投影 vs Include 的差別只在 SELECT 清單</strong>：JOIN 一樣，差在拿幾個欄位。列表頁用投影，省流量也避開循環參照</li>
+  <li><strong><code>a.Posts.Count</code> 是子查詢，不是 N+1</strong>：一句 SQL 算完所有作者的文章數。寫成「先撈作者，再 foreach 裡 <code>CountAsync</code>」就是 01b L4-04 的 N+1</li>
+  <li><strong>Cascade 刪除在 SQL 裡看不到</strong>：EF Core 只送一句 <code>DELETE FROM [Authors]</code>，文章是資料庫自己連帶刪的。這就是它可怕的地方</li>
+</ul>
+<p>想看更多關聯查詢（ThenInclude、集合的 Any、SelectMany、GroupBy），在深入課「<a href="01b-linq-sql-lab.html#level2">LINQ ↔ SQL 實驗室</a>」的 Level 2、3。</p>
+
+<!-- ============================================================ -->
+<h2 id="pitfalls">6. 優缺點 &amp; 常見坑</h2>
+<h3>導覽屬性的優缺點</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>優點</th><th>缺點</th></tr>
+  <tr><td>不用自己寫 JOIN，<code>p.Author.Name</code> 就有</td><td>忘了 <code>Include</code> 或投影，<code>post.Author</code> 是 null，執行時才爆 <code>NullReferenceException</code></td></tr>
+  <tr><td>外鍵約束由 EF Core 從導覽屬性推出來，資料庫幫你守資料正確</td><td>預設的 Cascade 刪除容易在不知情下刪掉一堆資料</td></tr>
+  <tr><td>兩邊互相指，<code>author.Posts</code>、<code>post.Author</code> 都能走</td><td>直接序列化會循環；一定要有 Response DTO</td></tr>
+</table>
+</div>
+<h3>常見坑</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>症狀</th><th>原因</th><th>解法</th></tr>
+  <tr><td><code>database update</code> 出現 <code>conflicted with the FOREIGN KEY constraint</code></td><td>對有資料的表加必填外鍵，舊資料被填 0</td><td>題 2：測試資料就清掉；正式資料走「先可空 → 回填 → 再必填」</td></tr>
+  <tr><td>GET 回 500，log 有 <code>A possible object cycle was detected</code></td><td>直接回傳有導覽屬性的 Entity</td><td>題 4：改回 Response DTO，用 <code>Select</code> 投影</td></tr>
+  <tr><td>刪作者回 204，但他的文章全部消失</td><td>預設 <code>DeleteBehavior.Cascade</code></td><td>題 6：<code>OnDelete(DeleteBehavior.Restrict)</code> + migration</td></tr>
+  <tr><td>刪作者回 500，log 有 <code>REFERENCE constraint</code></td><td>Restrict 生效了，但程式沒先檢查</td><td>題 6：刪之前 <code>AnyAsync</code>，有文章回 409</td></tr>
+  <tr><td><code>post.Author</code> 是 null，<code>NullReferenceException</code></td><td>沒有 <code>Include</code>，延遲載入也沒開</td><td>要整個物件就 <code>Include</code>；只要幾個欄位就投影</td></tr>
+  <tr><td>前端沒帶 <code>authorId</code> 卻過了驗證，存進去是 0</td><td><code>int</code> 上標 <code>[Required]</code> 沒作用</td><td>用 <code>[Range(1, int.MaxValue)]</code></td></tr>
+  <tr><td>作者列表很慢，log 裡一大串 <code>SELECT COUNT(*)</code></td><td>foreach 裡面一個一個數，N+1</td><td>在 <code>Select</code> 裡寫 <code>a.Posts.Count</code>，變成子查詢</td></tr>
+  <tr><td>前端可以把文章掛到任何作者名下</td><td><code>authorId</code> 由前端決定</td><td>這一課先這樣；第 5 課登入後改從登入者拿，<code>PostRequest</code> 就不再有 <code>AuthorId</code></td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="next">7. 延伸問題（想想看，答案在後面的課會出現）</h2>
+<ol>
+  <li>如果文章可以沒有作者（<code>int? AuthorId</code>），哪些地方會跟著變？<code>Include</code> 的 JOIN、<code>PostResponse.AuthorName</code> 的型別、刪作者的預設行為。</li>
+  <li>作者有一萬篇文章，<code>GET /api/authors/1/posts</code> 一次全部回傳會怎樣？（第 4 課：分頁）</li>
+  <li>兩位作者同名怎麼辦？<code>Name</code> 要不要加唯一索引？用什麼當「同一個人」的依據？（第 5 課：帳號）</li>
+  <li>一個使用者只有一份個人檔案（大頭貼、自我介紹）：這是一對多嗎？外鍵要放哪邊？（02b：一對一）</li>
+  <li>一篇文章有很多標籤、一個標籤也屬於很多文章：外鍵放哪邊都放不下，怎麼辦？（02c：多對多）</li>
+</ol>
+
+<nav class="footer-nav">
+  <a href="01-efcore-crud.html">← 01 文章 CRUD</a>
+  <a href="../index.html">回目錄</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

@@ -48,7 +48,7 @@ flowchart LR
 | [00 環境準備：用 Docker 跑 MSSQL](https://jackson204.github.io/BlogApi/lessons/00-docker-mssql.html) | Docker、image / container、port、volume、連線字串 | ✅ |
 | [01 文章 CRUD：EF Core 入門](https://jackson204.github.io/BlogApi/lessons/01-efcore-crud.html) | DbContext、Migration、LINQ ↔ SQL、User Secrets | ✅ |
 | [深入：LINQ ↔ SQL 實驗室](https://jackson204.github.io/BlogApi/lessons/01b-linq-sql-lab.html) | 深入（選修），主線走完再回來做。獨立 Console 專案 + 小商店資料庫：單表、JOIN、GROUP BY、N+1 等 31 個實驗 | ✅ |
-| 02a 作者與文章：一對多 | Foreign Key、`Include` | ⏳ |
+| [02a 作者與文章：一對多](https://jackson204.github.io/BlogApi/lessons/02a-one-to-many.html) | 外鍵、導覽屬性、`Include` vs 投影、Response DTO、Cascade / Restrict | ✅ |
 | 02b 使用者與個人檔案：一對一 | `HasOne` / `WithOne` | ⏳ |
 | 02c 文章與標籤：多對多 | 中介表 | ⏳ |
 | 03 程式分層與 DI | 沒有 DI 會怎樣、生命週期 | ⏳ |
