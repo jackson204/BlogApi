@@ -490,7 +490,7 @@ flowchart LR
     A -.-|"到這裡都還沒查資料庫"| C
 </div>
 </div>
-<p>所以可以先 <code>var query = _db.Posts.AsQueryable();</code>，再依照條件決定要不要加 <code>Where</code>。最後只會送出<strong>一句</strong>組合好的 SQL。</p>
+<p>所以可以先 <code>IQueryable&lt;Post&gt; query = _db.Posts;</code> 當起點，再依照條件決定要不要疊上 <code>Where</code>。最後只會送出<strong>一句</strong>組合好的 SQL。題 6 的 GET 列表就是這樣寫的（為什麼需要這個變數、<code>Where</code> 的回傳值為什麼一定要接住，答案裡有說明）。</p>
 
 <!-- ============================================================ -->
 <h2 id="usage">3. 用法：每一步的正式寫法</h2>
@@ -2108,7 +2108,8 @@ public class PostsController : ControllerBase
     [HttpGet]
     public async Task&lt;ActionResult&lt;List&lt;Post&gt;&gt;&gt; GetAll(string? keyword)
     {
-        var query = _db.Posts.AsQueryable();
+        // 起點：還沒送 SQL。宣告成 IQueryable&lt;Post&gt;，下面才能把 Where 的結果放回同一個變數（程式碼後面有說明）
+        IQueryable&lt;Post&gt; query = _db.Posts;
 
         if (!string.IsNullOrWhiteSpace(keyword))
         {
@@ -2186,10 +2187,107 @@ public class PostsController : ControllerBase
     }
 }</code></pre>
 <ul>
-  <li><strong>為什麼不用 <code>Post</code> 當參數？</strong>如果前端傳 <code>{"id": 999, "createdAt": "1999-01-01"}</code>，這些值會被直接寫進去。這叫做 <em>over-posting</em>。用 <code>PostRequest</code> 就只收得到兩個欄位</li>
+  <li><strong>為什麼不用 <code>Post</code> 當參數？</strong>3-1 說過，<code>[ApiController]</code> 把 body 的 JSON 轉成參數物件時，規則只有一條：<strong>JSON 的欄位和參數型別的屬性名稱對得上，就填進去</strong>。它不會問「這個欄位前端可以傳嗎」。所以參數型別有幾個屬性，前端就能填幾個。假設一個不乖的前端送了這份 JSON：
+<pre><code class="language-json">{ "title": "第一篇", "content": "hello", "createdAt": "1999-01-01T00:00:00" }</code></pre>
+    <div class="table-wrap">
+    <table>
+      <tr><th></th><th>參數用 <code>Post</code></th><th>參數用 <code>PostRequest</code></th></tr>
+      <tr><td>參數型別有哪些屬性</td><td><code>Id</code>、<code>Title</code>、<code>Content</code>、<code>CreatedAt</code>、<code>UpdatedAt</code></td><td>只有 <code>Title</code>、<code>Content</code></td></tr>
+      <tr><td>JSON 的 <code>createdAt</code> 去哪了</td><td>名稱對得上 → 填進 <code>CreatedAt</code> → <code>Add</code> → 資料庫存成 <strong>1999 年</strong>，不會報錯</td><td>沒有同名屬性 → <strong>直接丟掉</strong>，不會報錯</td></tr>
+      <tr><td>建立時間由誰決定</td><td>前端</td><td>後端：<code>CreatedAt = DateTime.UtcNow</code></td></tr>
+    </table>
+    </div>
+    <div class="diagram">
+    <div class="mermaid">
+flowchart LR
+    J["前端 JSON<br>title、content、createdAt=1999"] --> B{"參數型別是？"}
+    B -- "Post" --> P["Post 物件<br>CreatedAt = 1999<br>名稱對得上就填"] --> D1[("資料庫<br>CreatedAt = 1999 ❌")]
+    B -- "PostRequest" --> R["PostRequest 物件<br>只有 Title、Content<br>createdAt 沒地方放 → 丟掉"] --> S["後端自己填<br>CreatedAt = UtcNow"] --> D2[("資料庫<br>CreatedAt 正確 ✅")]
+    </div>
+    <div class="diagram-caption">前端多貼了欄位、後端照單全收，叫做 over-posting；防法是參數型別只放「前端被允許傳」的欄位</div>
+    </div>
+    現在只有 <code>CreatedAt</code>、<code>UpdatedAt</code> 會被亂改，看起來還好；但第 2 課 <code>Post</code> 多了 <code>AuthorId</code> 之後，前端傳 <code>"authorId": 1</code> 就能把文章掛到別人名下；第 5 課使用者有 <code>IsAdmin</code> 之後，傳 <code>"isAdmin": true</code> 就能自己升管理員。<code>PostRequest</code> 就是為了把門關上。官方說明：<a href="https://learn.microsoft.com/aspnet/core/data/ef-mvc/crud#security-note-about-overposting" target="_blank">Security note about overposting</a></li>
+  <li><strong><code>PostRequest</code> 為什麼用 <code>record</code> 不用 <code>class</code>？</strong>它只是「裝前端送來的兩個值」的容器，record 剛好符合：
+    <div class="table-wrap">
+    <table>
+      <tr><th>record 給你的</th><th>對 Request 物件的意義</th></tr>
+      <tr><td>一行宣告，自動產生建構子和屬性</td><td>同樣的 class 要寫十行左右</td></tr>
+      <tr><td>屬性是 <code>init</code>，建好之後不能改</td><td>前端送來的資料在 Controller 裡不該被改，改了反而是 bug</td></tr>
+      <tr><td>值相等：兩個 <code>PostRequest</code> 欄位相同就 <code>==</code></td><td>第 5 課寫測試時，比對「收到的是不是這筆」很方便</td></tr>
+      <tr><td><code>ToString()</code> 會印出所有欄位</td><td>log 和 debug 直接看得到內容</td></tr>
+    </table>
+    </div>
+    反過來，<code>Post</code>（Entity）維持 <code>class</code>：PUT 要 <code>post.Title = …</code> 改屬性讓 EF Core 追蹤到 Modified，需要可變；record 的值相等也會和 EF Core 用「主鍵」判斷是不是同一筆的做法打架。經驗法則：<strong>進出 API 的資料用 record，對應資料表的 Entity 用 class</strong>。官方文件：<a href="https://learn.microsoft.com/dotnet/csharp/language-reference/builtin-types/record" target="_blank">Records (C# reference)</a></li>
   <li><strong>PUT 為什麼沒有呼叫 <code>Update()</code>？</strong><code>FindAsync</code> 查出來的物件已經被追蹤（Unchanged），改屬性後會自動變成 Modified，<code>SaveChangesAsync</code> 就會送出 UPDATE（見 <a href="#tracking">2-6</a>）</li>
   <li><strong><code>CreatedAt</code> 用 <code>DateTime.UtcNow</code></strong>：存 UTC 時間，前端再依照使用者的時區顯示，避免伺服器搬到其他時區時時間錯亂</li>
+  <li><strong>GET 列表為什麼要多一個 <code>query</code> 變數？</strong>說的是上面 <code>GetAll</code> 這一段：
+<pre><code class="language-csharp">// 上面答案裡的 GetAll，重點是中間那個 query 變數
+IQueryable&lt;Post&gt; query = _db.Posts;                      // ① 起點
+
+if (!string.IsNullOrWhiteSpace(keyword))
+{
+    query = query.Where(p =&gt; p.Title.Contains(keyword)); // ② 有 keyword 才疊上 Where
+}
+
+var posts = await query
+    .OrderByDescending(p =&gt; p.CreatedAt)
+    .ToListAsync();                                      // ③ 這裡才送 SQL</code></pre>
+    直接寫 <code>_db.Posts.Where(…)</code> 不行嗎？行，前提是 <code>keyword</code> <strong>必填</strong>。必填的話不需要 <code>query</code> 變數，直接串起來：
+<pre><code class="language-csharp">// 如果 keyword 必填，GetAll 可以簡化成這樣
+var posts = await _db.Posts
+    .Where(p =&gt; p.Title.Contains(keyword))
+    .OrderByDescending(p =&gt; p.CreatedAt)
+    .ToListAsync();</code></pre>
+    但題目說「<strong>有傳</strong> keyword 時才過濾」，沒傳的時候不能加 <code>Where</code>。所以要<strong>依條件決定要不要疊上 ② 這一段</strong>：先拿一個起點 ①，有條件就疊上去 ②，最後才執行 ③。兩種請求送出的 SQL：
+    <div class="table-wrap">
+    <table>
+      <tr><th>請求</th><th>送出的 SQL</th></tr>
+      <tr><td><code>GET /api/posts</code></td><td><code>SELECT … FROM Posts ORDER BY CreatedAt DESC</code></td></tr>
+      <tr><td><code>GET /api/posts?keyword=docker</code></td><td><code>SELECT … FROM Posts WHERE Title LIKE '%docker%' ORDER BY CreatedAt DESC</code></td></tr>
+    </table>
+    </div>
+    這種「一段一段疊查詢」的寫法，第 4 課會再疊上分頁和作者篩選</li>
+  <li><strong>寫 ② 的時候，<code>Where</code> 的回傳值一定要接住。</strong>常見的錯誤寫法是把 <code>Where</code> 單獨寫成一行：
+<pre><code class="language-csharp">// ❌ 看起來有過濾，其實什麼都沒發生
+IQueryable&lt;Post&gt; query = _db.Posts;
+query.Where(p =&gt; p.Title.Contains(keyword));   // Where 做出一個「有過濾」的新查詢，但沒有人接，直接丟掉
+var posts = await query.ToListAsync();         // query 還是原來那個「全部文章」，查出來沒有過濾
+
+// ✅ 用 Where 的回傳值取代舊的 query
+IQueryable&lt;Post&gt; query = _db.Posts;
+query = query.Where(p =&gt; p.Title.Contains(keyword));   // 「有過濾」的新查詢放回 query
+var posts = await query.ToListAsync();                 // 這次送出的 SQL 有 WHERE</code></pre>
+    原因：<code>Where</code> <strong>不會改變</strong>原本的 <code>query</code>（也不會改變 <code>_db.Posts</code>），它<strong>回傳一個新的</strong> <code>IQueryable&lt;Post&gt;</code>。這和字串的 <code>ToUpper()</code> 一樣：<code>name.ToUpper();</code> 單獨一行不會讓 <code>name</code> 變大寫，要寫 <code>name = name.ToUpper();</code>。❌ 那行連 SQL 都不會送，因為沒有人對它呼叫 <code>ToListAsync()</code>（<a href="#deferred">2-7</a> 延遲執行）</li>
+  <li><strong>寫 ① 的時候，為什麼宣告成 <code>IQueryable&lt;Post&gt;</code>，不用 <code>var</code>？</strong>因為 <code>var</code> 會把變數的型別定成 <code>DbSet&lt;Post&gt;</code>，之後 ② 就放不回去（實測）：
+<pre><code class="language-csharp">// ❌ 編譯失敗
+var query = _db.Posts;                                   // var 推斷：query 的型別是 DbSet&lt;Post&gt;
+query = query.Where(p =&gt; p.Title.Contains(keyword));    // Where 回傳 IQueryable&lt;Post&gt;，放不進 DbSet&lt;Post&gt; 的變數
+// error CS0266: 無法將類型 'IQueryable&lt;Post&gt;' 隱含轉換成 'DbSet&lt;Post&gt;'
+
+// ✅ 寫法一：明確宣告成 IQueryable&lt;Post&gt;（答案用這個）
+IQueryable&lt;Post&gt; query = _db.Posts;                     // DbSet&lt;Post&gt; 本身就是一種 IQueryable&lt;Post&gt;，放得進去
+query = query.Where(p =&gt; p.Title.Contains(keyword));    // Where 回傳 IQueryable&lt;Post&gt;，放得回去
+
+// ✅ 寫法二：AsQueryable()
+IQueryable&lt;Post&gt; query = _db.Posts.AsQueryable();       // AsQueryable() 回傳的型別本來就是 IQueryable&lt;Post&gt;
+query = query.Where(p =&gt; p.Title.Contains(keyword));</code></pre>
+    把變數想成貼了標籤的盒子：<code>var</code> 會照第一次放進去的東西貼標籤（<code>DbSet&lt;Post&gt;</code>），之後想放 <code>IQueryable&lt;Post&gt;</code> 進去就不行；標籤貼成 <code>IQueryable&lt;Post&gt;</code>，<code>DbSet&lt;Post&gt;</code> 和 <code>Where</code> 的結果都放得進去。寫法二的 <code>AsQueryable()</code> 回傳<strong>同一個物件</strong>，只是回傳型別已經是 <code>IQueryable&lt;Post&gt;</code>，沒有送任何 SQL；兩種寫法都明確寫出型別，一眼就看得出 <code>query</code> 是什麼。為什麼 <code>DbSet&lt;Post&gt;</code> 算是一種 <code>IQueryable&lt;Post&gt;</code>，見 2-4 的<a href="#iqueryable">補充</a></li>
 </ul>
+<div class="callout">
+<p>🤔 <strong>回傳值直接用 <code>Post</code>（Entity），這樣對嗎？</strong></p>
+<p>一支 API 其實牽涉三種物件，各自有不同的理由會改變：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>物件</th><th>代表什麼</th><th>誰決定它長什麼樣</th><th>這一課</th></tr>
+  <tr><td>Request（輸入）</td><td>前端<strong>能給</strong>什麼</td><td>API 的設計、驗證規則</td><td>已經分開：<code>PostRequest</code></td></tr>
+  <tr><td>Entity（資料表）</td><td>資料庫<strong>存</strong>什麼</td><td>資料表的設計</td><td><code>Post</code></td></tr>
+  <tr><td>Response（輸出）</td><td>前端<strong>能看</strong>什麼</td><td>API 的設計、前端畫面需要什麼</td><td><strong>還沒分開</strong>，先直接回 <code>Post</code></td></tr>
+</table>
+</div>
+<p>輸入這邊一開始就分開，是因為「前端不能亂傳 <code>Id</code>、<code>CreatedAt</code>」和驗證規則逼著你分。輸出這邊先不分，是刻意簡化：現在的 <code>Post</code> 只有五個單純的欄位，沒有什麼該藏的，直接回也沒事。</p>
+<p>什麼時候會撐不住：第 2 課 <code>Post</code> 加上 <code>Author</code> 導覽屬性後，直接回 <code>Post</code> 會把整個作者（甚至作者底下的所有文章）一起序列化，可能出現循環；第 4 課列表只想回標題、不想把每篇的 <code>Content</code> 都撈出來。到時候會另外寫 <code>PostResponse</code> 這類輸出用的 record，用 <code>Select</code> 投影出來，這就是第 4 課的「DTO」。</p>
+<p>所以「Request、Response、Entity 應該是三個不同的物件」這個觀念是對的；這一課只是在不需要的時候先不做。</p>
+</div>
 </div>
 </details>
 </div>
