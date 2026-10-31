@@ -11,9 +11,21 @@
 <body>
 <main class="page">
 
-<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 階段 1</div>
-<h1>01b｜LINQ ↔ SQL 實驗室：一個 Console 專案，看懂每一句 LINQ 變成什麼 SQL</h1>
-<p class="subtitle">01 的第 5 節只看了題 7 跑出來的六句 SQL。這一課另開一個 Console 專案和一個小商店資料庫，31 個實驗：單表、JOIN、GROUP BY、還有最常踩的坑。每個實驗你先寫 LINQ、先猜 SQL，再打開答案對。</p>
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 深入（選修）</div>
+<h1>深入｜LINQ ↔ SQL 實驗室：一個 Console 專案，看懂每一句 LINQ 變成什麼 SQL</h1>
+<p class="subtitle">01 的第 5 節只看了題 7 跑出來的六句 SQL。這一課另開一個 Console 專案和一個小商店資料庫，31 個實驗：單表、JOIN、GROUP BY、還有最常踩的坑。每個實驗你先寫 LINQ、先猜 SQL，再打開答案對。這是<strong>深入課</strong>，不在主線上：先把 Web API 主線走完，之後想加強 LINQ 時再回來做，完全可以。</p>
+
+<div class="callout">
+<p>📌 <strong>什麼時候回來做這一課</strong></p>
+<ul>
+  <li>第 2 課寫 <code>Include</code> 時，想知道它到底變成哪種 JOIN、為什麼有時候撈回一堆重複的列</li>
+  <li>第 4 課列表查詢變慢，想親眼看 N+1 是怎麼多送幾十句 SQL 的</li>
+  <li>要寫 GROUP BY、HAVING、「找出沒有訂單的客戶」這種查詢，不知道 LINQ 怎麼下手</li>
+  <li>遇到 <code>could not be translated</code> 這個例外</li>
+  <li>單純想把 01 第 5 節那張對照表補完整</li>
+</ul>
+<p>31 個實驗可以分好幾次做，做到哪就 commit 到哪。</p>
+</div>
 <div class="tags">
   <span class="tag">LINQ</span><span class="tag">IQueryable</span><span class="tag">Include</span><span class="tag">JOIN</span><span class="tag">GroupBy</span>
   <span class="tag">EXISTS</span><span class="tag">OFFSET FETCH</span><span class="tag">延遲執行</span><span class="tag">N+1</span><span class="tag">ExecuteUpdate</span>

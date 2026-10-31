@@ -1,6 +1,63 @@
 @BlogApi_HostAddress = http://localhost:5107
 
-GET {{BlogApi_HostAddress}}/weatherforecast/
-Accept: application/json
 
-###
+### 新增文章 1 → 201
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "title": "Docker 入門",
+  "content": "用 Docker 跑 MSSQL"
+}
+
+### 新增文章 2 → 201
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "title": "EF Core 入門",
+  "content": "DbContext 與 Migration"
+}
+
+### 文章列表 → 200
+GET {{BlogApi_HostAddress}}/api/posts
+
+### 關鍵字搜尋 → 200
+GET {{BlogApi_HostAddress}}/api/posts?keyword=Docker
+
+### 單篇文章 → 200
+GET {{BlogApi_HostAddress}}/api/posts/1
+
+### 不存在的文章 → 404
+GET {{BlogApi_HostAddress}}/api/posts/999
+
+### 修改文章 → 204
+PUT {{BlogApi_HostAddress}}/api/posts/1
+Content-Type: application/json
+
+{
+  "title": "Docker 入門（修訂）",
+  "content": "更新內容"
+}
+
+### 刪除文章 → 204
+DELETE {{BlogApi_HostAddress}}/api/posts/2
+
+### 驗證失敗 → 400
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "title": ""
+}
+
+### over-posting 試驗 → 201，但 id 和 createdAt 不會是你傳的
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "id": 999,
+  "title": "我想自己指定 id 和時間",
+  "content": "看看會不會被接受",
+  "createdAt": "1999-01-01T00:00:00"
+}

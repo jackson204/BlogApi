@@ -2401,6 +2401,22 @@ Content-Type: application/json
 }</code></pre>
 <p><code>id</code> 是資料庫接著編的（前面新增兩篇、刪一篇，所以是 3），<code>createdAt</code> 是後端的 <code>UtcNow</code>。JSON 裡的 <code>"id": 999</code> 和 <code>"createdAt": "1999-…"</code> 因為 <code>PostRequest</code> 沒有這兩個屬性，進來就被丟掉了；Run 視窗的 <code>INSERT</code> 也只有 <code>@p0</code>～<code>@p2</code> 三個參數（Title、Content、CreatedAt）。這就是題 6 答案「<a href="#exercise">為什麼不用 <code>Post</code> 當參數</a>」那張表右邊那一欄。</p>
 <p>🧪 想看反例的話：把 <code>Create</code> 的參數暫時改成 <code>Post post</code>，直接 <code>_db.Posts.Add(post)</code>，再送同一個請求。<code>createdAt</code> 會乖乖變成 1999 年；<code>id: 999</code> 則會讓 SQL Server 擋下來（<code>Cannot insert explicit value for identity column</code>），整個請求變 500。把 <code>"id"</code> 那行拿掉再送一次，1999 年的文章就真的進資料庫了。看完記得改回 <code>PostRequest</code>。</p>
+<details class="aside">
+<summary>📎 補充：Rider 看 Posts 表，<code>CreatedAt</code> 是 <code>2026-10-31 11:01:47</code>，沒有時區，而且比台灣時間早 8 小時？</summary>
+<div class="aside-body">
+<p>本來就不會有。同一個時間在三個地方長得不一樣：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>在哪裡</th><th>型別</th><th>有沒有時區</th><th>長什麼樣</th></tr>
+  <tr><td>C#（<code>DateTime.UtcNow</code>）</td><td><code>DateTime</code></td><td>沒有真正的時區，只有一個 <code>Kind</code> 標記（Utc／Local／Unspecified）</td><td><code>2026-10-31 11:01:47</code>，<code>Kind = Utc</code></td></tr>
+  <tr><td>SQL Server 的欄位</td><td><code>datetime2</code></td><td><strong>完全沒有</strong>，就是一串年月日時分秒</td><td><code>2026-10-31 11:01:47.1630000</code>，Rider 看到的就是這個</td></tr>
+  <tr><td>API 回應的 JSON</td><td>ISO 8601 字串</td><td>看 <code>Kind</code>：Utc 就加 <code>Z</code>，Unspecified 就不加</td><td>POST 剛建好回傳 <code>…T11:01:47Z</code>（物件還在記憶體，Kind 是 Utc）；之後 GET 從資料庫讀回來是 <code>…T11:01:47</code>（沒有 Z，Kind 變 Unspecified）</td></tr>
+</table>
+</div>
+<p>所以 11:01 是 UTC，等於台灣的 19:01；資料庫沒有把「這是 UTC」記下來，是我們自己<strong>約定</strong>「存進去的一律是 UTC」。這個約定在 01 夠用，前端拿到時間自己加 8 小時顯示。</p>
+<p>之後想讓資料庫也記住時區，有兩條路，第 5 課再選：把屬性改成 <code>DateTimeOffset</code>（欄位會變成 <code>datetimeoffset</code>，存 <code>2026-10-31 11:01:47 +00:00</code>）；或設定 EF Core 的 ValueConverter，讀回來時自動把 <code>Kind</code> 標成 Utc，JSON 就會有 <code>Z</code>。</p>
+</div>
+</details>
 <p class="file-label">ToQueryString：暫時加在 GetAll 的 ToListAsync 之前</p>
 <pre><code class="language-csharp">var sql = query.OrderByDescending(p =&gt; p.CreatedAt).ToQueryString();
 Console.WriteLine(sql);</code></pre>
@@ -2420,7 +2436,7 @@ ORDER BY [p].[CreatedAt] DESC</code></pre>
 <h2 id="sql">5. 觀察 SQL：LINQ 對照產生的 SQL</h2>
 <div class="callout">
 <p>📌 <strong>這一節只是驗收對照</strong>：把題 7 跑出來的六句 SQL 和 C# 擺在一起，確認你寫的 LINQ 真的變成了預期的 SQL。</p>
-<p>想深入了解「LINQ 怎麼翻成 SQL」，有獨立的一課：「<a href="01b-linq-sql-lab.html">01b｜LINQ ↔ SQL 實驗室</a>」。那一課另開一個 Console 專案和一個小商店資料庫，31 個實驗涵蓋單表、JOIN、GROUP BY、N+1 等，每個都先寫 LINQ、先猜 SQL、再對實測結果。建議做完題 7 之後接著做。</p>
+<p>想深入了解「LINQ 怎麼翻成 SQL」，有獨立的一課：「<a href="01b-linq-sql-lab.html">01b｜LINQ ↔ SQL 實驗室</a>」。那一課另開一個 Console 專案和一個小商店資料庫，31 個實驗涵蓋單表、JOIN、GROUP BY、N+1 等，每個都先寫 LINQ、先猜 SQL、再對實測結果。它<strong>不是主線的下一步</strong>：先把 Web API 走完（02 關聯、03 DI…），之後想深入 LINQ 時再回來做。</p>
 </div>
 <p>以下是題 7 實際執行時，EF Core 10 印出的 SQL（只保留重點）：</p>
 <div class="table-wrap">
