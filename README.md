@@ -63,6 +63,8 @@ BlogApi/
 ├─ BlogApi.sln
 ├─ BlogApi/          ← Web API 專案（第 1 課建立）
 ├─ LinqLab/          ← LINQ ↔ SQL 實驗室，Console 專案（01b 建立）
+├─ BlogApi.Worker/   ← 收 RabbitMQ 訊息的 Worker Service（補充：RabbitMQ 建立）
+├─ BlogApi.SignalRClient/ ← SignalR 的 C# Console 客戶端（補充：SignalR 建立）
 └─ docs/             ← 學習筆記（GitHub Pages）
     ├─ index.html    ← 課程目錄，可搜尋
     ├─ assets/

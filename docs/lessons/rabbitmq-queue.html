@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>補充：RabbitMQ 訊息佇列</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>補充：用 RabbitMQ 把慢工作丟出請求之外（訊息佇列、ack、durable、重試與 dead-letter）</h1>
+<p class="subtitle">發文之後要寄通知給訂閱者，這種慢工作不該卡在 HTTP 請求裡。API 只把「文章 5 建立了」丟進佇列，另一個 Worker 程式慢慢做。這頁從「為什麼要佇列」講到「失敗的訊息去哪裡」。</p>
+<div class="tags">
+  <span class="tag">RabbitMQ</span><span class="tag">訊息佇列</span><span class="tag">Producer / Consumer</span><span class="tag">ack</span>
+  <span class="tag">durable</span><span class="tag">persistent</span><span class="tag">prefetch</span><span class="tag">dead-letter</span>
+  <span class="tag">retry</span><span class="tag">BackgroundService</span><span class="tag">Management UI</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>什麼時候會用到這頁</strong></p>
+<ul>
+  <li>API 做完主要的事之後，還有寄信、推播、算統計這種慢工作，不想讓使用者等</li>
+  <li>聽過「訊息佇列」「MQ」「非同步處理」，不知道它和 <code>async/await</code> 有什麼不一樣</li>
+  <li>公司專案有 RabbitMQ 或 MassTransit，想看懂 ack、prefetch、dead-letter 在講什麼</li>
+</ul>
+<p>練習用你現在 01 的 <code>PostsController</code>，不需要先做 02a。會多一個 Console 類型的 Worker 專案。所有錯誤訊息、Management UI 的數字、重試的時間點，都是在一份專案複本和暫存的 RabbitMQ 容器上實際跑出來的。RabbitMQ 版本 4.4、<code>RabbitMQ.Client</code> 7.2.2。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#why">為什麼慢工作不能做在請求裡</a></li>
+    <li><a href="#concept">原理：Producer、Queue、Consumer，還有 ack 和 durable</a></li>
+    <li><a href="#usage">用法：RabbitMQ.Client 7 的寫法</a></li>
+    <li><a href="#exercise">練習：題 1～7</a></li>
+    <li><a href="#break">故意弄壞：四個實驗</a></li>
+    <li><a href="#pitfalls">常見坑</a></li>
+    <li><a href="#next">延伸問題</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="why">1. 為什麼慢工作不能做在請求裡</h2>
+<div class="callout">
+<p>📋 <strong>情境</strong>：新文章發布後要寄通知給 2,000 位訂閱者。寄一封信大約 50 毫秒，2,000 封就是 100 秒。主管按下「發布」，轉圈圈轉 100 秒，然後 timeout。</p>
+</div>
+<p>直接在 <code>Create</code> 裡寄信，會有三個問題：</p>
+<ol>
+  <li><strong>使用者在等</strong>：文章早就寫進資料庫了，但要等信全部寄完才回 201</li>
+  <li><strong>別人掛了你跟著掛</strong>：郵件伺服器當機，發文就失敗，可是發文跟寄信本來是兩件事</li>
+  <li><strong>尖峰塞車</strong>：同時 10 個人發文，就有 10 個請求各自寄 2,000 封信，API 被自己拖垮</li>
+</ol>
+<p>解法是把「要做什麼」和「什麼時候做、誰來做」分開。API 只留一張紙條「文章 5 建立了」，另一個程式再去拿紙條做事：</p>
+<div class="diagram">
+<div class="mermaid">
+sequenceDiagram
+    participant F as 前端
+    participant A as API
+    participant Q as RabbitMQ 佇列
+    participant W as Worker
+    participant M as 郵件伺服器
+    F->>A: POST /api/posts
+    A->>A: 寫進資料庫
+    A->>Q: 訊息：文章 5 建立了
+    A-->>F: 201 Created（幾十毫秒）
+    Note over Q: 紙條先放著
+    Q->>W: 送出訊息
+    W->>M: 寄 2,000 封信（100 秒）
+    W-->>Q: ack：做完了
+</div>
+<div class="diagram-caption">前端只等「寫進資料庫 + 丟一張紙條」；寄信在另一個程式裡慢慢做，掛了也不影響發文</div>
+</div>
+<p>這和 <code>async/await</code> 不一樣。<code>await</code> 只是「等的時候不占用執行緒」，請求還是要等到事情做完才回應；佇列是「這個請求根本不做這件事」，做事的是另一個程式，可以晚一點、可以在另一台機器、可以開三個一起做。</p>
+
+<!-- ============================================================ -->
+<h2 id="concept">2. 原理：Producer、Queue、Consumer，還有 ack 和 durable</h2>
+
+<h3 id="parts">三個角色</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>角色</th><th>在 BlogApi 裡</th><th>做什麼</th></tr>
+  <tr><td><strong>Producer</strong>（生產者）</td><td>API 的 <code>PostsController.Create</code></td><td>把訊息送進佇列，送完就走</td></tr>
+  <tr><td><strong>Broker</strong>（RabbitMQ 本身）</td><td>Docker 裡的 <code>blog-rabbitmq</code></td><td>獨立的程式，負責保管訊息、分配給 consumer、追蹤誰做完了</td></tr>
+  <tr><td><strong>Consumer</strong>（消費者）</td><td>Worker 專案的 <code>PostCreatedConsumer</code></td><td>向 broker 訂閱佇列，收到就處理，處理完回報</td></tr>
+</table>
+</div>
+<p>訊息本身只是一串 bytes，RabbitMQ 不管內容。我們放 JSON，兩邊用同一個 record 序列化和反序列化。</p>
+
+<h3 id="exchange">exchange 這個字先講一點點</h3>
+<p>Producer 其實不是直接送進佇列，是送給一個叫 <strong>exchange</strong> 的東西，由它依 <strong>routing key</strong> 決定丟進哪個佇列。這頁只用 <strong>default exchange</strong>（名字是空字串）：它的規則是「routing key 等於佇列名稱」，所以 <code>routingKey: "post-created"</code> 就是直接送進 <code>post-created</code> 佇列。其他種類的 exchange（一封訊息廣播給多個佇列、照樣式分流）在延伸問題。</p>
+
+<h3 id="ack">ack：broker 怎麼知道你做完了</h3>
+<p>訂閱時有一個選擇 <code>autoAck</code>：</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>意思</th><th>Worker 處理到一半當掉</th></tr>
+  <tr><td><code>autoAck: true</code></td><td>訊息一送到 consumer 就算完成</td><td>訊息<strong>丟了</strong></td></tr>
+  <tr><td><code>autoAck: false</code></td><td>consumer 處理完要自己回報 <code>BasicAck</code>；沒回報的訊息 broker 會留著</td><td>連線斷掉時訊息<strong>回到佇列</strong>，下一個 consumer 再收到一次，而且 <code>Redelivered = true</code></td></tr>
+</table>
+</div>
+<p>所以用 <code>autoAck: false</code> 的代價是：同一封訊息<strong>可能收到兩次</strong>（做到一半當掉，重啟後再來一次）。這叫 at-least-once。你的處理要能承受重做，叫<strong>冪等</strong>：寄信前先查「這篇文章的通知寄過了沒」，寄過就跳過。</p>
+<p>處理失敗時不 ack，改回 <code>BasicNack</code>，而且要決定 <code>requeue</code>：true 是退回佇列馬上重送，false 是不要了（有 dead-letter 設定時會被轉送到別的佇列）。題 6 會看到 true 有多可怕。</p>
+
+<h3 id="prefetch">prefetch：一次拿幾封</h3>
+<p>預設 broker 會把佇列裡的訊息一股腦塞給 consumer。<code>BasicQos(prefetchCount: 1)</code> 是「我手上還有沒 ack 的訊息時，不要再給我」。開兩個 Worker 時，這讓忙的那個不會囤貨，閒的那個拿得到（實驗 C）。</p>
+
+<h3 id="durable">durable 和 persistent：broker 重啟後還在嗎</h3>
+<p>兩個開關，缺一不可：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>開關</th><th>設在哪</th><th>意思</th></tr>
+  <tr><td><code>durable: true</code></td><td>宣告佇列時</td><td>佇列本身撐得過 broker 重啟。RabbitMQ 4 開始，<strong>非 durable 的佇列預設不准建</strong>（題 5 有錯誤原文）</td></tr>
+  <tr><td><code>Persistent = true</code></td><td>每一封訊息的 properties</td><td>訊息寫到磁碟。沒設的話佇列還在、<strong>訊息沒了</strong>（題 5 實測）</td></tr>
+</table>
+</div>
+
+<h3 id="connection">連線和 channel</h3>
+<ul>
+  <li><strong>Connection</strong>：一條 TCP 連線，建立很貴（要握手、驗證）。整個程式開一條、一直用</li>
+  <li><strong>Channel</strong>：連線裡面的邏輯通道，很便宜，但<strong>不能跨執行緒共用</strong>。API 每次發布開一個、用完關掉；Worker 開一個一直收</li>
+</ul>
+
+<h3 id="ui">Management UI 看什麼</h3>
+<p>http://localhost:15672（帳號密碼都是 <code>guest</code>）。Queues 頁面三個數字：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>欄位</th><th>意思</th></tr>
+  <tr><td><strong>Ready</strong></td><td>在佇列裡等著被拿走的訊息數</td></tr>
+  <tr><td><strong>Unacked</strong></td><td>已經送給 consumer、還沒收到 ack 的訊息數</td></tr>
+  <tr><td><strong>Total</strong></td><td>兩個加起來</td></tr>
+</table>
+</div>
+<p>點進某個佇列，最下面有 <strong>Get messages</strong>（偷看內容和 headers）和 <strong>Delete queue</strong>（題 5、6、7 改宣告參數前都要先刪）。數字每 5 秒才更新一次，剛送完馬上看會是舊的。</p>
+
+<!-- ============================================================ -->
+<h2 id="usage">3. 用法：RabbitMQ.Client 7 的寫法</h2>
+<p><code>RabbitMQ.Client</code> 7 全部是 async，方法都有 <code>Async</code> 結尾，網路上 6.x 的範例（<code>CreateModel()</code>、<code>BasicPublish()</code>）已經不能用，看到要換成下面這些：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>要做什麼</th><th>寫法</th></tr>
+  <tr><td>建連線</td><td><code>var factory = new ConnectionFactory { HostName = "localhost" };</code><br><code>var connection = await factory.CreateConnectionAsync();</code></td></tr>
+  <tr><td>開 channel</td><td><code>await using var channel = await connection.CreateChannelAsync();</code></td></tr>
+  <tr><td>宣告佇列</td><td><code>await channel.QueueDeclareAsync("post-created", durable: true, exclusive: false, autoDelete: false, arguments: null);</code><br>宣告是「確保存在」，重複宣告沒關係，但<strong>參數要一樣</strong>（實驗 D）</td></tr>
+  <tr><td>發訊息</td><td><code>var props = new BasicProperties { Persistent = true, ContentType = "application/json" };</code><br><code>await channel.BasicPublishAsync(exchange: "", routingKey: "post-created", mandatory: false, basicProperties: props, body: bytes);</code></td></tr>
+  <tr><td>一次拿一封</td><td><code>await channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 1, global: false);</code></td></tr>
+  <tr><td>訂閱</td><td><code>var consumer = new AsyncEventingBasicConsumer(channel);</code><br><code>consumer.ReceivedAsync += async (sender, ea) =&gt; { … };</code><br><code>await channel.BasicConsumeAsync("post-created", autoAck: false, consumer);</code></td></tr>
+  <tr><td>回報做完</td><td><code>await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);</code></td></tr>
+  <tr><td>回報失敗</td><td><code>await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false);</code></td></tr>
+  <tr><td>訊息內容</td><td><code>ea.Body.Span</code> 是 bytes；<code>JsonSerializer.Deserialize&lt;PostCreatedMessage&gt;(ea.Body.Span)</code></td></tr>
+  <tr><td>佇列參數（題 6、7）</td><td><code>arguments: new Dictionary&lt;string, object?&gt; { ["x-dead-letter-exchange"] = "", ["x-dead-letter-routing-key"] = "post-created.dead" }</code></td></tr>
+</table>
+</div>
+<p>訊息類別兩邊各放一份一模一樣的，JSON 的屬性名稱對得上就能互通：</p>
+<pre><code class="language-csharp">public record PostCreatedMessage(int PostId, string Title, DateTime CreatedAt);</code></pre>
+<p>只放 Worker 需要的欄位，不要把整個 <code>Post</code> Entity 丟進去：Entity 之後會長出導覽屬性（02a），序列化會出事，而且訊息越大 broker 越慢。</p>
+
+<!-- ============================================================ -->
+<h2 id="exercise">4. 練習：題 1～7</h2>
+
+<!-- 題 1 -->
+<div class="exercise">
+<h3>題 1：用 Docker 跑 RabbitMQ</h3>
+<p>需求：跑一個帶 Management UI 的 RabbitMQ 容器，兩個 port：<code>5672</code> 給程式連、<code>15672</code> 給瀏覽器看。開 http://localhost:15672 登入。</p>
+<p><strong>💡 提示</strong>：映像名稱 <code>rabbitmq:4.4-management</code>，沒有 <code>-management</code> 的那個沒有 UI。寫法跟 00 課跑 MSSQL 一樣。</p>
+<p class="accept">✅ 驗收：UI 登得進去，Overview 頁面右上角顯示 RabbitMQ 4.4.0</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-powershell">docker run -d --name blog-rabbitmq `
+  -p 5672:5672 `
+  -p 15672:15672 `
+  rabbitmq:4.4-management</code></pre>
+<p>00 課用 compose 的人，在 <code>docker-compose.yml</code> 的 <code>services:</code> 下面加一段：</p>
+<pre><code class="language-yaml">  rabbitmq:
+    image: rabbitmq:4.4-management
+    container_name: blog-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    restart: unless-stopped</code></pre>
+<p>預設帳號密碼 <code>guest</code> / <code>guest</code>，只能從本機登入。不用像 MSSQL 那樣設密碼，因為這是練習；正式環境要建自己的帳號。</p>
+<p>之後主線的課（02a 起）不需要它開著。題 2 的寫法會讓 API 在 RabbitMQ 沒開時照常啟動、發文照常成功，只是通知沒送出。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 2 -->
+<div class="exercise">
+<h3>題 2：API 發訊息</h3>
+<p>需求：</p>
+<ol>
+  <li>安裝 <code>RabbitMQ.Client</code>（7.2.2）</li>
+  <li><code>Messaging/PostCreatedMessage.cs</code>：上面那個 record</li>
+  <li><code>Messaging/PostEventPublisher.cs</code>：一個類別，整個程式共用一條連線，<strong>第一次發布時才建連線</strong>；每次發布開一個 channel、宣告 durable 佇列 <code>post-created</code>、發一封 persistent 的 JSON 訊息。連不上 broker 時寫一條 Warning、<strong>不要讓發文失敗</strong></li>
+  <li><code>Program.cs</code> 把它註冊成 singleton</li>
+  <li><code>PostsController.Create</code> 在 <code>SaveChangesAsync</code> 之後呼叫它</li>
+</ol>
+<p><strong>💡 提示</strong>：連不上的例外是 <code>RabbitMQ.Client.Exceptions.BrokerUnreachableException</code>。「第一次才建連線」要防兩個請求同時進來各建一條，用 <code>SemaphoreSlim(1, 1)</code> 排隊。</p>
+<p class="accept">✅ 驗收：POST 一篇文章回 201；UI 的 Queues 頁面出現 <code>post-created</code>，Ready = 1；點進去 Get messages 看得到 JSON</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-bash">dotnet add package RabbitMQ.Client --version 7.2.2</code></pre>
+<p class="file-label">BlogApi/Messaging/PostCreatedMessage.cs</p>
+<pre><code class="language-csharp">namespace BlogApi.Messaging;
+
+// 丟進佇列的訊息。只放 Worker 需要的欄位，不放整個 Post Entity
+public record PostCreatedMessage(int PostId, string Title, DateTime CreatedAt);</code></pre>
+<p class="file-label">BlogApi/Messaging/PostEventPublisher.cs</p>
+<pre><code class="language-csharp">using System.Text.Json;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Exceptions;
+
+namespace BlogApi.Messaging;
+
+// 註冊成 singleton：整個程式共用一條連線。連線是第一次發布時才建立的
+public class PostEventPublisher : IAsyncDisposable
+{
+    private readonly ConnectionFactory _factory = new() { HostName = "localhost" };
+    private readonly ILogger&lt;PostEventPublisher&gt; _logger;
+    private readonly SemaphoreSlim _connectLock = new(1, 1);
+    private IConnection? _connection;
+
+    public PostEventPublisher(ILogger&lt;PostEventPublisher&gt; logger)
+    {
+        _logger = logger;
+    }
+
+    public async Task PublishPostCreatedAsync(PostCreatedMessage message)
+    {
+        try
+        {
+            var connection = await GetConnectionAsync();
+
+            // channel 便宜，而且不能跨執行緒共用，所以每次發布開一個、用完關掉
+            await using var channel = await connection.CreateChannelAsync();
+            await channel.QueueDeclareAsync("post-created", durable: true, exclusive: false, autoDelete: false, arguments: null);
+
+            var body = JsonSerializer.SerializeToUtf8Bytes(message);
+            var props = new BasicProperties
+            {
+                Persistent = true,
+                ContentType = "application/json"
+            };
+
+            // exchange 留空字串 = default exchange，routing key 就是佇列名稱
+            await channel.BasicPublishAsync(
+                exchange: "",
+                routingKey: "post-created",
+                mandatory: false,
+                basicProperties: props,
+                body: body);
+
+            _logger.LogInformation("已送出 PostCreated：文章 {PostId}", message.PostId);
+        }
+        catch (BrokerUnreachableException ex)
+        {
+            // 連不上 RabbitMQ 不讓發文失敗，但要留下痕跡
+            _logger.LogWarning(ex, "RabbitMQ 連不上，文章 {PostId} 的通知沒有送出", message.PostId);
+        }
+    }
+
+    private async Task&lt;IConnection&gt; GetConnectionAsync()
+    {
+        if (_connection is { IsOpen: true })
+        {
+            return _connection;
+        }
+
+        // 兩個請求同時第一次發文時，只讓一個去建連線
+        await _connectLock.WaitAsync();
+        try
+        {
+            if (_connection is { IsOpen: true })
+            {
+                return _connection;
+            }
+
+            _connection = await _factory.CreateConnectionAsync();
+            return _connection;
+        }
+        finally
+        {
+            _connectLock.Release();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connection is not null)
+        {
+            await _connection.DisposeAsync();
+        }
+    }
+}</code></pre>
+<p class="file-label">BlogApi/Program.cs（只列出改動）</p>
+<pre><code class="language-csharp">using BlogApi.Messaging;
+// …
+builder.Services.AddSingleton&lt;PostEventPublisher&gt;();</code></pre>
+<p class="file-label">BlogApi/Controllers/PostsController.cs（只列出改動）</p>
+<pre><code class="language-csharp">private readonly BlogDbContext _db;
+private readonly PostEventPublisher _publisher;
+
+public PostsController(BlogDbContext db, PostEventPublisher publisher)
+{
+    _db = db;
+    _publisher = publisher;
+}
+
+// Create 裡，SaveChangesAsync 之後
+await _publisher.PublishPostCreatedAsync(new PostCreatedMessage(post.Id, post.Title, post.CreatedAt));
+
+return CreatedAtAction(nameof(GetById), new { id = post.Id }, post);</code></pre>
+<p>Run 視窗多一行 <code>已送出 PostCreated：文章 5</code>。UI 的 Get messages 會看到：</p>
+<pre><code class="language-json">{"PostId":5,"Title":"Docker 入門","CreatedAt":"2026-11-01T09:09:00.2416066Z"}</code></pre>
+<p>中文變成 <code>入門</code> 是 <code>System.Text.Json</code> 預設把非 ASCII 字元跳脫，Worker 反序列化回來還是「Docker 入門」，不用管。想在 UI 看到中文，見 <a href="encoding-json-html.html">編碼器那頁</a>。另外 properties 裡 <code>delivery_mode: 2</code> 就是 Persistent。</p>
+<p>singleton 和 <code>SemaphoreSlim</code> 是因為「整個程式一條連線」：Controller 是每個請求 new 一個的，連線放在 Controller 裡就會每個請求都重連。這些生命週期的事第 3 課講 DI 時會系統地整理。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 3 -->
+<div class="exercise">
+<h3>題 3：Worker 收訊息</h3>
+<p>需求：</p>
+<ol>
+  <li>solution 根目錄下建 Worker Service 專案 <code>BlogApi.Worker</code>，加進 solution；<strong>刪掉範本的 <code>Worker.cs</code></strong>（它每秒印一行，會把視窗洗掉）；安裝 <code>RabbitMQ.Client</code></li>
+  <li>複製一份 <code>PostCreatedMessage</code> 過來（namespace 改成 <code>BlogApi.Worker</code>）</li>
+  <li><code>PostCreatedConsumer.cs</code>：繼承 <code>BackgroundService</code>，在 <code>ExecuteAsync</code> 裡建連線、開 channel、宣告同一個佇列、設 prefetch 1、訂閱；收到訊息就印出來，<code>Task.Delay(2000)</code> 模擬寄通知，做完 ack</li>
+  <li><code>Program.cs</code> 註冊它，順便讓 log 帶時間</li>
+  <li>先啟動 API 發一篇，再啟動 Worker</li>
+</ol>
+<p><strong>💡 提示</strong>：<code>ExecuteAsync</code> 訂閱完不能 return（return 等於做完了），最後用 <code>await Task.Delay(Timeout.Infinite, stoppingToken)</code> 等到程式被要求停止。Worker 的 <code>ILogger</code>、<code>BackgroundService</code> 都在 <code>Microsoft.Extensions.Hosting</code>，範本已經裝好。</p>
+<p class="accept">✅ 驗收：Worker 視窗印出「收到：文章 5」和兩秒後的「寄通知完成」；UI 的 Ready 回到 0</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-bash">cd $HOME\RiderProjects\BlogApi
+dotnet new worker -n BlogApi.Worker -o BlogApi.Worker
+dotnet sln add BlogApi.Worker
+cd BlogApi.Worker
+dotnet add package RabbitMQ.Client --version 7.2.2</code></pre>
+<p class="file-label">BlogApi.Worker/PostCreatedMessage.cs</p>
+<pre><code class="language-csharp">namespace BlogApi.Worker;
+
+// 和 API 那邊一模一樣的一份。JSON 的屬性名稱對得上就能反序列化
+public record PostCreatedMessage(int PostId, string Title, DateTime CreatedAt);</code></pre>
+<p class="file-label">BlogApi.Worker/PostCreatedConsumer.cs</p>
+<pre><code class="language-csharp">using System.Text.Json;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
+
+namespace BlogApi.Worker;
+
+// 括號裡的 logger 是 C# 12 的「主要建構子」寫法，範本的 Worker.cs 就是這樣寫的，等於宣告欄位加一個建構子
+public class PostCreatedConsumer(ILogger&lt;PostCreatedConsumer&gt; logger) : BackgroundService
+{
+    private IConnection? _connection;
+    private IChannel? _channel;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var factory = new ConnectionFactory { HostName = "localhost" };
+        _connection = await factory.CreateConnectionAsync(stoppingToken);
+        _channel = await _connection.CreateChannelAsync(cancellationToken: stoppingToken);
+
+        // 和 API 宣告一模一樣的佇列。誰先啟動都沒關係，先到的建、後到的確認
+        await _channel.QueueDeclareAsync("post-created", durable: true, exclusive: false, autoDelete: false,
+            arguments: null, cancellationToken: stoppingToken);
+
+        // 一次只拿一封，處理完（ack）才拿下一封
+        await _channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 1, global: false, stoppingToken);
+
+        var consumer = new AsyncEventingBasicConsumer(_channel);
+        consumer.ReceivedAsync += async (sender, ea) =&gt;
+        {
+            var message = JsonSerializer.Deserialize&lt;PostCreatedMessage&gt;(ea.Body.Span)!;
+            logger.LogInformation("收到：文章 {PostId}「{Title}」Redelivered={Redelivered}",
+                message.PostId, message.Title, ea.Redelivered);
+
+            await Task.Delay(2000, stoppingToken); // 模擬寄通知的慢工作
+            logger.LogInformation("寄通知完成：文章 {PostId}", message.PostId);
+
+            // 回報做完，broker 才會把這封從佇列拿掉
+            await _channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+        };
+
+        await _channel.BasicConsumeAsync("post-created", autoAck: false, consumer, stoppingToken);
+        logger.LogInformation("開始等待訊息");
+
+        // 一直等到程式被要求停止
+        await Task.Delay(Timeout.Infinite, stoppingToken);
+    }
+
+    public override void Dispose()
+    {
+        _channel?.Dispose();
+        _connection?.Dispose();
+        base.Dispose();
+    }
+}</code></pre>
+<p class="file-label">BlogApi.Worker/Program.cs</p>
+<pre><code class="language-csharp">using BlogApi.Worker;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+// 每行 log 前面加時間，題 7 看重試間隔要用
+builder.Logging.AddSimpleConsole(options =&gt; options.TimestampFormat = "HH:mm:ss ");
+
+builder.Services.AddHostedService&lt;PostCreatedConsumer&gt;();
+
+var host = builder.Build();
+host.Run();</code></pre>
+<p>Worker 視窗：</p>
+<pre><code class="language-plaintext">17:10:13 info: BlogApi.Worker.PostCreatedConsumer[0]
+      開始等待訊息
+17:10:14 info: BlogApi.Worker.PostCreatedConsumer[0]
+      收到：文章 5「Docker 入門」Redelivered=False
+17:10:16 info: BlogApi.Worker.PostCreatedConsumer[0]
+      寄通知完成：文章 5</code></pre>
+<p>Worker 不需要資料庫、不需要 API 在跑。它只認識佇列。這就是「解耦」：API 和 Worker 可以分開部署、分開重啟、分開放大。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 4 -->
+<div class="exercise">
+<h3>題 4：ack 的意義：做到一半當掉會怎樣</h3>
+<p>需求：把 Worker 的 <code>Task.Delay</code> 暫時改成 10 秒（比較來得及按）。發一篇文章，看到 Worker 印「收到」之後、「寄通知完成」之前，<strong>停掉 Worker</strong>（Ctrl+C 或直接關掉視窗都一樣）。先猜：訊息還在嗎？再啟動 Worker 一次，看印出什麼。</p>
+<p class="accept">✅ 驗收：Worker 停掉後 UI 的 Ready 又變回 1；重新啟動後再次收到同一篇，<code>Redelivered=True</code></p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p>Worker 停掉後，UI 的 <code>post-created</code>：Ready = 1、Unacked = 0。沒 ack 的訊息在連線斷掉時被 broker 收回去了。重新啟動：</p>
+<pre><code class="language-plaintext">17:12:08 info: BlogApi.Worker.PostCreatedConsumer[0]
+      收到：文章 5「Docker 入門」Redelivered=True</code></pre>
+<p>同一封訊息、第二次收到，<code>Redelivered</code> 從 False 變 True。這就是 at-least-once：寧可多做一次，不要漏做。所以寄通知的程式要能承受「同一篇寄兩次」：</p>
+<ul>
+  <li>最簡單：寄之前先查「文章 5 的通知寄過了嗎」（例如一張 <code>Notifications</code> 表記 PostId），寄過就直接 ack</li>
+  <li><code>Redelivered</code> 只能告訴你「這封以前送過」，不能告訴你「以前做到哪」，所以不能拿它當依據</li>
+</ul>
+<p>反過來想：如果當初用 <code>autoAck: true</code>，訊息在送到 Worker 的瞬間就算完成，Ctrl+C 之後它就消失了，通知永遠不會寄出。</p>
+<p>做完把 Delay 改回 2 秒。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 5 -->
+<div class="exercise">
+<h3>題 5：durable 和 persistent 的意義：broker 重啟會怎樣</h3>
+<p>需求，分三段：</p>
+<ol>
+  <li>照題 2 的設定（durable + Persistent）發一篇，Worker 不要開，<code>docker restart blog-rabbitmq</code>，等 UI 回來看 Ready</li>
+  <li>API 的 <code>Persistent = false</code>，再做一次。這只改訊息的屬性，佇列不用動</li>
+  <li>API 的 <code>durable: false</code>（Persistent 隨便）。這改的是佇列的宣告，<strong>先在 UI 把 <code>post-created</code> 刪掉</strong>（舊佇列的參數不一樣會擋路），再發一篇。先猜會發生什麼</li>
+</ol>
+<p class="accept">✅ 驗收：第 1 段重啟後 Ready 還是 1；第 2 段重啟後 Ready = 0；第 3 段發文回 500</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>佇列 durable</th><th>訊息 Persistent</th><th>重啟後</th></tr>
+  <tr><td>1</td><td>true</td><td>true</td><td>佇列在、訊息在（Ready = 1）</td></tr>
+  <tr><td>2</td><td>true</td><td>false</td><td>佇列在、<strong>訊息沒了</strong>（Ready = 0）</td></tr>
+  <tr><td>3</td><td>false</td><td></td><td>佇列根本建不起來，發文回 500</td></tr>
+</table>
+</div>
+<p>第 3 段的 500，Run 視窗裡是：</p>
+<pre><code class="language-plaintext">RabbitMQ.Client.Exceptions.OperationInterruptedException: The AMQP operation was interrupted: AMQP close-reason, initiated by Peer, code=541, text='INTERNAL_ERROR - Feature `transient_nonexcl_queues` is deprecated.
+By default, this feature is not permitted anymore.
+The feature will be removed from a future major RabbitMQ version, regardless of the configuration; actual version to be determined.
+To...', classId=50, methodId=10</code></pre>
+<p>RabbitMQ 4 開始，非 durable 的佇列預設不准建了，所以實務上 <code>durable: true</code> 沒有第二個選擇；真正要你決定的只剩每封訊息的 <code>Persistent</code>。第 2 段告訴你：忘了設它，重啟就掉訊息，而且<strong>沒有任何錯誤</strong>。</p>
+<p>這個例外不是 <code>BrokerUnreachableException</code>，所以題 2 的 catch 接不到，會變成 500。這是對的：broker 在、但你的設定和它不合，是程式寫錯，要讓它炸出來。</p>
+<p>做完改回 <code>durable: true</code>、<code>Persistent = true</code>，刪掉佇列重建。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 6 -->
+<div class="exercise">
+<h3>題 6：處理失敗的訊息去哪裡：dead-letter</h3>
+<p>需求：</p>
+<ol>
+  <li>Worker 加一個會失敗的條件：標題含「炸」就 <code>throw new InvalidOperationException("寄信伺服器拒絕了這封信")</code>。用 try/catch 接住，catch 裡先寫 <code>BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true)</code>。發一篇標題「這篇會炸」的文章，看 Worker 視窗 5 秒，然後停掉它。猜：這 5 秒內 Worker 收到幾次？</li>
+  <li>改成 <code>requeue: false</code>，並且給主佇列加 dead-letter 設定：被 nack 的訊息轉送到 <code>post-created.dead</code> 佇列。佇列宣告從這題起集中到 <code>Messaging/RabbitMqTopology.cs</code>，API 和 Worker <strong>各放一份一模一樣的</strong>，dead 佇列要先宣告</li>
+  <li><strong>先在 UI 刪掉 <code>post-created</code></strong>，再啟動 API 和 Worker，再發一篇「這篇會炸」</li>
+</ol>
+<p class="accept">✅ 驗收：第 1 段 Worker 視窗瘋狂洗版；第 2 段之後 <code>post-created.dead</code> Ready = 1，Get messages 的 headers 有 <code>x-death</code></p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p><strong>第 1 段</strong>：5 秒內 Worker 收到同一封 <strong>10,246 次</strong>。<code>requeue: true</code> 是「退回佇列、馬上重送」，寄信伺服器壞了的話它就會一直壞，這封訊息在 broker 和 Worker 之間彈跳到天荒地老，而且其他正常的訊息都排在它後面。<code>requeue: true</code> 只適合「這台 Worker 暫時不能做，換一台做」的情況，不適合「這封訊息本身有問題」。</p>
+<p class="file-label">BlogApi/Messaging/RabbitMqTopology.cs（Worker 專案放一份一樣的，namespace 改掉）</p>
+<pre><code class="language-csharp">using RabbitMQ.Client;
+
+namespace BlogApi.Messaging;
+
+// 佇列的宣告集中在這裡。Worker 專案放一份一模一樣的，兩邊宣告的參數才會一致
+public static class RabbitMqTopology
+{
+    public const string PostCreatedQueue = "post-created";
+    public const string DeadQueue = "post-created.dead";
+
+    public static async Task DeclareAsync(IChannel channel)
+    {
+        // dead 佇列：沒有參數。要先宣告，因為 dead-letter 的目的地不存在時 broker 會直接把訊息丟掉
+        await channel.QueueDeclareAsync(DeadQueue, durable: true, exclusive: false, autoDelete: false, arguments: null);
+
+        // 主佇列：被 nack(requeue:false) 的訊息，經由 default exchange 轉送到 dead 佇列
+        await channel.QueueDeclareAsync(PostCreatedQueue, durable: true, exclusive: false, autoDelete: false,
+            arguments: new Dictionary&lt;string, object?&gt;
+            {
+                ["x-dead-letter-exchange"] = "",
+                ["x-dead-letter-routing-key"] = DeadQueue
+            });
+    }
+}</code></pre>
+<p>API 和 Worker 原本的 <code>QueueDeclareAsync</code> 都換成 <code>await RabbitMqTopology.DeclareAsync(channel);</code>，佇列名稱改用 <code>RabbitMqTopology.PostCreatedQueue</code>。</p>
+<p class="file-label">BlogApi.Worker/PostCreatedConsumer.cs（ReceivedAsync 裡）</p>
+<pre><code class="language-csharp">try
+{
+    if (message.Title.Contains('炸'))
+    {
+        throw new InvalidOperationException("寄信伺服器拒絕了這封信");
+    }
+
+    await Task.Delay(2000, stoppingToken);
+    logger.LogInformation("寄通知完成：文章 {PostId}", message.PostId);
+    await _channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+}
+catch (InvalidOperationException ex)
+{
+    logger.LogError(ex, "處理文章 {PostId} 失敗", message.PostId);
+
+    // 不要重送：有 dead-letter 設定時，broker 會把它轉送到 dead 佇列
+    await _channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false);
+}</code></pre>
+<p>發「這篇會炸」之後，Worker 視窗只有一次：</p>
+<pre><code class="language-plaintext">17:18:31 info: BlogApi.Worker.PostCreatedConsumer[0]
+      收到：文章 6「這篇會炸」Redelivered=False
+17:18:31 fail: BlogApi.Worker.PostCreatedConsumer[0]
+      處理文章 6 失敗
+      System.InvalidOperationException: 寄信伺服器拒絕了這封信</code></pre>
+<p>UI：<code>post-created</code> Ready = 0，<code>post-created.dead</code> Ready = 1。對 dead 佇列 Get messages，headers 裡：</p>
+<pre><code class="language-json">"x-death": [{"count": 1, "exchange": "", "queue": "post-created", "reason": "rejected", "routing-keys": ["post-created"], "time": 1793524574}],
+"x-first-death-queue": "post-created", "x-first-death-reason": "rejected"</code></pre>
+<p><code>x-death</code> 是 broker 幫你記的履歷：從哪個佇列、因為什麼原因（<code>rejected</code> 就是被 nack）、第幾次。dead 佇列沒有 consumer，訊息會一直放在那裡等人來看：修好寄信伺服器之後，可以寫一支小程式把它搬回主佇列，或者在 UI 看完手動處理。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 7 -->
+<div class="exercise">
+<h3>題 7：自動重試：等 5 秒再試，三次都失敗才放棄</h3>
+<p>寄信伺服器通常只是暫時抽筋，等幾秒再試就好了。RabbitMQ 沒有內建「延遲重送」，但可以用兩個現成的功能拼出來：訊息 TTL（放太久自動過期）和 dead-letter（過期的訊息轉送到別處）。</p>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    A["post-created<br>主佇列"] -- "nack(requeue:false)<br>dead-letter 到" --> R["post-created.retry<br>x-message-ttl = 5000"]
+    R -- "5 秒後過期<br>dead-letter 回" --> A
+    A -- "第 3 次還失敗<br>Worker 自己發到" --> D["post-created.dead"]
+</div>
+<div class="diagram-caption">失敗的訊息先去 retry 佇列躺 5 秒，過期後自動回到主佇列再試；試滿三次 Worker 把它送進 dead 佇列</div>
+</div>
+<p>需求：</p>
+<ol>
+  <li><code>RabbitMqTopology</code> 改成三個佇列：<code>post-created.dead</code> 沒參數；<code>post-created.retry</code> 有 <code>x-message-ttl = 5000</code> 而且 dead-letter 回 <code>post-created</code>；<code>post-created</code> 的 dead-letter 改指到 <code>post-created.retry</code>。兩個專案都要改</li>
+  <li>Worker 的 catch：讀 <code>x-death</code> 裡 queue 是 <code>post-created</code>、reason 是 <code>rejected</code> 那筆的 <code>count</code>。小於 3 就 <code>BasicNackAsync(requeue: false)</code>（會進 retry）；大於等於 3 就自己 <code>BasicPublishAsync</code> 到 dead 佇列、然後 <code>BasicAckAsync</code> 把原本那封收掉</li>
+  <li><strong>先在 UI 刪掉 <code>post-created</code></strong>，重啟 API 和 Worker，發一篇「這篇會炸」，看 Worker 視窗 20 秒</li>
+</ol>
+<p><strong>💡 提示</strong>：<code>x-death</code> 的型別很醜：<code>ea.BasicProperties.Headers["x-death"]</code> 是 <code>List&lt;object?&gt;</code>，每個元素是 <code>Dictionary&lt;string, object?&gt;</code>，字串值是 <code>byte[]</code>，<code>count</code> 是 <code>long</code>。寫一個小方法把它讀出來。</p>
+<p class="accept">✅ 驗收：Worker 視窗每 5 秒收到一次，共 4 次（第一次加三次重試），最後一條 warn「放進 dead 佇列」；UI 的 <code>post-created.dead</code> Ready = 1</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Messaging/RabbitMqTopology.cs（Worker 一樣改）</p>
+<pre><code class="language-csharp">public static class RabbitMqTopology
+{
+    public const string PostCreatedQueue = "post-created";
+    public const string RetryQueue = "post-created.retry";
+    public const string DeadQueue = "post-created.dead";
+
+    public static async Task DeclareAsync(IChannel channel)
+    {
+        await channel.QueueDeclareAsync(DeadQueue, durable: true, exclusive: false, autoDelete: false, arguments: null);
+
+        // retry 佇列：訊息放 5 秒就過期，過期後轉回主佇列
+        await channel.QueueDeclareAsync(RetryQueue, durable: true, exclusive: false, autoDelete: false,
+            arguments: new Dictionary&lt;string, object?&gt;
+            {
+                ["x-message-ttl"] = 5000,
+                ["x-dead-letter-exchange"] = "",
+                ["x-dead-letter-routing-key"] = PostCreatedQueue
+            });
+
+        // 主佇列：被 nack(requeue:false) 的訊息轉送到 retry 佇列
+        await channel.QueueDeclareAsync(PostCreatedQueue, durable: true, exclusive: false, autoDelete: false,
+            arguments: new Dictionary&lt;string, object?&gt;
+            {
+                ["x-dead-letter-exchange"] = "",
+                ["x-dead-letter-routing-key"] = RetryQueue
+            });
+    }
+}</code></pre>
+<p class="file-label">BlogApi.Worker/PostCreatedConsumer.cs（catch 和新方法）</p>
+<pre><code class="language-csharp">catch (InvalidOperationException ex)
+{
+    logger.LogError(ex, "處理文章 {PostId} 失敗", message.PostId);
+
+    if (DeathCount(ea) &gt;= 3)
+    {
+        // 試過三次了，自己送到 dead 佇列，然後 ack 把原本那封收掉。
+        // 把原本的 properties（含 x-death 履歷）一起帶過去，之後查案才知道它死過幾次
+        await _channel.BasicPublishAsync(exchange: "", routingKey: RabbitMqTopology.DeadQueue,
+            mandatory: false, basicProperties: new BasicProperties(ea.BasicProperties), body: ea.Body);
+        await _channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+        logger.LogWarning("文章 {PostId} 重試 3 次都失敗，放進 dead 佇列", message.PostId);
+    }
+    else
+    {
+        // 進 retry 佇列，5 秒後會回來
+        await _channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false);
+    }
+}
+
+// x-death 是一個陣列，每個元素是一次死亡紀錄；找主佇列、原因是 rejected 的那筆，count 就是被退回幾次
+private static long DeathCount(BasicDeliverEventArgs ea)
+{
+    if (ea.BasicProperties.Headers is null ||
+        !ea.BasicProperties.Headers.TryGetValue("x-death", out var raw) ||
+        raw is not List&lt;object?&gt; deaths)
+    {
+        return 0;
+    }
+
+    foreach (var item in deaths)
+    {
+        if (item is Dictionary&lt;string, object?&gt; death &amp;&amp;
+            death.TryGetValue("queue", out var q) &amp;&amp; q is byte[] qb &amp;&amp;
+            Encoding.UTF8.GetString(qb) == RabbitMqTopology.PostCreatedQueue &amp;&amp;
+            death.TryGetValue("reason", out var r) &amp;&amp; r is byte[] rb &amp;&amp;
+            Encoding.UTF8.GetString(rb) == "rejected" &amp;&amp;
+            death.TryGetValue("count", out var c) &amp;&amp; c is long count)
+        {
+            return count;
+        }
+    }
+
+    return 0;
+}</code></pre>
+<p>要加 <code>using System.Text;</code>。Worker 視窗（只列「收到」那幾行）：</p>
+<pre><code class="language-plaintext">17:18:52 info: 收到：文章 7「這篇會炸」Redelivered=False   ← 死過 0 次
+17:18:57 info: 收到：文章 7「這篇會炸」Redelivered=False   ← 死過 1 次
+17:19:02 info: 收到：文章 7「這篇會炸」Redelivered=False   ← 死過 2 次
+17:19:07 info: 收到：文章 7「這篇會炸」Redelivered=False   ← 死過 3 次
+17:19:07 warn: 文章 7 重試 3 次都失敗，放進 dead 佇列</code></pre>
+<p>剛好每 5 秒一次。注意 <code>Redelivered</code> 一直是 False：每次從 retry 回來都算一封「新」的投遞，所以題 4 說它不能當重試次數用，要看 <code>x-death</code>。dead 佇列裡那封的 headers 現在有兩筆履歷：</p>
+<pre><code class="language-json">"x-death": [
+  {"count": 3, "queue": "post-created.retry", "reason": "expired", …},
+  {"count": 3, "queue": "post-created",       "reason": "rejected", …}
+]</code></pre>
+<p>從主佇列被拒絕 3 次、在 retry 佇列過期 3 次。<code>x-death</code> 是依 (佇列, 原因) 壓縮的，同一組只有一筆、<code>count</code> 累加，所以不會無限長大。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="break">5. 故意弄壞：四個實驗</h2>
+<p>每個先猜結果，再動手，最後打開答案。做完記得改回來。</p>
+
+<h3>實驗 A：RabbitMQ 沒開就發文</h3>
+<p><code>docker stop blog-rabbitmq</code>，重啟 API，POST 一篇。猜：API 起得來嗎？發文會回什麼？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<p>API 照常啟動、POST 照樣 <strong>201</strong>，文章在資料庫裡。只有 Run 視窗多一條 Warning：</p>
+<pre><code class="language-plaintext">warn: BlogApi.Messaging.PostEventPublisher[0]
+      RabbitMQ 連不上，文章 8 的通知沒有送出
+      RabbitMQ.Client.Exceptions.BrokerUnreachableException: None of the specified endpoints were reachable
+       ---> System.AggregateException: One or more errors occurred. (Connection failed, host 127.0.0.1:5672)
+       ---> RabbitMQ.Client.Exceptions.ConnectFailureException: Connection failed, host 127.0.0.1:5672</code></pre>
+<p>這是題 2 刻意的設計：連線在第一次發布時才建、連不上就 catch。代價是<strong>這封訊息丟了</strong>，文章 8 的通知永遠不會寄。要不要接受這個代價，是產品決定，不是技術決定：</p>
+<ul>
+  <li>通知可以漏：現在這樣就好，log 有留痕跡</li>
+  <li>通知不能漏：把「要發的訊息」先寫進資料庫的一張表（跟文章同一個交易），另一個背景工作再把表裡的東西送進 RabbitMQ。這叫 <strong>outbox pattern</strong>，在延伸問題</li>
+</ul>
+<p>做完 <code>docker start blog-rabbitmq</code>。</p>
+</div>
+</details>
+
+<h3>實驗 B：autoAck: false 但忘了 ack</h3>
+<p>把 Worker 的 <code>BasicAckAsync</code> 那行註解掉，啟動 Worker，連發兩篇正常的文章。猜：Worker 收到幾封？UI 的 Ready 和 Unacked 各是多少？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<p>Worker 只收到<strong>第一封</strong>，印完「寄通知完成」就再也沒動靜。UI：Ready = 1、Unacked = 1。</p>
+<p>因為 prefetch 是 1：手上有一封沒 ack 的，broker 就不給下一封。忘了 ack 等於 Worker 把自己卡死，而且沒有任何錯誤。把 Worker 停掉，Ready 變回 2（那封沒 ack 的被收回去了）。</p>
+<p>沒設 prefetch 的話症狀不一樣：Worker 會一直收，Unacked 一直漲，直到 Worker 記憶體爆掉。兩種都是「處理完一定要 ack 或 nack」沒做到。</p>
+</div>
+</details>
+
+<h3>實驗 C：開兩個 Worker</h3>
+<p>開兩個終端機各跑一個 Worker（<code>dotnet run --project BlogApi.Worker</code> 兩次），連發四篇文章。猜：誰收到哪幾封？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<pre><code class="language-plaintext">Worker 1：收到：文章 24    收到：文章 26
+Worker 2：收到：文章 25    收到：文章 27</code></pre>
+<p>輪流分配（round-robin）。同一個佇列可以有很多 consumer，每封訊息只會給其中一個。這就是「放大」的方法：寄信太慢，多開幾個 Worker 就好，API 一行都不用改。</p>
+<p>prefetch 1 在這裡的作用：如果 Worker 1 拿到一封要做 100 秒的，接下來的訊息會全部給 Worker 2，而不是平均分配然後卡在 Worker 1 後面排隊。</p>
+</div>
+</details>
+
+<h3>實驗 D：宣告的參數和既有佇列不一樣</h3>
+<p>重做一次題 6 的第 2 段，但這次<strong>跳過「先刪佇列」那一步</strong>：佇列還是題 2 建的那個（沒有參數），程式碼已經改成有 dead-letter 參數的宣告，直接啟動 API 發文。猜：會怎樣？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<p>發文回 500，Run 視窗：</p>
+<pre><code class="language-plaintext">RabbitMQ.Client.Exceptions.OperationInterruptedException: The AMQP operation was interrupted: AMQP close-reason, initiated by Peer, code=406, text='PRECONDITION_FAILED - inequivalent arg 'x-dead-letter-exchange' for queue 'post-created' in vhost '/': received the value '' of type 'longstr' but current is none', classId=50, methodId=10</code></pre>
+<p>佇列一旦建好，參數就不能改；再宣告一次必須一模一樣，不然 broker 會關掉你的 channel。<code>received the value '' … but current is none</code> 在講：你這次送來 <code>x-dead-letter-exchange = ""</code>，但現有的佇列沒有這個參數。反過來（佇列有參數、程式碼沒有）也一樣會炸，只是訊息裡的 received 和 current 對調。</p>
+<p>這就是題 5、6、7 一直要你「先刪佇列」的原因。正式環境不能隨便刪佇列（裡面有訊息），所以 RabbitMQ 建議佇列參數用 <strong>policy</strong>（在 broker 端設定）而不是寫死在程式裡，policy 可以改、程式碼宣告不行。這頁用程式碼宣告是為了讓你看到參數長什麼樣。</p>
+</div>
+</details>
+
+<!-- ============================================================ -->
+<h2 id="pitfalls">6. 常見坑</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>症狀</th><th>原因</th><th>解法</th></tr>
+  <tr><td>每個請求都慢了幾十毫秒，UI 的 Connections 一直在增加</td><td>連線放在 Controller 裡每次 new</td><td>連線 singleton 一條，channel 每次開（題 2）</td></tr>
+  <tr><td>偶爾出現 <code>AlreadyClosedException</code> 或亂序</td><td>一個 channel 被多個執行緒同時用</td><td>channel 不共用；每次發布開一個</td></tr>
+  <tr><td>broker 重啟後佇列還在、訊息不見</td><td>訊息沒設 <code>Persistent = true</code></td><td>題 5</td></tr>
+  <tr><td>Worker 處理很慢、訊息很大</td><td>把整個 Entity 丟進訊息</td><td>訊息只放 id 和必要欄位，Worker 需要更多再自己查</td></tr>
+  <tr><td>Worker 收了一封之後再也不動</td><td>catch 把例外吞了，沒 ack 也沒 nack</td><td>每條路都要 ack 或 nack（實驗 B）</td></tr>
+  <tr><td>Worker 視窗瘋狂洗版、CPU 100%</td><td><code>requeue: true</code> 沒有上限</td><td>用 retry 佇列加次數上限（題 7）</td></tr>
+  <tr><td>一篇文章的通知寄了兩次</td><td>at-least-once 本來就會</td><td>寄之前查「寄過了沒」（題 4）</td></tr>
+  <tr><td>發文回 500、<code>PRECONDITION_FAILED</code></td><td>佇列參數改了沒刪佇列</td><td>實驗 D；正式環境改用 policy</td></tr>
+  <tr><td>dead-letter 設了，訊息卻憑空消失</td><td>目的地佇列不存在，broker 直接丟掉</td><td>dead / retry 佇列先宣告（題 6）</td></tr>
+  <tr><td>照官方教學寫 <code>x-queue-type: quorum</code>，行為跟這頁不同</td><td>quorum queue 是 RabbitMQ 4 推薦的新型佇列，一定 durable，文件說它有內建的重送次數上限（這頁沒實測）</td><td>這頁用 classic queue 講觀念；正式環境看官方文件選 quorum</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="next">7. 延伸問題</h2>
+<ol>
+  <li><strong>MassTransit 是什麼？</strong>在 RabbitMQ.Client 上面再包一層：你寫 <code>IConsumer&lt;PostCreated&gt;</code> 類別和 <code>Publish(message)</code>，它幫你宣告 exchange 和佇列、序列化、重試、dead-letter（它叫 <code>_error</code> 佇列）。公司用它的話，這頁的每個概念都還在，只是名字換了。</li>
+  <li><strong>一封訊息要給好幾個 Worker（寄信的、推播的、算統計的）？</strong>這頁的佇列是「一封只給一個 consumer」。要廣播就要 <strong>fanout exchange</strong>：producer 送給 exchange，exchange 複製到綁定的每個佇列，每個佇列各自有 consumer。要照條件分流是 <strong>topic exchange</strong>。</li>
+  <li><strong>發文成功但訊息沒送出（實驗 A）怎麼保證不漏？</strong><strong>outbox pattern</strong>：訊息先寫進資料庫的 <code>OutboxMessages</code> 表，和文章同一個 <code>SaveChangesAsync</code>；背景工作每秒掃一次表、送進 RabbitMQ、標記已送。資料庫成功就一定會送到，代價是晚幾秒。</li>
+  <li><strong>Kafka、Azure Service Bus 和 RabbitMQ 差在哪？</strong>Service Bus 是雲端代管的同一類東西，概念幾乎一樣。Kafka 不是佇列是「日誌」：訊息不會因為被消費而消失，consumer 自己記讀到哪，適合大量事件流和重播。</li>
+  <li><strong>兩邊各放一份 <code>PostCreatedMessage</code> 很醜？</strong>開一個 class library 專案 <code>BlogApi.Contracts</code>，兩邊都參考它。訊息格式要改時只改一處，但改了之後兩邊要一起部署，這是另一個課題。</li>
+  <li><strong>Worker 做完想通知瀏覽器「通知已寄出」？</strong>Worker 不是 Web 程式，碰不到瀏覽器。要經過 API（Worker 呼叫 API 的端點，API 再用 SignalR 推）或 SignalR 的 backplane。SignalR 在下一頁。</li>
+</ol>
+
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://www.rabbitmq.com/tutorials/tutorial-one-dotnet" target="_blank">RabbitMQ tutorial 1：Hello World（.NET）</a>、<a href="https://www.rabbitmq.com/tutorials/tutorial-two-dotnet" target="_blank">tutorial 2：Work Queues</a>（ack、prefetch、durable；注意它用 quorum queue）、<a href="https://www.rabbitmq.com/tutorials/tutorial-three-dotnet" target="_blank">tutorial 3：Publish/Subscribe</a>（fanout exchange）</li>
+  <li><a href="https://www.rabbitmq.com/client-libraries/dotnet-api-guide" target="_blank">.NET client API guide</a>（7.x 的 async API）</li>
+  <li><a href="https://www.rabbitmq.com/docs/confirms" target="_blank">Consumer Acknowledgements and Publisher Confirms</a></li>
+  <li><a href="https://www.rabbitmq.com/docs/dlx" target="_blank">Dead Letter Exchanges</a>（<code>x-death</code> 的欄位說明）、<a href="https://www.rabbitmq.com/docs/ttl" target="_blank">Time-To-Live and Expiration</a></li>
+  <li><a href="https://www.rabbitmq.com/docs/quorum-queues" target="_blank">Quorum Queues</a>、<a href="https://www.rabbitmq.com/docs/policies" target="_blank">Policies</a></li>
+  <li><a href="https://masstransit.io/documentation/concepts" target="_blank">MassTransit 概念</a></li>
+</ul>
+</div>
+
+<nav class="footer-nav">
+  <a href="nlog-logging.html">← 補充：NLog</a>
+  <a href="../index.html">回目錄</a>
+  <a href="signalr-realtime.html">補充：SignalR →</a>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

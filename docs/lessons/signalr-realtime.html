@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>補充：SignalR 即時推播</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>補充：用 SignalR 即時推播（WebSocket、Hub、IHubContext、群組）</h1>
+<p class="subtitle">HTTP 是一問一答，server 不能主動開口。有人發了新文章，所有打開列表的人要立刻看到，怎麼做？這頁從「為什麼輪詢不夠」講到「只推給正在看那篇的人」。</p>
+<div class="tags">
+  <span class="tag">SignalR</span><span class="tag">WebSocket</span><span class="tag">Hub</span><span class="tag">IHubContext</span>
+  <span class="tag">Groups</span><span class="tag">negotiate</span><span class="tag">withAutomaticReconnect</span><span class="tag">CORS</span>
+  <span class="tag">JavaScript client</span><span class="tag">.NET client</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>什麼時候會用到這頁</strong></p>
+<ul>
+  <li>畫面要自己更新：新文章、新留言、通知、進度條、即時聊天</li>
+  <li>聽過 WebSocket、long polling，不知道 SignalR 跟它們的關係</li>
+  <li>想知道「從 Controller 推東西給瀏覽器」要寫什麼</li>
+</ul>
+<p>練習用你現在 01 的 <code>PostsController</code>，不需要先做 02a，也不依賴 RabbitMQ 那頁。會多一個 Console 專案當 C# 客戶端。server 端、C# 客戶端、negotiate、重連、CORS 的輸出都是在專案複本上實際跑出來的；<strong>瀏覽器頁面的 JavaScript 是照官方文件寫的，這頁產出時沒有在瀏覽器裡實看</strong>，你開起來如果和筆記說的不一樣，以你看到的為準、告訴我。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#why">為什麼輪詢不夠</a></li>
+    <li><a href="#concept">原理：Hub、連線、群組、negotiate</a></li>
+    <li><a href="#usage">用法：server、JavaScript、C# 三邊的寫法</a></li>
+    <li><a href="#exercise">練習：題 1～5</a></li>
+    <li><a href="#break">故意弄壞：四個實驗</a></li>
+    <li><a href="#pitfalls">常見坑</a></li>
+    <li><a href="#next">延伸問題</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="why">1. 為什麼輪詢不夠</h2>
+<div class="callout">
+<p>📋 <strong>情境</strong>：100 個人開著文章列表。主管發了一篇新文章，大家要馬上看到。</p>
+</div>
+<p>最直覺的做法是前端每 3 秒打一次 <code>GET /api/posts</code>，叫<strong>輪詢（polling）</strong>。100 個人就是每秒 33 個請求，99% 的回答是「沒有新文章」。真正要解的問題是：<strong>server 想講話的時候，沒有管道</strong>。HTTP 永遠是 client 先開口。</p>
+<div class="diagram">
+<div class="mermaid">
+sequenceDiagram
+    participant B as 瀏覽器
+    participant S as Server
+    Note over B,S: 輪詢：client 一直問
+    B->>S: 有新文章嗎？
+    S-->>B: 沒有
+    B->>S: 有新文章嗎？
+    S-->>B: 沒有
+    B->>S: 有新文章嗎？
+    S-->>B: 有，文章 5
+    Note over B,S: WebSocket：握手一次，之後雙向
+    B->>S: 升級成 WebSocket
+    S-->>B: 101 Switching Protocols
+    S->>B: 文章 5 建立了
+    S->>B: 文章 5 更新了
+    B->>S: 我只想看文章 6
+</div>
+<div class="diagram-caption">輪詢是 client 問、server 答；WebSocket 握手之後線一直接著，誰想講都可以講</div>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th>方法</th><th>怎麼做</th><th>代價</th></tr>
+  <tr><td>輪詢</td><td>固定間隔一直問</td><td>浪費請求、延遲等於間隔</td></tr>
+  <tr><td>Long polling</td><td>問了之後 server 先不答，有事才答，答完 client 馬上再問</td><td>每次都是一個完整的 HTTP 請求，連線數多</td></tr>
+  <tr><td>Server-Sent Events（SSE）</td><td>一個不關的 HTTP 回應，server 一直往裡面寫</td><td>只能 server 到 client 單向</td></tr>
+  <tr><td>WebSocket</td><td>HTTP 握手後升級成雙向的長連線</td><td>要自己定義訊息格式、處理斷線、重連</td></tr>
+</table>
+</div>
+<p><strong>SignalR</strong> 是 ASP.NET Core 內建的一層，把這些包起來：自動挑最好的傳輸（有 WebSocket 用 WebSocket，不行就退到 SSE 或 long polling）、幫你處理斷線重連、讓「server 呼叫 client 的方法」和「client 呼叫 server 的方法」寫起來像呼叫一般的函式、還有群組。你不用碰 WebSocket 的 API。</p>
+
+<!-- ============================================================ -->
+<h2 id="concept">2. 原理：Hub、連線、群組、negotiate</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>名詞</th><th>是什麼</th><th>在 BlogApi 裡</th></tr>
+  <tr><td><strong>Hub</strong></td><td>server 端的一個類別。client 可以呼叫它的 public 方法；它可以透過 <code>Clients</code> 呼叫 client 的方法</td><td><code>PostsHub</code>，掛在 <code>/hubs/posts</code></td></tr>
+  <tr><td><strong>連線（connection）</strong></td><td>每個開著頁面的瀏覽器分頁是一條連線，有自己的 <code>ConnectionId</code>；分頁關掉連線就沒了</td><td>開兩個分頁就是兩條</td></tr>
+  <tr><td><code>Clients.All</code> / <code>Group(…)</code> / <code>Caller</code></td><td>要推給誰：所有連線、某個群組、呼叫我的那個人</td><td>新文章推 All；文章更新只推 <code>post-5</code> 群組</td></tr>
+  <tr><td><strong>群組（Group）</strong></td><td>連線的集合，名字自己取。加入、離開都是 server 做的（client 呼叫 Hub 方法請 server 幫它加）</td><td><code>WatchPost(5)</code> 把呼叫者加進 <code>post-5</code></td></tr>
+  <tr><td><code>IHubContext&lt;THub, TClient&gt;</code></td><td>在 Hub 類別<strong>外面</strong>（例如 Controller）推訊息用的。Controller 不是 Hub，拿不到 <code>Clients</code>，要靠它</td><td>注入到 <code>PostsController</code></td></tr>
+  <tr><td><strong>強型別 Hub</strong> <code>Hub&lt;IPostsClient&gt;</code></td><td>用介面列出 client 有哪些方法，呼叫時編譯器檢查名稱和參數；不用強型別就是 <code>SendAsync("方法名字串", …)</code>，打錯字沒人知道（實驗 D）</td><td><code>IPostsClient</code> 有 <code>PostCreated</code>、<code>PostUpdated</code></td></tr>
+</table>
+</div>
+
+<h3 id="negotiate">連線是怎麼建起來的：negotiate</h3>
+<p>client 的 <code>start()</code> 做兩件事：先 <code>POST /hubs/posts/negotiate</code> 問 server「你支援哪些傳輸、給我一個連線 id」，再用其中一種傳輸真正連上（通常是 WebSocket，Network 分頁會看到一個狀態 101 的請求）。negotiate 的回應長這樣：</p>
+<pre><code class="language-json">{"negotiateVersion":1,"connectionId":"MGbguDIP_JfD-kRPT7ITaA","connectionToken":"ACO0ViIc-9n_27i9oD7vhw",
+ "availableTransports":[{"transport":"WebSockets","transferFormats":["Text","Binary"]},
+                        {"transport":"ServerSentEvents","transferFormats":["Text"]},
+                        {"transport":"LongPolling","transferFormats":["Text","Binary"]}]}</code></pre>
+<p>這個端點是 <code>MapHub</code> 幫你掛的。它回 404 就代表 Hub 沒掛上（實驗 A）；它被 CORS 擋就代表頁面和 API 不同來源（實驗 B）。</p>
+
+<h3 id="json">送過去的 JSON 會變 camelCase</h3>
+<p>server 端的 <code>PostCreatedNotification(int PostId, string Title, …)</code>，到了 JavaScript 是 <code>n.postId</code>、<code>n.title</code>，跟 Web API 回 JSON 的規則一樣。C# 客戶端用自己的 record 接，名稱對得上就好。</p>
+
+<!-- ============================================================ -->
+<h2 id="usage">3. 用法：server、JavaScript、C# 三邊的寫法</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>哪一邊</th><th>要做什麼</th><th>寫法</th></tr>
+  <tr><td rowspan="4">Server</td><td>註冊</td><td><code>builder.Services.AddSignalR();</code></td></tr>
+  <tr><td>掛 Hub</td><td><code>app.MapHub&lt;PostsHub&gt;("/hubs/posts");</code></td></tr>
+  <tr><td>靜態頁面</td><td><code>app.UseStaticFiles();</code> 讓 <code>wwwroot/posts.html</code> 可以用 <code>/posts.html</code> 開</td></tr>
+  <tr><td>從 Controller 推</td><td>注入 <code>IHubContext&lt;PostsHub, IPostsClient&gt;</code>，<code>await _hub.Clients.All.PostCreated(…)</code></td></tr>
+  <tr><td rowspan="4">JavaScript</td><td>載入</td><td><code>&lt;script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@10.0.11/dist/browser/signalr.min.js"&gt;&lt;/script&gt;</code></td></tr>
+  <tr><td>建連線</td><td><code>new signalR.HubConnectionBuilder().withUrl("/hubs/posts").withAutomaticReconnect().build()</code></td></tr>
+  <tr><td>收 / 叫</td><td><code>connection.on("PostCreated", n =&gt; …)</code>；<code>await connection.invoke("WatchPost", 5)</code></td></tr>
+  <tr><td>狀態</td><td><code>onreconnecting</code>、<code>onreconnected</code>、<code>onclose</code>；<code>await connection.start()</code></td></tr>
+  <tr><td rowspan="3">C#</td><td>套件</td><td><code>Microsoft.AspNetCore.SignalR.Client</code></td></tr>
+  <tr><td>建連線</td><td><code>new HubConnectionBuilder().WithUrl("http://localhost:5107/hubs/posts").WithAutomaticReconnect().Build()</code></td></tr>
+  <tr><td>收 / 叫</td><td><code>connection.On&lt;PostCreatedNotification&gt;("PostCreated", n =&gt; …)</code>；<code>await connection.InvokeAsync&lt;string&gt;("WatchPost", 5)</code></td></tr>
+</table>
+</div>
+<p>兩個名字的對應要記：server 的 <code>IPostsClient.PostCreated</code> 對 client 的 <code>on("PostCreated")</code>；client 的 <code>invoke("WatchPost")</code> 對 server 的 <code>PostsHub.WatchPost</code>。</p>
+
+<!-- ============================================================ -->
+<h2 id="exercise">4. 練習：題 1～5</h2>
+
+<!-- 題 1 -->
+<div class="exercise">
+<h3>題 1：Hub</h3>
+<p>需求：</p>
+<ol>
+  <li><code>Hubs/Notifications.cs</code>：兩個 record，<code>PostCreatedNotification(PostId, Title, CreatedAt)</code>、<code>PostUpdatedNotification(PostId, Title, UpdatedAt)</code></li>
+  <li><code>Hubs/IPostsClient.cs</code>：介面，兩個方法 <code>Task PostCreated(…)</code>、<code>Task PostUpdated(…)</code></li>
+  <li><code>Hubs/PostsHub.cs</code>：繼承 <code>Hub&lt;IPostsClient&gt;</code>，先放一個方法 <code>Task&lt;string&gt; WatchPost(int postId)</code>，把呼叫者加進群組 <code>post-{postId}</code>，回傳一句話；再覆寫 <code>OnConnectedAsync</code> 印 log</li>
+  <li><code>Program.cs</code>：<code>AddSignalR()</code>、<code>MapHub&lt;PostsHub&gt;("/hubs/posts")</code></li>
+</ol>
+<p><strong>💡 提示</strong>：SignalR 在 ASP.NET Core 裡面，不用裝套件。<code>Hub</code>、<code>Groups</code>、<code>Context.ConnectionId</code> 都在 <code>Microsoft.AspNetCore.SignalR</code>。</p>
+<p class="accept">✅ 驗收：<code>.http</code> 送 <code>POST /hubs/posts/negotiate?negotiateVersion=1</code> 回 200，內容有 <code>connectionId</code> 和三種 <code>availableTransports</code></p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Hubs/Notifications.cs</p>
+<pre><code class="language-csharp">namespace BlogApi.Hubs;
+
+// 推給瀏覽器的內容。只放畫面要用的欄位
+public record PostCreatedNotification(int PostId, string Title, DateTime CreatedAt);
+
+public record PostUpdatedNotification(int PostId, string Title, DateTime UpdatedAt);</code></pre>
+<p class="file-label">BlogApi/Hubs/IPostsClient.cs</p>
+<pre><code class="language-csharp">namespace BlogApi.Hubs;
+
+// server 可以呼叫 client 的哪些方法。方法名稱就是 client 端 on("PostCreated") 要對上的字串
+public interface IPostsClient
+{
+    Task PostCreated(PostCreatedNotification notification);
+
+    Task PostUpdated(PostUpdatedNotification notification);
+}</code></pre>
+<p class="file-label">BlogApi/Hubs/PostsHub.cs</p>
+<pre><code class="language-csharp">using Microsoft.AspNetCore.SignalR;
+
+namespace BlogApi.Hubs;
+
+// client 可以呼叫這裡的 public 方法；server 透過 Clients 呼叫 client 的方法
+public class PostsHub(ILogger&lt;PostsHub&gt; logger) : Hub&lt;IPostsClient&gt;
+{
+    // client 呼叫 WatchPost(5)：加入群組 post-5，之後文章 5 的更新只推給這個群組
+    public async Task&lt;string&gt; WatchPost(int postId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(postId));
+        logger.LogInformation("{ConnectionId} 開始看文章 {PostId}", Context.ConnectionId, postId);
+        return $"你正在看文章 {postId}";
+    }
+
+    public static string GroupName(int postId) =&gt; $"post-{postId}";
+
+    public override Task OnConnectedAsync()
+    {
+        logger.LogInformation("連線：{ConnectionId}", Context.ConnectionId);
+        return base.OnConnectedAsync();
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        logger.LogInformation("斷線：{ConnectionId}", Context.ConnectionId);
+        return base.OnDisconnectedAsync(exception);
+    }
+}</code></pre>
+<p class="file-label">BlogApi/Program.cs（只列出改動）</p>
+<pre><code class="language-csharp">using BlogApi.Hubs;
+// …
+builder.Services.AddSignalR();
+// …
+app.MapControllers();
+app.MapHub&lt;PostsHub&gt;("/hubs/posts");</code></pre>
+<p class="file-label">BlogApi/BlogApi.http（新增）</p>
+<pre><code class="language-plaintext">### SignalR negotiate → 200
+POST {{BlogApi_HostAddress}}/hubs/posts/negotiate?negotiateVersion=1</code></pre>
+<p>回應就是第 2 節那段 JSON。Hub 的方法名稱不分大小寫，但 <code>Async</code> 結尾不會被拿掉：方法叫 <code>WatchPostAsync</code> 的話 client 也要 <code>invoke("WatchPostAsync")</code>，所以 Hub 方法習慣不加 <code>Async</code>。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 2 -->
+<div class="exercise">
+<h3>題 2：瀏覽器頁面</h3>
+<p>需求：</p>
+<ol>
+  <li>專案根目錄建 <code>wwwroot</code> 資料夾，放 <code>posts.html</code>：用 CDN 載入 SignalR 的 JS，連到 <code>/hubs/posts</code>，畫面上顯示連線狀態，收到 <code>PostCreated</code>、<code>PostUpdated</code> 就加一行到清單；一個輸入框和按鈕呼叫 <code>WatchPost</code></li>
+  <li><code>Program.cs</code> 加 <code>app.UseStaticFiles();</code></li>
+  <li>啟動 API，開 http://localhost:5107/posts.html</li>
+</ol>
+<p><strong>💡 提示</strong>：頁面和 API 同一個站，<code>withUrl("/hubs/posts")</code> 用相對路徑就好。收到的物件屬性是 camelCase：<code>n.postId</code>。</p>
+<p class="accept">✅ 驗收：頁面顯示「已連線：」加一串 id；F12 的 Network 分頁有 <code>negotiate</code>（200）和一個 <code>posts</code> 的 WebSocket 請求（101）；API 的 Run 視窗印「連線：…」</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/wwwroot/posts.html</p>
+<pre><code class="language-html">&lt;!doctype html&gt;
+&lt;html lang="zh-Hant-TW"&gt;
+&lt;head&gt;
+&lt;meta charset="utf-8"&gt;
+&lt;title&gt;文章即時通知&lt;/title&gt;
+&lt;style&gt;
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; }
+  #status { padding: .5rem; border-radius: 6px; background: #eee; }
+  #status.on { background: #d4f5d4; }
+  #status.off { background: #f8d4d4; }
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;h1&gt;文章即時通知&lt;/h1&gt;
+&lt;div id="status"&gt;連線中…&lt;/div&gt;
+&lt;p&gt;
+  &lt;input id="postId" type="number" value="5" style="width:5rem"&gt;
+  &lt;button id="watch"&gt;只看這篇的更新&lt;/button&gt;
+  &lt;span id="watching"&gt;&lt;/span&gt;
+&lt;/p&gt;
+&lt;ul id="events"&gt;&lt;/ul&gt;
+
+&lt;script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@10.0.11/dist/browser/signalr.min.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  const statusEl = document.getElementById("status");
+  const events = document.getElementById("events");
+
+  function setStatus(text, cls) { statusEl.textContent = text; statusEl.className = cls; }
+  function log(text) {
+    const li = document.createElement("li");
+    li.textContent = new Date().toLocaleTimeString() + "　" + text;
+    events.prepend(li);
+  }
+
+  // hub 的網址。頁面和 API 同一個站時用相對路徑就好
+  const connection = new signalR.HubConnectionBuilder()
+    .withUrl("/hubs/posts")
+    .withAutomaticReconnect()
+    .build();
+
+  // server 呼叫 client 的方法：名稱對應 IPostsClient 的方法；JSON 到了 JS 會變 camelCase
+  connection.on("PostCreated", n =&gt; log(`新文章 #${n.postId}：${n.title}`));
+  connection.on("PostUpdated", n =&gt; log(`文章 #${n.postId} 更新了：${n.title}`));
+
+  connection.onreconnecting(err =&gt; setStatus("斷線，重連中… " + (err?.message ?? ""), "off"));
+  connection.onreconnected(async id =&gt; {
+    setStatus("重連成功：" + id, "on");
+    // 群組不會跟著重連回來，要自己再加入一次
+    if (watchingId !== null) await watch(watchingId);
+  });
+  connection.onclose(err =&gt; setStatus("連線已關閉 " + (err?.message ?? ""), "off"));
+
+  let watchingId = null;
+  async function watch(id) {
+    // client 呼叫 server 的 Hub 方法，拿回傳值
+    const reply = await connection.invoke("WatchPost", id);
+    watchingId = id;
+    document.getElementById("watching").textContent = reply;
+  }
+  document.getElementById("watch").addEventListener("click", () =&gt;
+    watch(Number(document.getElementById("postId").value)));
+
+  connection.start()
+    .then(() =&gt; setStatus("已連線：" + connection.connectionId, "on"))
+    .catch(err =&gt; { setStatus("連不上：" + err.message, "off"); console.error(err); });
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+<p class="file-label">BlogApi/Program.cs（只列出改動）</p>
+<pre><code class="language-csharp">app.UseHttpsRedirection();
+
+// 讓 wwwroot 底下的檔案可以直接用網址開
+app.UseStaticFiles();</code></pre>
+<p><code>wwwroot</code> 是 Web SDK 認得的名字，裡面的檔案不用設 Copy to Output，啟動時直接從專案資料夾讀。</p>
+<p>這個頁面已經把題 4 的群組和重連都寫進去了，後面的題目不用再改它。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 3 -->
+<div class="exercise">
+<h3>題 3：從 Controller 推給所有人</h3>
+<p>需求：<code>PostsController</code> 注入 <code>IHubContext&lt;PostsHub, IPostsClient&gt;</code>，<code>Create</code> 在 <code>SaveChangesAsync</code> 之後呼叫 <code>Clients.All.PostCreated(…)</code>。開兩個分頁，用 <code>.http</code> POST 一篇。</p>
+<p class="accept">✅ 驗收：兩個分頁同時出現「新文章 #5：…」</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Controllers/PostsController.cs（只列出改動）</p>
+<pre><code class="language-csharp">using BlogApi.Hubs;
+using Microsoft.AspNetCore.SignalR;
+// …
+private readonly BlogDbContext _db;
+private readonly IHubContext&lt;PostsHub, IPostsClient&gt; _hub;
+
+public PostsController(BlogDbContext db, IHubContext&lt;PostsHub, IPostsClient&gt; hub)
+{
+    _db = db;
+    _hub = hub;
+}
+
+// Create 裡，SaveChangesAsync 之後
+await _hub.Clients.All.PostCreated(new PostCreatedNotification(post.Id, post.Title, post.CreatedAt));
+
+return CreatedAtAction(nameof(GetById), new { id = post.Id }, post);</code></pre>
+<p>C# 客戶端（題 5）看到的是：</p>
+<pre><code class="language-plaintext">17:42:10 [A] PostCreated：#5 Docker 入門
+17:42:10 [B] PostCreated：#5 Docker 入門</code></pre>
+<p>為什麼不是在 Hub 裡推？因為發文的請求進的是 Controller，不是 Hub。Hub 是給「透過 SignalR 連線進來的呼叫」用的；從 HTTP 請求、背景工作這些地方推，一律用 <code>IHubContext</code>。它是 singleton，注入到 Controller 就能用。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 4 -->
+<div class="exercise">
+<h3>題 4：群組：只推給正在看那篇的人</h3>
+<p>需求：<code>Update</code> 成功後，只推 <code>PostUpdated</code> 給群組 <code>post-{id}</code>。開兩個分頁：A 按「只看這篇」輸入 5，B 輸入 6。用 <code>.http</code> PUT 文章 5，再 PUT 文章 6。</p>
+<p class="accept">✅ 驗收：PUT 5 只有 A 出現「文章 #5 更新了」，PUT 6 只有 B</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Controllers/PostsController.cs（Update 裡，SaveChangesAsync 之後）</p>
+<pre><code class="language-csharp">// 只推給正在看這篇的人
+await _hub.Clients.Group(PostsHub.GroupName(id))
+    .PostUpdated(new PostUpdatedNotification(post.Id, post.Title, post.UpdatedAt.Value));
+
+return NoContent();</code></pre>
+<p>C# 客戶端 A 看文章 5、B 看文章 6 的輸出：</p>
+<pre><code class="language-plaintext">17:42:04 [A] 你正在看文章 5
+17:42:13 [A] PostUpdated：#5 Docker 入門（修訂）
+
+17:42:07 [B] 你正在看文章 6
+17:42:15 [B] PostUpdated：#6 Docker 入門（修訂）</code></pre>
+<p>API 的 Run 視窗：</p>
+<pre><code class="language-plaintext">info: BlogApi.Hubs.PostsHub[0]
+      連線：lZWkeT17YsKZqTL72YSGPw
+info: BlogApi.Hubs.PostsHub[0]
+      lZWkeT17YsKZqTL72YSGPw 開始看文章 5</code></pre>
+<p>群組是「連線」的集合，不是「使用者」的。分頁重新整理就是一條新連線，之前加的群組不算數。這也是 <code>posts.html</code> 在 <code>onreconnected</code> 裡再呼叫一次 <code>watch</code> 的原因：重連後 server 給的是新的 <code>connectionId</code>，群組要重加。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 5 -->
+<div class="exercise">
+<h3>題 5：C# Console 客戶端</h3>
+<p>需求：solution 根目錄建 Console 專案 <code>BlogApi.SignalRClient</code>，裝 <code>Microsoft.AspNetCore.SignalR.Client</code>（10.0.14）。連到 <code>http://localhost:5107/hubs/posts</code>，接 <code>PostCreated</code> 和 <code>PostUpdated</code>，呼叫 <code>WatchPost(5)</code> 印回傳值，然後一直等。瀏覽器和 Console 同時開著，POST 一篇、PUT 文章 5。</p>
+<p><strong>💡 提示</strong>：<code>On&lt;T&gt;("方法名", handler)</code> 的 <code>T</code> 用自己的 record，欄位名稱對得上就好。Console 專案不會自動結束，最後 <code>await Task.Delay(Timeout.Infinite)</code> 或 <code>Console.ReadLine()</code>。</p>
+<p class="accept">✅ 驗收：Console 印「已連線」「你正在看文章 5」，POST 和 PUT 之後各印一行；瀏覽器同時也有</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-bash">cd $HOME\RiderProjects\BlogApi
+dotnet new console -n BlogApi.SignalRClient -o BlogApi.SignalRClient
+dotnet sln add BlogApi.SignalRClient
+cd BlogApi.SignalRClient
+dotnet add package Microsoft.AspNetCore.SignalR.Client --version 10.0.14</code></pre>
+<p class="file-label">BlogApi.SignalRClient/Program.cs</p>
+<pre><code class="language-csharp">using Microsoft.AspNetCore.SignalR.Client;
+
+void Log(string text) =&gt; Console.WriteLine($"{DateTime.Now:HH:mm:ss} {text}");
+
+var connection = new HubConnectionBuilder()
+    .WithUrl("http://localhost:5107/hubs/posts")
+    .WithAutomaticReconnect()
+    .Build();
+
+// server 呼叫 client 的方法：名稱和 IPostsClient 的方法一樣，參數用自己的 record 接
+connection.On&lt;PostCreatedNotification&gt;("PostCreated", n =&gt; Log($"PostCreated：#{n.PostId} {n.Title}"));
+connection.On&lt;PostUpdatedNotification&gt;("PostUpdated", n =&gt; Log($"PostUpdated：#{n.PostId} {n.Title}"));
+
+connection.Reconnecting += error =&gt; { Log($"斷線，重連中… {error?.Message}"); return Task.CompletedTask; };
+connection.Reconnected += id =&gt; { Log($"重連成功：{id}"); return Task.CompletedTask; };
+connection.Closed += error =&gt; { Log($"連線已關閉 {error?.Message}"); return Task.CompletedTask; };
+
+try
+{
+    await connection.StartAsync();
+    Log($"已連線：{connection.ConnectionId}");
+
+    // client 呼叫 server 的 Hub 方法，拿回傳值
+    var reply = await connection.InvokeAsync&lt;string&gt;("WatchPost", 5);
+    Log(reply);
+}
+catch (Exception ex)
+{
+    Log($"連不上：{ex.GetType().Name}: {ex.Message}");
+}
+
+await Task.Delay(Timeout.Infinite);
+
+// 和 API 那邊一樣的欄位
+record PostCreatedNotification(int PostId, string Title, DateTime CreatedAt);
+
+record PostUpdatedNotification(int PostId, string Title, DateTime UpdatedAt);</code></pre>
+<pre><code class="language-plaintext">17:42:04 已連線：lZWkeT17YsKZqTL72YSGPw
+17:42:04 你正在看文章 5
+17:42:10 PostCreated：#5 Docker 入門
+17:42:13 PostUpdated：#5 Docker 入門（修訂）</code></pre>
+<p>C# 客戶端拿來做什麼？桌面程式、另一個後端服務、或是像這頁一樣當測試工具。瀏覽器和 Console 對 server 來說沒有差別，都是一條連線。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="break">5. 故意弄壞：四個實驗</h2>
+<p>每個先猜結果，再動手，最後打開答案。做完記得改回來。</p>
+
+<h3>實驗 A：忘了 MapHub</h3>
+<p>把 <code>app.MapHub&lt;PostsHub&gt;("/hubs/posts");</code> 註解掉，重啟，開 <code>posts.html</code>，再跑一次 C# 客戶端。猜：各自看到什麼？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<p>negotiate 回 <strong>404</strong>。C# 客戶端：</p>
+<pre><code class="language-plaintext">17:43:56 連不上：HttpRequestException: Response status code does not indicate success: 404 (Not Found).</code></pre>
+<p>瀏覽器頁面會停在「連不上：」，F12 的 Network 看得到 <code>negotiate</code> 那個請求是 404。<code>withAutomaticReconnect</code> <strong>不會</strong>重試第一次連線失敗，所以 <code>start()</code> 的 catch 一定要寫。</p>
+<p><code>AddSignalR()</code> 只是註冊服務，<code>MapHub</code> 才是把 <code>/hubs/posts</code> 這個路徑接上 Hub，少一個都不行。這和 01 課 <code>AddControllers()</code> 配 <code>MapControllers()</code> 是同一種對稱。</p>
+</div>
+</details>
+
+<h3>實驗 B：頁面和 API 不同來源：CORS</h3>
+<p>在 Rider 對 <code>posts.html</code> 按右鍵 Open in Browser。Rider 會用它內建的預覽伺服器開這個檔案，網址通常是 <code>http://localhost:63342/…</code>（port 以你看到的為準，下面的設定要跟著改），<strong>port 和 API 不一樣</strong>，瀏覽器視為不同來源。頁面的 <code>withUrl("/hubs/posts")</code> 要先改成完整網址 <code>http://localhost:5107/hubs/posts</code>。猜：連得上嗎？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<p>連不上，F12 的 Console 會有 CORS 的錯誤，negotiate 被瀏覽器擋住。用 curl 冒充瀏覽器送 preflight 看 API 回了什麼：</p>
+<pre><code class="language-plaintext">OPTIONS /hubs/posts/negotiate   Origin: http://localhost:63342
+→ HTTP/1.1 405 Method Not Allowed（而且沒有任何 Access-Control-* 標頭）</code></pre>
+<p>瀏覽器的規矩：頁面的來源（<code>http://localhost:63342</code>）和 API 的來源（<code>http://localhost:5107</code>）不同時，瀏覽器先用 OPTIONS 問 API「這個來源可以嗎」，API 沒有用 <code>Access-Control-Allow-Origin</code> 回答，瀏覽器就不讓頁面送出真正的請求。API 本身沒有壞，curl 直接 POST negotiate 還是 200，只是瀏覽器不放行。</p>
+<p>解法是 API 明確允許那個來源：</p>
+<p class="file-label">BlogApi/Program.cs（只列出改動）</p>
+<pre><code class="language-csharp">builder.Services.AddCors(options =&gt; options.AddDefaultPolicy(policy =&gt;
+    policy.WithOrigins("http://localhost:63342")   // 只放行這個來源，不要 AllowAnyOrigin
+          .AllowAnyHeader()
+          .WithMethods("GET", "POST", "DELETE")      // long polling 要 DELETE 來關連線
+          .AllowCredentials()));                      // SignalR 要求，沒登入也要
+// …
+app.UseStaticFiles();
+app.UseCors();            // 一定要在 MapHub 前面
+// …
+app.MapHub&lt;PostsHub&gt;("/hubs/posts");</code></pre>
+<p>加上之後同一個 preflight：</p>
+<pre><code class="language-plaintext">→ HTTP/1.1 204 No Content
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Headers: x-signalr-user-agent,x-requested-with
+Access-Control-Allow-Origin: http://localhost:63342</code></pre>
+<p>換一個來源（<code>Origin: http://evil.example</code>）送，回應裡就沒有這些標頭，瀏覽器照樣擋。<code>AllowCredentials()</code> 和 <code>AllowAnyOrigin()</code> 不能一起用，框架會直接拒絕，所以 SignalR 的 CORS 一定要列出確切的來源。</p>
+<p>正式前端（Vue、React 開發伺服器跑在 5173 之類的 port）跟 API 幾乎一定不同來源，這個設定遲早要寫；這頁的題 2 把頁面放在 <code>wwwroot</code> 就是為了先避開它。做完把 <code>withUrl</code> 改回相對路徑。</p>
+</div>
+</details>
+
+<h3>實驗 C：API 停掉，client 會怎樣</h3>
+<p>頁面和 C# 客戶端都連著，停掉 API。猜：畫面變什麼？6 秒後再啟動 API，又變什麼？如果一直不啟動呢？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<p>C# 客戶端，API 停掉 6 秒後重啟：</p>
+<pre><code class="language-plaintext">17:42:36 已連線：PvHunTCq_pVPfQnp6PlGRg
+17:42:39 斷線，重連中… The remote party closed the WebSocket connection without completing the close handshake.
+17:42:47 重連成功：BC2O8efrXjuw7voDWkoNgw</code></pre>
+<p>一直不啟動：</p>
+<pre><code class="language-plaintext">18:49:01 斷線，重連中… The remote party closed the WebSocket connection without completing the close handshake.
+18:49:59 連線已關閉 Reconnect retries have been exhausted after 4 failed attempts and 00:00:58.0424114 elapsed. Disconnecting.</code></pre>
+<p>三件事：</p>
+<ul>
+  <li><code>WithAutomaticReconnect()</code> 不帶參數時，等 0、2、10、30 秒各試一次，<strong>四次都失敗就放棄</strong>，觸發 <code>Closed</code>（JS 是 <code>onclose</code>）。之後不會再試，要重新 <code>start()</code> 或請使用者重新整理</li>
+  <li>重連成功後的 <code>connectionId</code> 是新的，server 把它當一條全新的連線，所以群組要重加（題 4）</li>
+  <li>瀏覽器頁面對應的是 <code>onreconnecting</code>（狀態列變紅）、<code>onreconnected</code>（變綠並重加群組）、<code>onclose</code></li>
+</ul>
+<p>想改間隔：<code>WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10) })</code>，JS 是 <code>withAutomaticReconnect([0, 2000, 10000])</code>。</p>
+</div>
+</details>
+
+<h3>實驗 D：用字串版推播，名字打錯</h3>
+<p>把 Controller 注入的型別暫時改成非強型別的 <code>IHubContext&lt;PostsHub&gt;</code>，用 <code>SendAsync("PostCreatd", …)</code>（少一個 e）推。POST 一篇。猜：會報錯嗎？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<p>POST 回 201、Run 視窗沒有任何錯誤或警告、client <strong>什麼都沒收到</strong>。server 真的送出了一個叫 <code>PostCreatd</code> 的呼叫，client 沒有人註冊這個名字，就丟掉了。兩邊都認為自己沒錯。</p>
+<p>強型別版本 <code>IHubContext&lt;PostsHub, IPostsClient&gt;</code> 根本沒有 <code>SendAsync</code>，只能呼叫 <code>IPostsClient</code> 裡有的方法，名字打錯是編譯錯誤。這就是題 1 用 <code>Hub&lt;IPostsClient&gt;</code> 的原因。client 那邊的 <code>on("PostCreated")</code> 還是字串，改介面的方法名時記得兩邊一起改。</p>
+</div>
+</details>
+
+<!-- ============================================================ -->
+<h2 id="pitfalls">6. 常見坑</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>症狀</th><th>原因</th><th>解法</th></tr>
+  <tr><td>重連之後收不到群組的訊息</td><td>重連是新連線，群組沒了</td><td><code>onreconnected</code> 裡再呼叫一次 <code>WatchPost</code>（題 2 的頁面已經有）</td></tr>
+  <tr><td>在 Hub 類別裡放欄位記東西，下一次呼叫就不見</td><td>Hub 每次呼叫都 new 一個，用完丟掉</td><td>狀態放 singleton 服務或資料庫；Hub 只做轉發</td></tr>
+  <tr><td>上了兩台 server 之後，有些人收不到推播</td><td>每台 server 只知道連到自己的連線</td><td>加 backplane（Redis），讓每台都轉發給所有連線</td></tr>
+  <tr><td>推播沒反應也沒錯誤</td><td>字串版方法名打錯（實驗 D）</td><td>用強型別 Hub</td></tr>
+  <tr><td>頁面一開就「連不上」</td><td>忘了 <code>MapHub</code>（實驗 A）或不同來源沒設 CORS（實驗 B）</td><td>看 Network 分頁的 negotiate：404 是前者，被擋是後者</td></tr>
+  <tr><td>長時間開著的頁面突然收不到</td><td>重連四次失敗後就放棄了（實驗 C）</td><td><code>onclose</code> 裡提示重新整理，或自己再 <code>start()</code></td></tr>
+  <tr><td>想知道是誰的連線</td><td>還沒登入，只有 <code>ConnectionId</code></td><td>第 5 課登入後用 <code>Context.UserIdentifier</code>，可以 <code>Clients.User(userId)</code> 推給某個人的所有分頁</td></tr>
+  <tr><td>每個推播都帶整個 Entity</td><td>和 Web API 回傳一樣的問題（01 題 6）</td><td>推 Notification record，只放畫面要的欄位</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="next">7. 延伸問題</h2>
+<ol>
+  <li><strong>RabbitMQ 的 Worker 做完事，想通知瀏覽器？</strong>Worker 不是 Web 程式，沒有 SignalR 連線。兩條路：Worker 呼叫 API 的一個端點，由 API 用 <code>IHubContext</code> 推；或裝 Redis backplane，讓 Worker 也能透過 Redis 送訊息給 API 的連線。</li>
+  <li><strong>Blazor Server 跟這個有什麼關係？</strong>Blazor Server 的每個畫面更新都是走 SignalR 連線送 UI diff，你剛剛學的連線、重連、斷線就是它的底層。</li>
+  <li><strong>不用 SignalR，直接用 WebSocket 可以嗎？</strong>可以，ASP.NET Core 有 <code>app.UseWebSockets()</code>。差別是訊息格式、重連、群組、傳輸降級都要自己寫。SignalR 幫你做的就是這些。</li>
+  <li><strong>只要 server 單向推、不用 client 回話？</strong>SSE 更簡單，.NET 10 的 Minimal API 有 <code>TypedResults.ServerSentEvents</code>。但要群組、要重連、要 client 回話，還是 SignalR。</li>
+  <li><strong>推播太多會不會塞爆？</strong>每條連線在 server 都占記憶體，幾千條沒問題，幾十萬條要分多台加 backplane，或改用 Azure SignalR Service 這種代管服務。</li>
+</ol>
+
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://learn.microsoft.com/aspnet/core/signalr/introduction" target="_blank">Overview of ASP.NET Core SignalR</a></li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/signalr/hubs" target="_blank">Use hubs</a>（強型別 Hub、<code>Clients</code> 的各種對象）、<a href="https://learn.microsoft.com/aspnet/core/signalr/groups" target="_blank">Manage users and groups</a></li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/signalr/hubcontext" target="_blank">Send messages from outside a hub</a>（<code>IHubContext</code>）</li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/signalr/javascript-client" target="_blank">JavaScript client</a>、<a href="https://learn.microsoft.com/aspnet/core/signalr/dotnet-client" target="_blank">.NET client</a>（重連的預設行為在這兩頁）</li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/signalr/security" target="_blank">Security considerations</a>（CORS 的三個要求）</li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/signalr/scale" target="_blank">Hosting and scaling</a>（backplane、Azure SignalR Service）</li>
+</ul>
+</div>
+
+<nav class="footer-nav">
+  <a href="rabbitmq-queue.html">← 補充：RabbitMQ</a>
+  <a href="../index.html">回目錄</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>
