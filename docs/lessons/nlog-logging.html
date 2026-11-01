@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>補充：用 NLog 寫 log</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>補充：用 NLog 寫 log（ILogger、Provider、Target、Rule、Layout）</h1>
+<p class="subtitle">Run 視窗一關，log 就沒了。這頁把 log 寫進檔案：先弄懂 .NET 內建的 <code>ILogger</code> 是怎麼一回事，再接上 NLog，自己決定「誰的 log、什麼等級、寫到哪裡」。</p>
+<div class="tags">
+  <span class="tag">NLog</span><span class="tag">ILogger</span><span class="tag">LogLevel</span><span class="tag">Provider</span>
+  <span class="tag">Target</span><span class="tag">Rule</span><span class="tag">Layout</span><span class="tag">nlog.config</span>
+  <span class="tag">Message Template</span><span class="tag">JsonLayout</span><span class="tag">Database target</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>什麼時候會用到這頁</strong></p>
+<ul>
+  <li>想知道「昨天下午三點」API 發生了什麼事，但 Run 視窗早就關了</li>
+  <li>公司專案裡有一個 <code>nlog.config</code>，看不懂裡面的 target、rule 在寫什麼</li>
+  <li>想把 EF Core 的 SQL 從 Run 視窗分出去，不要洗版</li>
+</ul>
+<p>練習用你現在 01 的 <code>PostsController</code>，不需要先做 02a。題 1～5 是主線；第 7 節的題 6～8 是進階，可做可跳。所有 log 原文、錯誤訊息都是在一份專案複本上實際跑出來的。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#why">為什麼需要 log（你其實已經在用了）</a></li>
+    <li><a href="#arch">.NET 的 logging 架構：ILogger、Category、LogLevel、Provider</a></li>
+    <li><a href="#parts">NLog 的三個零件：Target、Rule、Layout</a></li>
+    <li><a href="#howto">寫 log 的正確姿勢</a></li>
+    <li><a href="#exercise">練習：題 1～5</a></li>
+    <li><a href="#break">故意弄壞：四個實驗</a></li>
+    <li><a href="#advanced">進階（選修）：題 6～8</a></li>
+    <li><a href="#pitfalls">常見坑</a></li>
+    <li><a href="#next">延伸問題</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="why">1. 為什麼需要 log（你其實已經在用了）</h2>
+<div class="callout">
+<p>📋 <strong>情境</strong>：主管說「昨天下午三點有人回報新增文章失敗」。你打開 Rider，Run 視窗是今天早上才開的，昨天的東西一行都不在。</p>
+</div>
+<p>log 要解決三件事：</p>
+<ul>
+  <li><strong>留下來</strong>：寫進檔案或資料庫，程式關掉、電腦重開都還在</li>
+  <li><strong>分等級</strong>：出事時只想看 Warning 以上，不想在幾千行 SQL 裡面找</li>
+  <li><strong>分來源</strong>：EF Core 的 SQL、框架的訊息、你自己寫的，各自放各自的地方</li>
+</ul>
+<p>你其實已經在用 log 了。Run 視窗裡這些，全部是 .NET 內建的 <code>ILogger</code> 印出來的：</p>
+<pre><code class="language-plaintext">info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5107
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (18ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT [p].[Id], [p].[Content], [p].[CreatedAt], [p].[Title], [p].[UpdatedAt]
+      FROM [Posts] AS [p]</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>片段</th><th>叫什麼</th><th>意思</th></tr>
+  <tr><td><code>info</code></td><td>等級（LogLevel）</td><td>Information，正常流程的訊息</td></tr>
+  <tr><td><code>Microsoft.Hosting.Lifetime</code></td><td>category</td><td>誰印的。慣例是「類別的全名」或命名空間</td></tr>
+  <tr><td><code>[14]</code></td><td>EventId</td><td>同一個 category 裡，這一種訊息的編號；你自己寫的 log 通常是 0</td></tr>
+  <tr><td>第二行起</td><td>訊息</td><td>內容</td></tr>
+</table>
+</div>
+<p>01 題 7 你在 <code>appsettings.Development.json</code> 加的這一行，就是在調 category 的門檻：</p>
+<pre><code class="language-json">"Microsoft.EntityFrameworkCore.Database.Command": "Information"</code></pre>
+<p>意思是「category 是 <code>Microsoft.EntityFrameworkCore.Database.Command</code> 的 log，Information 以上都要印」。EF Core 一直都在送 SQL 的 log，是這個門檻原本設在 Warning，把它擋掉了。</p>
+
+<!-- ============================================================ -->
+<h2 id="arch">2. .NET 的 logging 架構：ILogger、Category、LogLevel、Provider</h2>
+<p>寫 log 的程式碼、決定印到哪裡的程式碼，是分開的兩層。你的 Controller 只跟 <code>ILogger</code> 講話，不知道也不在乎最後是印到螢幕還是檔案：</p>
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    C["PostsController<br>_logger.LogInformation(…)"] --> L1["ILogger#lt;PostsController#gt;<br>category = BlogApi.Controllers.PostsController"]
+    E["EF Core"] --> L2["ILogger<br>category = Microsoft.EntityFrameworkCore.Database.Command"]
+    L1 --> F["LoggerFactory"]
+    L2 --> F
+    F --> P1["Console Provider<br>（內建：Run 視窗）"]
+    F --> P2["NLog Provider<br>（裝套件才有）"]
+    P2 --> T1["File target<br>logs/app-日期.log"]
+    P2 --> T2["Console target"]
+    P2 --> T3["Database target"]
+</div>
+<div class="diagram-caption">左邊是「誰在寫」，中間是「集中分發」，右邊是「寫到哪」。NLog 是一個 Provider，它自己裡面再分好幾個 target</div>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th>名詞</th><th>是什麼</th><th>在 BlogApi 裡</th></tr>
+  <tr><td><code>ILogger&lt;T&gt;</code></td><td>寫 log 的介面。<code>&lt;T&gt;</code> 只拿來決定 category 名稱（<code>T</code> 的全名）</td><td><code>ILogger&lt;PostsController&gt;</code> 的 category 是 <code>BlogApi.Controllers.PostsController</code></td></tr>
+  <tr><td>category</td><td>這行 log 是誰寫的，用來分流和設門檻</td><td>你的 Controller、EF Core、Kestrel 各有各的名字</td></tr>
+  <tr><td>LogLevel</td><td>六個等級（下表）</td><td>找不到文章是 Warning，SaveChanges 爆掉是 Error</td></tr>
+  <tr><td>Provider</td><td>把 log 送到某個地方的元件。一個程式可以掛好幾個</td><td>內建有 Console、Debug、EventSource；NLog 是裝套件加上去的</td></tr>
+  <tr><td><code>builder.Logging.ClearProviders()</code></td><td>把內建的 Provider 全部拔掉</td><td>不拔的話，同一行會被內建 Console 印一次、NLog 的 console target 再印一次</td></tr>
+</table>
+</div>
+<p><code>ILogger&lt;PostsController&gt;</code> 怎麼拿到？建構子多一個參數，跟 <code>BlogDbContext</code> 一樣，框架會自己塞進來。這套機制叫 DI，原理在第 3 課，這裡先照著用：</p>
+<pre><code class="language-csharp">public PostsController(BlogDbContext db, ILogger&lt;PostsController&gt; logger)
+{
+    _db = db;
+    _logger = logger;
+}</code></pre>
+
+<h3 id="levels">六個等級，還有 NLog 叫它們什麼</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>.NET 的名字</th><th>NLog 的名字</th><th>什麼時候用</th><th>BlogApi 的例子</th></tr>
+  <tr><td>Trace</td><td>Trace</td><td>每一步的變數值，量非常大</td><td>幾乎不用</td></tr>
+  <tr><td>Debug</td><td>Debug</td><td>開發時想看的細節</td><td>「查到 3 篇文章」</td></tr>
+  <tr><td>Information</td><td><strong>Info</strong></td><td>正常流程的里程碑</td><td>「建立文章 5」、Now listening on</td></tr>
+  <tr><td>Warning</td><td><strong>Warn</strong></td><td>不正常，但程式處理掉了</td><td>「找不到文章 999」然後回 404</td></tr>
+  <tr><td>Error</td><td>Error</td><td>這一次請求失敗了</td><td>未處理的例外、SaveChanges 失敗</td></tr>
+  <tr><td>Critical</td><td><strong>Fatal</strong></td><td>整個程式快掛了</td><td>啟動時連不上資料庫</td></tr>
+</table>
+</div>
+<p>三個名字不一樣的要記：<code>nlog.config</code> 裡寫 <code>minLevel="Info"</code>，不是 <code>Information</code>。</p>
+
+<!-- ============================================================ -->
+<h2 id="parts">3. NLog 的三個零件：Target、Rule、Layout</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>零件</th><th>回答的問題</th><th>例子</th></tr>
+  <tr><td><strong>Target</strong></td><td>寫到哪？</td><td>Console、File、Database；每個 target 有名字，rule 用名字指它</td></tr>
+  <tr><td><strong>Rule</strong></td><td>誰的 log、什麼等級以上、送到哪幾個 target？</td><td>「<code>Microsoft.*</code> 只留 Warn 以上」「其他全部 Info 以上寫到 console 和 file」</td></tr>
+  <tr><td><strong>Layout</strong></td><td>一行長什麼樣？</td><td><code>${longdate}|${level}|${logger}|${message}</code></td></tr>
+</table>
+</div>
+<p>這是題 1 要用的 <code>nlog.config</code>，先整份看過，下面逐行說：</p>
+<p class="file-label">BlogApi/nlog.config</p>
+<pre><code class="language-xml">&lt;?xml version="1.0" encoding="utf-8" ?&gt;
+&lt;nlog xmlns="http://www.nlog-project.org/schemas/NLog.xsd"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      throwConfigExceptions="true"
+      autoReload="true"
+      internalLogLevel="Warn"
+      internalLogFile="${basedir}/logs/nlog-internal.log"&gt;
+
+  &lt;targets&gt;
+    &lt;target xsi:type="Console" name="console" layout="${MicrosoftConsoleLayout}" /&gt;
+
+    &lt;target xsi:type="File" name="file"
+            fileName="${basedir}/logs/app-${shortdate}.log"
+            layout="${longdate}|${level:uppercase=true}|${logger}|${message:withexception=true}"
+            maxArchiveFiles="7" /&gt;
+  &lt;/targets&gt;
+
+  &lt;rules&gt;
+    &lt;logger name="System.*" finalMinLevel="Warn" /&gt;
+    &lt;logger name="Microsoft.*" finalMinLevel="Warn" /&gt;
+    &lt;logger name="Microsoft.Hosting.Lifetime*" finalMinLevel="Info" /&gt;
+    &lt;logger name="*" minLevel="Info" writeTo="console,file" /&gt;
+  &lt;/rules&gt;
+&lt;/nlog&gt;</code></pre>
+
+<h3>最外層的四個屬性</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>屬性</th><th>意思</th></tr>
+  <tr><td><code>throwConfigExceptions="true"</code></td><td>設定檔寫錯時，啟動直接丟例外。預設是 false：錯了就<strong>整份設定作廢、什麼都不印</strong>，你會以為 NLog 壞了</td></tr>
+  <tr><td><code>autoReload="true"</code></td><td>改了 <code>nlog.config</code> 不用重啟，NLog 會自己重讀</td></tr>
+  <tr><td><code>internalLogLevel</code>、<code>internalLogFile</code></td><td>NLog 自己的 log。它寫不進檔案、連不上資料庫時，錯誤會記在這裡，不會丟到你的程式</td></tr>
+</table>
+</div>
+
+<h3>Target：寫到哪</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>片段</th><th>意思</th></tr>
+  <tr><td><code>xsi:type="Console"</code> / <code>"File"</code></td><td>target 的種類。還有 Database、ColoredConsole、Mail 等，各自是不同的 NuGet 套件或內建</td></tr>
+  <tr><td><code>name="file"</code></td><td>給 rule 的 <code>writeTo</code> 用的名字，自己取</td></tr>
+  <tr><td><code>layout="${MicrosoftConsoleLayout}"</code></td><td>讓 console target 印出來的格式跟內建的一模一樣，Run 視窗看起來不會變</td></tr>
+  <tr><td><code>${basedir}</code></td><td>程式執行的資料夾。開發時是 <code>BlogApi/bin/Debug/net10.0</code>，所以 log 會在 <code>bin/Debug/net10.0/logs/</code>（<code>.gitignore</code> 已經擋掉 <code>logs/</code>）</td></tr>
+  <tr><td><code>${shortdate}</code></td><td>今天的日期 <code>2026-11-01</code>，所以每天一個檔：<code>app-2026-11-01.log</code></td></tr>
+  <tr><td><code>maxArchiveFiles="7"</code></td><td>最多留 7 個舊檔，再舊的自動刪</td></tr>
+</table>
+</div>
+
+<h3>Layout：一行長什麼樣</h3>
+<p><code>${…}</code> 叫 layout renderer，每個是一個欄位。用上面的 layout，一行長這樣：</p>
+<pre><code class="language-plaintext">2026-11-01 15:43:07.3968|INFO|BlogApi.Controllers.PostsController|建立文章 5：Docker 入門</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>renderer</th><th>印出來</th></tr>
+  <tr><td><code>${longdate}</code></td><td><code>2026-11-01 15:43:07.3968</code>，本機時間</td></tr>
+  <tr><td><code>${level:uppercase=true}</code></td><td><code>INFO</code>、<code>WARN</code>、<code>ERROR</code></td></tr>
+  <tr><td><code>${logger}</code></td><td>category：<code>BlogApi.Controllers.PostsController</code></td></tr>
+  <tr><td><code>${message:withexception=true}</code></td><td>訊息；有例外時接著印 <code>|</code> 和例外的 ToString（含 stack trace）</td></tr>
+  <tr><td><code>${exception:format=tostring}</code></td><td>只印例外，沒例外時是空字串</td></tr>
+  <tr><td><code>${aspnet-request-url}</code></td><td>這行 log 是在處理哪個 URL 時寫的（<code>NLog.Web.AspNetCore</code> 提供）</td></tr>
+  <tr><td><code>${configsetting:item=ConnectionStrings.BlogDb}</code></td><td>讀 <code>appsettings</code> 的值，例如連線字串</td></tr>
+</table>
+</div>
+
+<h3>Rule：誰的 log、什麼等級、送去哪</h3>
+<p>四條 rule <strong>由上往下</strong>逐條比對，每一行 log 都會走一遍：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>屬性</th><th>意思</th></tr>
+  <tr><td><code>name="Microsoft.*"</code></td><td>比對 category，<code>*</code> 是萬用字元。<code>Microsoft.EntityFrameworkCore.Database.Command</code>、<code>Microsoft.AspNetCore.Routing.EndpointMiddleware</code> 都符合</td></tr>
+  <tr><td><code>minLevel="Info"</code></td><td>這個等級以上才算符合</td></tr>
+  <tr><td><code>writeTo="console,file"</code></td><td>送到哪些 target，逗號分隔</td></tr>
+  <tr><td><code>final="true"</code></td><td>符合這條之後，<strong>後面的 rule 不再看</strong></td></tr>
+  <tr><td><code>finalMinLevel="Warn"</code></td><td>Warn 以下的直接丟掉、不往下走；Warn 以上的繼續往下找 rule。等於「這個來源只留 Warn 以上」。後面還有符合的 <code>finalMinLevel</code> 時，以後面那條為準</td></tr>
+</table>
+</div>
+<p>所以上面四條的意思是：</p>
+<ol>
+  <li><code>System.*</code> 和 <code>Microsoft.*</code> 的 Info、Debug 丟掉（EF Core 的 SQL 就在這裡被丟掉了）</li>
+  <li>但 <code>Microsoft.Hosting.Lifetime*</code> 的 Info 留著，因為 Now listening on 這幾行你會想看</li>
+  <li>剩下的（你的 Controller、Warn 以上的框架訊息）Info 以上寫到 console 和 file</li>
+</ol>
+<p>為什麼第 2 條能救回第 1 條丟掉的東西？因為 <code>finalMinLevel</code> 的規矩是<strong>最後一條符合的贏</strong>：<code>Microsoft.Hosting.Lifetime</code> 的 log 同時符合 <code>Microsoft.*</code> 和 <code>Microsoft.Hosting.Lifetime*</code>，門檻取後面那條的 Info。所以具體的要放在籠統的後面；兩條對調，Now listening on 就從檔案裡消失（實測過）。<code>writeTo</code> 那種「寫出去」的 rule 則相反：放太前面，log 先被寫出去了，後面的 rule 再怎麼擋都來不及。</p>
+
+<!-- ============================================================ -->
+<h2 id="howto">4. 寫 log 的正確姿勢</h2>
+
+<h3 id="template">Message template：範本固定，值另外給</h3>
+<pre><code class="language-csharp">// ✅ 範本是固定字串，大括號是「名稱」，值用後面的參數依序填
+_logger.LogInformation("建立文章 {PostId}：{Title}", post.Id, post.Title);
+
+// ❌ 字串插值：範本每次都不一樣
+_logger.LogInformation($"建立文章 {post.Id}：{post.Title}");</code></pre>
+<p>兩種寫法在 log 檔裡<strong>看起來一模一樣</strong>，都是 <code>建立文章 5：Docker 入門</code>。差別在 ✅ 多帶了兩個「屬性」：<code>PostId = 5</code>、<code>Title = Docker 入門</code>。log 寫成 JSON 時它們會變成獨立欄位，之後可以用 <code>PostId</code> 搜尋；❌ 只剩一串字。</p>
+<p>兩個規矩：</p>
+<ul>
+  <li>大括號裡是<strong>名稱</strong>，不是運算式。<code>{post.Id}</code> 不行，要寫 <code>{PostId}</code> 然後把 <code>post.Id</code> 當參數傳</li>
+  <li>Rider 會在 ❌ 那行畫提示 <code>CA2254</code>。建置時預設不會出警告，因為這條規則的嚴重性是「建議」，所以別靠建置抓它</li>
+</ul>
+
+<h3 id="exception">例外要當第一個參數</h3>
+<pre><code class="language-csharp">catch (InvalidOperationException ex)
+{
+    _logger.LogError(ex, "讀取文章 {PostId} 失敗", id);   // ✅ 例外物件放第一個
+    _logger.LogError(ex.Message);                           // ❌ 只剩一句話
+}</code></pre>
+<p>兩種寫法在檔案裡的差別（同一個例外）：</p>
+<pre><code class="language-plaintext">2026-11-01 15:49:11.2867|ERROR|BlogApi.Controllers.PostsController|測試用例外
+2026-11-01 15:49:11.3313|ERROR|BlogApi.Controllers.PostsController|讀取文章 997 失敗|System.InvalidOperationException: 測試用例外
+   at BlogApi.Controllers.PostsController.GetById(Int32 id) in C:\Users\s9740\RiderProjects\BlogApi\BlogApi\Controllers\PostsController.cs:line 53</code></pre>
+<p>第一種出事時你只知道「有個測試用例外」，不知道從哪一行丟出來的。第二種有 stack trace，直接指到檔案和行號。</p>
+
+<h3 id="choose">等級怎麼選</h3>
+<ul>
+  <li>程式<strong>處理掉了</strong>就是 Warning（找不到文章、驗證沒過）；<strong>處理不掉</strong>才是 Error（例外沒接住、資料庫寫不進去）</li>
+  <li>Information 寫里程碑：建立、刪除、登入。不要在迴圈裡面寫，一次請求幾千行沒人看</li>
+  <li>想看細節用 Debug，然後用 rule 在正式環境關掉，不要用完刪程式碼</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="exercise">5. 練習：題 1～5</h2>
+
+<!-- 題 1 -->
+<div class="exercise">
+<h3>題 1：接上 NLog</h3>
+<p>需求：</p>
+<ol>
+  <li>安裝套件 <code>NLog.Web.AspNetCore</code>（6.2.2）。它會一起帶進 <code>NLog</code> 和 <code>NLog.Extensions.Logging</code></li>
+  <li>專案根目錄（和 <code>Program.cs</code> 同一層）新增 <code>nlog.config</code>，內容就是第 3 節那份</li>
+  <li><code>Program.cs</code> 在 <code>CreateBuilder</code> 之後加兩行：拔掉內建 Provider、掛上 NLog</li>
+  <li>啟動，打一次 <code>GET /api/posts</code></li>
+</ol>
+<p><strong>💡 提示</strong>：Web 專案不用設 Copy to Output，Web SDK 預設會把 <code>*.config</code> 和 <code>*.json</code> 複製到 bin（Console 專案才要自己設）。掛 NLog 的方法在 <code>NLog.Web</code> 命名空間，記得 <code>using</code>。</p>
+<p class="accept">✅ 驗收：<code>BlogApi/bin/Debug/net10.0/logs/app-日期.log</code> 出現，第一行是 <code>…|INFO|Microsoft.Hosting.Lifetime|Now listening on: http://localhost:5107</code>；Run 視窗長得跟以前一樣。<strong>但 EF Core 的 SQL 不見了</strong>。先想想為什麼，題 3 處理</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-bash">dotnet add package NLog.Web.AspNetCore --version 6.2.2</code></pre>
+<p class="file-label">BlogApi/Program.cs（只列出改動）</p>
+<pre><code class="language-csharp">using BlogApi.Data;
+using Microsoft.EntityFrameworkCore;
+using NLog.Web;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// 拔掉內建的 Console、Debug 等 Provider，不然同一行會印兩次
+builder.Logging.ClearProviders();
+// 掛上 NLog，它會自己去找 nlog.config
+builder.Host.UseNLog();
+
+builder.Services.AddControllers();
+// … 其他不變</code></pre>
+<p>啟動後 <code>logs/app-2026-11-01.log</code> 的內容：</p>
+<pre><code class="language-plaintext">2026-11-01 15:41:11.1651|INFO|Microsoft.Hosting.Lifetime|Now listening on: http://localhost:5107
+2026-11-01 15:41:11.1776|INFO|Microsoft.Hosting.Lifetime|Application started. Press Ctrl+C to shut down.
+2026-11-01 15:41:11.1776|INFO|Microsoft.Hosting.Lifetime|Hosting environment: Development
+2026-11-01 15:41:11.1776|INFO|Microsoft.Hosting.Lifetime|Content root path: C:\Users\s9740\RiderProjects\BlogApi\BlogApi
+2026-11-01 15:41:11.9015|WARN|Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionMiddleware|Failed to determine the https port for redirect.</code></pre>
+<p>最後那條 WARN 是因為你用 http 的啟動設定、沒有 https 的 port，無害，Run 視窗以前也有。</p>
+<p><strong>SQL 為什麼不見了</strong>：EF Core 的 SQL 是 Information、category 是 <code>Microsoft.EntityFrameworkCore.Database.Command</code>，被 <code>&lt;logger name="Microsoft.*" finalMinLevel="Warn" /&gt;</code> 丟掉了。你在 <code>appsettings.Development.json</code> 設的 <code>"Microsoft.EntityFrameworkCore.Database.Command": "Information"</code> <strong>現在沒有作用</strong>：掛上 NLog 之後，等級門檻由 <code>nlog.config</code> 決定，<code>appsettings</code> 的 <code>Logging:LogLevel</code> 整段都不再參與。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 2 -->
+<div class="exercise">
+<h3>題 2：Controller 寫 log</h3>
+<p>需求：</p>
+<ol>
+  <li><code>PostsController</code> 的建構子多收一個 <code>ILogger&lt;PostsController&gt;</code>，存成欄位 <code>_logger</code></li>
+  <li><code>Create</code> 成功後寫一行 Information：文章編號和標題</li>
+  <li><code>GetById</code>、<code>Delete</code> 找不到文章時寫一行 Warning，帶編號；<code>Delete</code> 成功寫一行 Information</li>
+  <li>全部用 message template，不用 <code>$"…"</code></li>
+</ol>
+<p class="accept">✅ 驗收：POST 一篇、GET /api/posts/999、DELETE /api/posts/999 之後，log 檔多出三行，category 都是 <code>BlogApi.Controllers.PostsController</code>，等級分別是 INFO、WARN、WARN</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Controllers/PostsController.cs（只列出改動）</p>
+<pre><code class="language-csharp">private readonly BlogDbContext _db;
+private readonly ILogger&lt;PostsController&gt; _logger;
+
+public PostsController(BlogDbContext db, ILogger&lt;PostsController&gt; logger)
+{
+    _db = db;
+    _logger = logger;
+}
+
+// GetById 裡
+if (post is null)
+{
+    _logger.LogWarning("找不到文章 {PostId}", id);
+    return NotFound();
+}
+
+// Create 裡，SaveChangesAsync 之後（這時 post.Id 才有值）
+_logger.LogInformation("建立文章 {PostId}：{Title}", post.Id, post.Title);
+return CreatedAtAction(nameof(GetById), new { id = post.Id }, post);
+
+// Delete 裡
+if (post is null)
+{
+    _logger.LogWarning("要刪除的文章 {PostId} 不存在", id);
+    return NotFound();
+}
+
+_db.Posts.Remove(post);
+await _db.SaveChangesAsync();
+_logger.LogInformation("刪除文章 {PostId}", id);
+return NoContent();</code></pre>
+<p>log 檔會多這幾行：</p>
+<pre><code class="language-plaintext">2026-11-01 15:43:07.3968|INFO|BlogApi.Controllers.PostsController|建立文章 5：Docker 入門
+2026-11-01 15:43:07.4830|WARN|BlogApi.Controllers.PostsController|找不到文章 999
+2026-11-01 15:43:07.5287|WARN|BlogApi.Controllers.PostsController|要刪除的文章 999 不存在</code></pre>
+<p><code>ILogger</code> 不用 <code>using</code>，它在 <code>Microsoft.Extensions.Logging</code>，專案的 implicit usings 已經包含。</p>
+<p>這些 log 行之後一直留著。02a 的參考答案改寫 <code>PostsController</code> 時沒有把它們寫出來，你自己保留就好。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 3 -->
+<div class="exercise">
+<h3>題 3：把 SQL 找回來，分到自己的檔案</h3>
+<p>需求：</p>
+<ol>
+  <li>新增一個 File target，名字 <code>sqlfile</code>，檔名 <code>logs/sql-日期.log</code>，layout 只要時間和訊息</li>
+  <li>新增一條 rule：category <code>Microsoft.EntityFrameworkCore.Database.Command</code> 的 Info 以上寫到 <code>sqlfile</code>，而且寫完就停（不要再被其他 rule 處理）</li>
+  <li>想清楚這條 rule 要放在 <code>Microsoft.*</code> 那條的<strong>上面還是下面</strong></li>
+</ol>
+<p class="accept">✅ 驗收：打一次 GET /api/posts，<code>logs/sql-日期.log</code> 出現 <code>Executed DbCommand</code> 和 SELECT；<code>app-日期.log</code> 裡沒有 SQL</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/nlog.config（只列出改動）</p>
+<pre><code class="language-xml">&lt;targets&gt;
+  …
+  &lt;target xsi:type="File" name="sqlfile"
+          fileName="${basedir}/logs/sql-${shortdate}.log"
+          layout="${longdate}|${message}"
+          maxArchiveFiles="7" /&gt;
+&lt;/targets&gt;
+
+&lt;rules&gt;
+  &lt;!-- 要放在 Microsoft.* 那條的上面，不然先被它丟掉 --&gt;
+  &lt;logger name="Microsoft.EntityFrameworkCore.Database.Command" minLevel="Info" writeTo="sqlfile" final="true" /&gt;
+  &lt;logger name="System.*" finalMinLevel="Warn" /&gt;
+  &lt;logger name="Microsoft.*" finalMinLevel="Warn" /&gt;
+  &lt;logger name="Microsoft.Hosting.Lifetime*" finalMinLevel="Info" /&gt;
+  &lt;logger name="*" minLevel="Info" writeTo="console,file" /&gt;
+&lt;/rules&gt;</code></pre>
+<p><code>sql-2026-11-01.log</code>：</p>
+<pre><code class="language-plaintext">2026-11-01 15:45:17.0029|Executed DbCommand (18ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT [p].[Id], [p].[Content], [p].[CreatedAt], [p].[Title], [p].[UpdatedAt]
+FROM [Posts] AS [p]
+ORDER BY [p].[CreatedAt] DESC
+2026-11-01 15:45:17.2105|Executed DbCommand (12ms) [Parameters=[@p0='?' (Size = 4000), @p1='?' (DbType = DateTime2), @p2='?' (Size = 200), @p3='?' (DbType = DateTime2)], CommandType='Text', CommandTimeout='30']
+SET IMPLICIT_TRANSACTIONS OFF;
+SET NOCOUNT ON;
+INSERT INTO [Posts] ([Content], [CreatedAt], [Title], [UpdatedAt])
+OUTPUT INSERTED.[Id]
+VALUES (@p0, @p1, @p2, @p3);</code></pre>
+<p>順序為什麼重要：rule 由上往下比對，<code>Microsoft.*</code> 那條會把 Info 丟掉並停止。EF 的 rule 放在它上面，SQL 先被寫進 <code>sqlfile</code>，<code>final="true"</code> 讓它不再往下走，所以也不會進 <code>app-日期.log</code>。</p>
+<p>SQL 現在不在 Run 視窗了。想兩邊都有，<code>writeTo="sqlfile,console"</code> 就好。自己決定，開發時看 Run 視窗很方便，但檔案留得住。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 4 -->
+<div class="exercise">
+<h3>題 4：例外會怎麼被記錄</h3>
+<p>需求：</p>
+<ol>
+  <li>在 <code>GetById</code> 最前面暫時加：<code>if (id == 999) throw new InvalidOperationException("測試用例外");</code></li>
+  <li>打 <code>GET /api/posts/999</code>，看回應，再看 <code>app-日期.log</code>：這條 Error 是誰寫的？有沒有 stack trace？</li>
+  <li>再加一段 <code>try { … } catch (InvalidOperationException ex) { … }</code>，裡面用兩種寫法各記一次（<code>LogError(ex, "…")</code> 和 <code>LogError(ex.Message)</code>），比較檔案裡的差別</li>
+  <li>看完把這些測試碼全部拿掉</li>
+</ol>
+<p class="accept">✅ 驗收：回應 500；log 檔有一條 ERROR，category 是 <code>Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware</code>，後面接完整 stack trace</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p>你沒有寫任何 log，但 <code>app-日期.log</code> 自己多了這一塊：</p>
+<pre><code class="language-plaintext">2026-11-01 15:47:01.7872|ERROR|Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware|An unhandled exception has occurred while executing the request.|System.InvalidOperationException: 測試用例外
+   at BlogApi.Controllers.PostsController.GetById(Int32 id) in C:\Users\s9740\RiderProjects\BlogApi\BlogApi\Controllers\PostsController.cs:line 46
+   at lambda_method47(Closure, Object)
+   at Microsoft.AspNetCore.Mvc.Infrastructure.ActionMethodExecutor.AwaitableObjectResultExecutor.Execute(…)
+   …
+   at Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddlewareImpl.Invoke(HttpContext context)</code></pre>
+<p>三件事：</p>
+<ul>
+  <li>寫這條的是 Development 環境的 <code>DeveloperExceptionPageMiddleware</code>：例外一路往外丟、沒人接，它接住、記 Error、回 500 和 stack trace。正式環境沒有它，第 5 課會做自己的錯誤處理</li>
+  <li>它的 category 是 <code>Microsoft.*</code>，但等級是 Error，所以通過 <code>finalMinLevel="Warn"</code>，照樣寫進檔案。這就是「<code>Microsoft.*</code> 只留 Warn 以上」的用意：框架的雜訊不要，框架抓到的錯誤要</li>
+  <li>第一行是你寫的程式碼在哪裡爆的，不用翻整段 stack trace</li>
+</ul>
+<p>自己 catch 的兩種寫法，檔案裡的差別在第 4 節已經列過：<code>LogError(ex.Message)</code> 只剩「測試用例外」四個字，<code>LogError(ex, "讀取文章 {PostId} 失敗", id)</code> 才有 stack trace。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 5 -->
+<div class="exercise">
+<h3>題 5：同一份設定，翻成 appsettings.json</h3>
+<p>很多專案不用 <code>nlog.config</code>，把設定寫在 <code>appsettings.json</code> 的 <code>"NLog"</code> 區段，<code>UseNLog()</code> 看到這個區段會自動讀。兩種你都要看得懂。</p>
+<p>需求：</p>
+<ol>
+  <li>把現在的 <code>nlog.config</code>（含題 3 的 sqlfile）翻成 <code>appsettings.json</code> 裡的 <code>"NLog": { … }</code>。XML 的屬性變 JSON 的 key，<code>xsi:type</code> 變 <code>"type"</code>，<code>&lt;rules&gt;</code> 變陣列</li>
+  <li>把 <code>nlog.config</code> 改名成 <code>nlog.config.bak</code>，<code>bin/Debug/net10.0/</code> 裡的那份也刪掉</li>
+  <li>啟動，驗收跟題 3 一樣</li>
+  <li>做完選一種留下。這頁後面的題目用 <code>nlog.config</code> 寫，你留 JSON 的話自己對照翻</li>
+</ol>
+<p class="accept">✅ 驗收：<code>nlog.config</code> 不在了，log 檔和 SQL 檔照樣產生</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/appsettings.json（加在 AllowedHosts 後面）</p>
+<pre><code class="language-json">"NLog": {
+  "throwConfigExceptions": true,
+  "autoReload": true,
+  "internalLogLevel": "Warn",
+  "internalLogFile": "${basedir}/logs/nlog-internal.log",
+  "targets": {
+    "console": {
+      "type": "Console",
+      "layout": "${MicrosoftConsoleLayout}"
+    },
+    "file": {
+      "type": "File",
+      "fileName": "${basedir}/logs/app-${shortdate}.log",
+      "layout": "${longdate}|${level:uppercase=true}|${logger}|${message:withexception=true}",
+      "maxArchiveFiles": 7
+    },
+    "sqlfile": {
+      "type": "File",
+      "fileName": "${basedir}/logs/sql-${shortdate}.log",
+      "layout": "${longdate}|${message}",
+      "maxArchiveFiles": 7
+    }
+  },
+  "rules": [
+    { "logger": "Microsoft.EntityFrameworkCore.Database.Command", "minLevel": "Info", "writeTo": "sqlfile", "final": true },
+    { "logger": "System.*", "finalMinLevel": "Warn" },
+    { "logger": "Microsoft.*", "finalMinLevel": "Warn" },
+    { "logger": "Microsoft.Hosting.Lifetime*", "finalMinLevel": "Info" },
+    { "logger": "*", "minLevel": "Info", "writeTo": "console,file" }
+  ]
+}</code></pre>
+<p><strong>兩個都在的時候誰贏？</strong>實測：<code>nlog.config</code> 和 <code>"NLog"</code> 區段同時存在時，<code>UseNLog()</code> 用的是 <code>appsettings.json</code> 的，<code>nlog.config</code> 被忽略。所以不要兩邊都留，會搞不清楚在改哪一份。</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th><code>nlog.config</code></th><th><code>appsettings.json</code> 的 NLog 區段</th></tr>
+  <tr><td>找範例</td><td>網路上、官方 wiki 幾乎都是這種</td><td>要自己翻</td></tr>
+  <tr><td>依環境不同</td><td>要自己想辦法（例如 <code>nlog.Production.config</code> 再 include）</td><td><code>appsettings.Production.json</code> 只覆寫 rules 就好，跟其他設定同一套機制</td></tr>
+  <tr><td>改了要重啟？</td><td><code>autoReload="true"</code> 不用</td><td>不用</td></tr>
+  <tr><td>團隊</td><td>照既有專案的做法</td><td>照既有專案的做法</td></tr>
+</table>
+</div>
+<p>另一個會看到的寫法：<code>LogManager.Setup().LoadConfigurationFromAppSettings()</code>。那是在 <code>CreateBuilder</code> 之前就想先拿到 logger（例如要記「啟動失敗」）時用的，一般情況 <code>UseNLog()</code> 就夠。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="break">6. 故意弄壞：四個實驗</h2>
+<p>每個先猜結果，再動手，最後打開答案。做完記得改回來。</p>
+
+<h3>實驗 A：找不到設定檔</h3>
+<p>把 <code>bin/Debug/net10.0/nlog.config</code> 刪掉（專案根目錄那份留著），從 Rider 啟動。猜：log 還會寫嗎？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<p><strong>一切正常</strong>。NLog 找設定檔不只看 <code>${basedir}</code>，也會看 log 第 4 行印的那個 <code>Content root path</code>，也就是專案資料夾；那裡的 <code>nlog.config</code> 被找到了。而且下次建置又會把它複製回 bin。</p>
+<p>要看到真正壞掉的樣子，把整個 <code>bin/Debug/net10.0</code> 複製到別的資料夾、刪掉裡面的 <code>nlog.config</code>，在那個資料夾開終端機跑 <code>dotnet BlogApi.dll</code>：</p>
+<ul>
+  <li>終端機<strong>完全安靜</strong>，連 Now listening on 都沒有</li>
+  <li>沒有 <code>logs</code> 資料夾</li>
+  <li>沒有任何錯誤，API 照樣能打</li>
+</ul>
+<p>因為 <code>ClearProviders()</code> 把內建 Console 拔了，NLog 又沒有設定檔，等於沒有任何 target。<strong>找不到設定檔，NLog 不會報錯</strong>。這就是正式環境 publish 之後「怎麼都沒 log」最常見的原因，第一件事是確認 <code>nlog.config</code> 有沒有在程式旁邊。Web 專案的 SDK 會自動複製；Console 專案（例如 01b 的 LinqLab）要自己在 csproj 加：</p>
+<pre><code class="language-xml">&lt;ItemGroup&gt;
+  &lt;Content Include="nlog.config" CopyToOutputDirectory="PreserveNewest" /&gt;
+&lt;/ItemGroup&gt;</code></pre>
+</div>
+</details>
+
+<h3>實驗 B：用字串插值寫 log</h3>
+<p>把題 2 的 <code>Create</code> 改成 <code>_logger.LogInformation($"建立文章 {post.Id}：{post.Title}");</code>。猜：Rider 會說什麼？建置會過嗎？log 檔會不一樣嗎？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<ul>
+  <li>Rider 在那行畫提示，規則 <code>CA2254</code>。訊息（中文版）：<code>記錄訊息範本不應在與 'LoggerExtensions.LogInformation(ILogger, string?, params object?[])' 通話期間改變</code>，意思是「範本每次呼叫都不同」</li>
+  <li>建置照樣過、沒有警告：這條規則預設嚴重性是「建議」。想讓它變警告，專案根目錄加 <code>.editorconfig</code> 寫 <code>dotnet_diagnostic.CA2254.severity = warning</code></li>
+  <li><code>app-日期.log</code> 那一行長得一模一樣</li>
+</ul>
+<p>那差在哪？差在這行 log 身上帶的「屬性」。題 7 把 log 寫成 JSON 時會看到：message template 的那行多了 <code>"PostId":5,"Title":"Docker 入門"</code>，插值的那行什麼都沒有。</p>
+</div>
+</details>
+
+<h3>實驗 C：appsettings 的 LogLevel 還有用嗎？</h3>
+<p>把 <code>appsettings.Development.json</code> 的 <code>"Default": "Information"</code> 改成 <code>"Warning"</code>，重啟，POST 一篇文章。猜：題 2 那行 INFO「建立文章」還會寫進檔案嗎？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<p><strong>還會</strong>。<code>Default</code> 管的就是你自己的 category（<code>BlogApi.*</code>），改成 Warning 照理說 Information 應該被擋，結果檔案裡還是有：</p>
+<pre><code class="language-plaintext">2026-11-01 15:45:23.6677|INFO|BlogApi.Controllers.PostsController|建立文章 6：Docker 入門</code></pre>
+<p>因為 <code>UseNLog()</code> 會把 Microsoft 那一層的等級過濾拿掉，讓 <code>nlog.config</code> 的 rule 成為唯一的門檻（控制這件事的選項叫 <code>RemoveLoggerFactoryFilter</code>，實測不設它就是這個行為）。所以掛上 NLog 之後：</p>
+<ul>
+  <li><code>appsettings</code> 裡 <code>Logging:LogLevel</code> 整段不再有作用，包括 01 題 7 加的那行 EF Core 設定</li>
+  <li>要調等級，改 <code>nlog.config</code> 的 <code>minLevel</code> / <code>finalMinLevel</code></li>
+</ul>
+<p>改回 <code>Information</code>，免得之後自己忘了這件事。</p>
+</div>
+</details>
+
+<h3>實驗 D：rule 的順序</h3>
+<p>把 <code>&lt;logger name="*" …&gt;</code> 那條搬到 <code>&lt;rules&gt;</code> 的<strong>第一條</strong>，其他不動。重啟，打 GET /api/posts 和 POST 一篇。猜：<code>app-日期.log</code> 會多什麼？</p>
+<details class="answer">
+<summary>答案</summary>
+<div class="answer-body">
+<p>原本 7 行的 log 檔變成 42 行，Run 視窗也被洗版。多出來的是誰：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>行數</th><th>category</th><th>在講什麼</th></tr>
+  <tr><td>6</td><td><code>Microsoft.AspNetCore.Routing.EndpointMiddleware</code></td><td>Executing endpoint … / Executed endpoint …</td></tr>
+  <tr><td>6</td><td><code>Microsoft.AspNetCore.Mvc.Infrastructure.ControllerActionInvoker</code></td><td>Route matched with {action = "GetAll" …}</td></tr>
+  <tr><td>6</td><td><code>Microsoft.AspNetCore.Hosting.Diagnostics</code></td><td>Request starting / Request finished … 200</td></tr>
+  <tr><td>3</td><td><code>Microsoft.EntityFrameworkCore.Database.Command</code></td><td>SQL 也跑進主檔了</td></tr>
+  <tr><td>3</td><td><code>Microsoft.AspNetCore.Mvc.Infrastructure.ObjectResultExecutor</code></td><td>Executing OkObjectResult …</td></tr>
+</table>
+</div>
+<p>原因：<code>*</code> 那條在第一條，每一行 log 先被它寫進 console 和 file，<strong>然後</strong>才輪到 <code>finalMinLevel</code> 那幾條，但已經寫出去了，擋也來不及。EF 的 SQL 也一樣，先被 <code>*</code> 寫進主檔，才到 <code>sqlfile</code> 那條。</p>
+<p>規矩：<strong>擋的 rule 放前面，寫的 rule 放後面</strong>。搬回去。</p>
+</div>
+</details>
+
+<!-- ============================================================ -->
+<h2 id="advanced">7. 進階（選修）：題 6～8</h2>
+<div class="callout">
+<p>這三題不在主線上。想先回去做 02a 完全沒問題，之後需要再回來。每一題都獨立，可以挑著做。</p>
+</div>
+
+<!-- 題 6 -->
+<div class="exercise">
+<h3>題 6：每一行 log 帶上是哪個請求</h3>
+<p>log 檔一多，「找不到文章 999」是哪個 URL 打出來的看不出來。<code>NLog.Web.AspNetCore</code> 提供一組 <code>${aspnet-…}</code> renderer，能在 layout 裡放目前請求的資訊。</p>
+<p>需求：<code>file</code> target 的 layout 在 <code>${logger}</code> 後面加一欄：HTTP 方法和 URL。再加上 <code>${aspnet-response-statuscode}</code> 試試，看它在 Controller 裡寫 log 的那一刻印出什麼。</p>
+<p class="accept">✅ 驗收：打 POST、GET /api/posts/1000（404），log 檔每行多了 <code>POST http://localhost/api/posts</code> 這種欄位</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-xml">layout="${longdate}|${level:uppercase=true}|${logger}|${aspnet-request-method} ${aspnet-request-url} ${aspnet-response-statuscode}|${message:withexception=true}"</code></pre>
+<pre><code class="language-plaintext">2026-11-01 16:23:13.6043|INFO|Microsoft.Hosting.Lifetime|  |Now listening on: http://localhost:5107
+2026-11-01 16:23:15.3330|INFO|BlogApi.Controllers.PostsController|POST http://localhost/api/posts 200|建立文章 5：Docker 入門
+2026-11-01 16:23:15.3812|ERROR|Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware|GET http://localhost/api/posts/999 200|An unhandled exception has occurred while executing the request.|System.InvalidOperationException: 測試用例外
+2026-11-01 16:23:15.4719|WARN|BlogApi.Controllers.PostsController|GET http://localhost/api/posts/1000 200|找不到文章 1000</code></pre>
+<p>第三行的 ERROR 是題 4 的 throw 還在時打 999 留下的，故意留著給你看狀態碼。三個觀察：</p>
+<ul>
+  <li>啟動時的那幾行不在任何請求裡，所以這欄是空的</li>
+  <li><code>${aspnet-request-url}</code> 預設<strong>不含 port</strong>（<code>http://localhost/api/posts</code>）。要 port 寫 <code>${aspnet-request-url:IncludePort=true}</code></li>
+  <li><code>${aspnet-response-statuscode}</code> 三行都印 <code>200</code>，連丟例外（最後回 500）和找不到（最後回 404）的都是 200。因為 log 寫下去的那一刻回應還沒決定，狀態碼還是預設值。這個 renderer 只有在<strong>回應結束之後</strong>寫的 log 裡才準，例如框架自己的 Request finished 那行。想記「每個請求回了什麼狀態碼」，用 ASP.NET Core 內建的 <code>app.UseHttpLogging()</code>，不要靠 Controller 裡的 log</li>
+</ul>
+</div>
+</details>
+</div>
+
+<!-- 題 7 -->
+<div class="exercise">
+<h3>題 7：JSON layout，一行一個 JSON</h3>
+<p>文字 log 給人看；要讓工具（Seq、ELK、雲端的 log 服務）搜尋和統計，一行一個 JSON 比較好。這也是 message template 真正有回報的地方。</p>
+<p>需求：新增一個 File target <code>jsonfile</code>，檔名 <code>logs/app-日期.json</code>，用 <code>JsonLayout</code>，欄位：time、level、logger、url、message、exception，並且把 log 身上的屬性也放進去。<code>*</code> 那條 rule 的 <code>writeTo</code> 多加 <code>jsonfile</code>。</p>
+<p class="accept">✅ 驗收：POST 一篇後，<code>app-日期.json</code> 裡那行有 <code>"PostId"</code> 和 <code>"Title"</code> 兩個欄位</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-xml">&lt;target xsi:type="File" name="jsonfile"
+        fileName="${basedir}/logs/app-${shortdate}.json"
+        maxArchiveFiles="7"&gt;
+  &lt;layout xsi:type="JsonLayout" includeEventProperties="true"&gt;
+    &lt;attribute name="time" layout="${longdate}" /&gt;
+    &lt;attribute name="level" layout="${level:uppercase=true}" /&gt;
+    &lt;attribute name="logger" layout="${logger}" /&gt;
+    &lt;attribute name="url" layout="${aspnet-request-method} ${aspnet-request-url:IncludePort=true}" /&gt;
+    &lt;attribute name="message" layout="${message}" /&gt;
+    &lt;attribute name="exception" layout="${exception:format=tostring}" /&gt;
+  &lt;/layout&gt;
+&lt;/target&gt;
+
+&lt;!-- rules --&gt;
+&lt;logger name="*" minLevel="Info" writeTo="console,file,jsonfile" /&gt;</code></pre>
+<p><code>includeEventProperties="true"</code> 就是「把 log 身上的屬性也放進 JSON」。結果：</p>
+<pre><code class="language-json">{"time":"2026-11-01 16:23:15.3330","level":"INFO","logger":"BlogApi.Controllers.PostsController","url":"POST http://localhost:5107/api/posts","message":"建立文章 5：Docker 入門","PostId":5,"Title":"Docker 入門"}
+{"time":"2026-11-01 16:23:15.4719","level":"WARN","logger":"BlogApi.Controllers.PostsController","url":"GET http://localhost:5107/api/posts/1000","message":"找不到文章 1000","PostId":1000}
+{"time":"2026-11-01 16:23:13.6043","level":"INFO","logger":"Microsoft.Hosting.Lifetime","url":" ","message":"Now listening on: http://localhost:5107","address":"http://localhost:5107","EventId":14,"EventName":"ListeningOnAddress"}</code></pre>
+<p>三行分別看：</p>
+<ul>
+  <li>第一行的 <code>"PostId":5,"Title":"Docker 入門"</code> 來自 <code>"建立文章 {PostId}：{Title}"</code> 的兩個大括號。之後在 Seq 裡可以直接查 <code>PostId = 5</code></li>
+  <li>實驗 B 那種 <code>$"…"</code> 寫法，同一行會變成 <code>{"time":…,"message":"建立文章 5：Docker 入門"}</code>，<strong>沒有</strong> PostId、Title。這就是第 4 節說的差別</li>
+  <li>框架的 log 也有屬性：<code>EventId</code>、<code>EventName</code>、<code>address</code>。它們本來就是用 message template 寫的</li>
+</ul>
+<p>沒有例外時 <code>"exception"</code> 欄位整個不出現，JsonLayout 預設不印空值。</p>
+</div>
+</details>
+</div>
+
+<!-- 題 8 -->
+<div class="exercise">
+<h3>題 8：Warning 以上寫進 SQL Server</h3>
+<p>出事的 log 想用 SQL 查，就寫進資料庫。但不要把 Information 也塞進去，量太大、資料庫會被 log 拖慢。</p>
+<p>需求：</p>
+<ol>
+  <li>安裝 <code>NLog.Database</code>（6.2.2）。SQL Server 的驅動 <code>Microsoft.Data.SqlClient</code> 已經跟著 EF Core 進來了，不用再裝</li>
+  <li>在 Rider 的 Database 工具對 <code>BlogDb</code> 執行 SQL 建一張 <code>Logs</code> 表：Id（自動編號）、LoggedAt、Level、Logger、Message、Exception（可 NULL）。不是 Entity，所以不用 Migration</li>
+  <li>新增 Database target：連線字串從 <code>appsettings</code> 讀（不要寫死在 nlog.config），INSERT 五個欄位</li>
+  <li>新增 rule：所有 category 的 Warn 以上寫到這個 target，放在 <code>*</code> 那條的上面、不設 final</li>
+  <li>打 GET /api/posts/1000（404），再 <code>SELECT * FROM Logs</code></li>
+</ol>
+<p class="accept">✅ 驗收：<code>Logs</code> 表有一列 Warn「找不到文章 1000」；<code>app-日期.log</code> 照舊</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-bash">dotnet add package NLog.Database --version 6.2.2</code></pre>
+<pre><code class="language-sql">CREATE TABLE Logs (
+    Id        int IDENTITY(1,1) PRIMARY KEY,
+    LoggedAt  datetime2      NOT NULL,
+    Level     nvarchar(10)   NOT NULL,
+    Logger    nvarchar(200)  NOT NULL,
+    Message   nvarchar(max)  NOT NULL,
+    Exception nvarchar(max)  NULL
+);</code></pre>
+<p class="file-label">BlogApi/nlog.config（只列出改動）</p>
+<pre><code class="language-xml">&lt;target xsi:type="Database" name="db"
+        dbProvider="Microsoft.Data.SqlClient.SqlConnection, Microsoft.Data.SqlClient"
+        connectionString="${configsetting:item=ConnectionStrings.BlogDb}"&gt;
+  &lt;commandText&gt;
+    INSERT INTO Logs (LoggedAt, Level, Logger, Message, Exception)
+    VALUES (@loggedAt, @level, @logger, @message, @exception);
+  &lt;/commandText&gt;
+  &lt;parameter name="@loggedAt"  layout="${date}" dbType="DbType.DateTime2" /&gt;
+  &lt;parameter name="@level"     layout="${level}" /&gt;
+  &lt;parameter name="@logger"    layout="${logger}" /&gt;
+  &lt;parameter name="@message"   layout="${message}" /&gt;
+  &lt;parameter name="@exception" layout="${exception:format=tostring}" allowDbNull="true" /&gt;
+&lt;/target&gt;
+
+&lt;!-- rules：放在 * 那條上面，不設 final，所以 Warn 以上會同時進 db 和 file --&gt;
+&lt;logger name="*" minLevel="Warn" writeTo="db" /&gt;
+&lt;logger name="*" minLevel="Info" writeTo="console,file,jsonfile" /&gt;</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>片段</th><th>意思</th></tr>
+  <tr><td><code>dbProvider="…SqlConnection, Microsoft.Data.SqlClient"</code></td><td>用哪個 ADO.NET 驅動，格式是「類別全名, 組件名」</td></tr>
+  <tr><td><code>${configsetting:item=ConnectionStrings.BlogDb}</code></td><td>讀 <code>appsettings</code> 的 <code>ConnectionStrings:BlogDb</code>，巢狀用 <code>.</code>。User Secrets 也讀得到，因為它們都在同一個設定系統裡</td></tr>
+  <tr><td><code>&lt;parameter&gt;</code></td><td>每個 <code>@xxx</code> 對應一個 layout；<code>dbType</code> 讓 NLog 把字串轉成對的型別；<code>allowDbNull</code> 讓空字串變 NULL</td></tr>
+</table>
+</div>
+<p><code>SELECT * FROM Logs</code>（第 2 列是題 4 的 throw 還在時打 999 留下的）：</p>
+<pre><code class="language-plaintext">Id  LoggedAt                     Level  Logger                                                             Message                                          Exception
+1   2026-11-01 16:23:14.4041352  Warn   Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionMiddleware        Failed to determine the https port for redirect. NULL
+2   2026-11-01 16:23:15.3812741  Error  Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware  An unhandled exception has occurred while …      System.InvalidOperationException: 測試用例外 …
+3   2026-11-01 16:23:15.4719144  Warn   BlogApi.Controllers.PostsController                                找不到文章 1000                                  NULL</code></pre>
+<p><strong>🧪 弄壞一次</strong>：把 <code>Logs</code> 表 DROP 掉再打一次 1000。API 照樣回 404，<code>app-日期.log</code> 照寫，沒有任何錯誤冒出來。錯誤只在 <code>logs/nlog-internal.log</code>：</p>
+<pre><code class="language-plaintext">2026-11-01 16:24:10.4935 Error DatabaseTarget(Name=db): Error when writing to database. Exception: Microsoft.Data.SqlClient.SqlException (0x80131904): Invalid object name 'Logs'.</code></pre>
+<p>這是刻意的：log 寫失敗不該把你的 API 弄掛。代價是你不會馬上發現，所以 <code>internalLogFile</code> 要設、偶爾要看。</p>
+<p>兩件事先講：正式環境通常把 log 放獨立的資料庫，至少是獨立的表，不跟業務資料混；手動建的 <code>Logs</code> 表不是 Entity，EF Core 的 Migration 看不到它，之後 02a 的 <code>migrations add</code> 不會動到它。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="pitfalls">8. 常見坑</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>症狀</th><th>原因</th><th>解法</th></tr>
+  <tr><td>啟動就炸：<code>NLog.NLogConfigurationException: Failed loading NLog configuration. Unknown log level: Infomation (Parameter 'levelName')  FilePath: …\nlog.config</code></td><td>設定檔打錯字，而且 <code>throwConfigExceptions="true"</code>（實測）</td><td>照訊息改。這是<strong>好</strong>的失敗，馬上知道</td></tr>
+  <tr><td>一切安靜、沒有 log 檔、沒有錯誤</td><td>同一個錯字但 <code>throwConfigExceptions="false"</code>（預設值）：整份設定作廢，錯誤只寫在 <code>nlog-internal.log</code>（實測）。或是實驗 A 的找不到設定檔</td><td><code>throwConfigExceptions</code> 一律開 true；先看 <code>nlog-internal.log</code></td></tr>
+  <tr><td>同一行在 Run 視窗印兩次</td><td>忘了 <code>ClearProviders()</code>，內建 Console 和 NLog 的 console target 各印一次</td><td>加上</td></tr>
+  <tr><td>Windows 上 bin 資料夾刪不掉、Clean 失敗</td><td>File target 預設 <code>keepFileOpen="true"</code>，程式還在跑就鎖著 log 檔</td><td>先停掉程式</td></tr>
+  <tr><td>log 的時間和 <code>CreatedAt</code> 差 8 小時</td><td><code>${longdate}</code> 是本機時間，<code>CreatedAt</code> 是 <code>DateTime.UtcNow</code></td><td>知道就好；全 UTC 的做法見 <a href="01-efcore-crud.html#exercise">01 題 7</a> 答案裡的時區補充</td></tr>
+  <tr><td>log 檔越來越大、磁碟滿</td><td>沒設 <code>maxArchiveFiles</code>；或把 Info 也寫進資料庫</td><td>設上限；資料庫只收 Warn 以上</td></tr>
+  <tr><td>密碼、連線字串出現在 log</td><td>把整個 request 物件丟進 log、<code>EnableSensitiveDataLogging()</code> 開著上正式環境</td><td>只 log 需要的欄位；log 檔也是機密</td></tr>
+  <tr><td>程式關掉時最後幾行沒寫到</td><td><code>&lt;targets async="true"&gt;</code> 會先放在記憶體裡批次寫</td><td>用 <code>UseNLog()</code> 時主機關閉會把 NLog 一起收掉並寫完；自己 <code>new LogFactory()</code> 的情境才要手動 <code>LogManager.Shutdown()</code>（這頁沒實測，見官方文件）</td></tr>
+  <tr><td>Error 太多，真正的錯誤找不到</td><td>404、驗證失敗都寫成 Error</td><td>處理掉的用 Warning</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="next">9. 延伸問題</h2>
+<ol>
+  <li><strong>Serilog 和 NLog 怎麼選？</strong>兩個都是 Provider，概念一樣（Serilog 叫 sink 不叫 target，設定寫在程式碼裡多於設定檔）。公司用哪個就學哪個，換邊只是換名詞。</li>
+  <li><strong>怎麼把同一個請求的所有 log 串起來？</strong>每個請求有一個 TraceId（<code>${activityid}</code>），放進 layout 就能用它過濾。第 5 課做錯誤處理時，回給前端的 ProblemDetails 也會帶 <code>traceId</code>，前端回報的 id 就能對回 log。</li>
+  <li><strong>正式環境 log 放哪？</strong>放容器裡的 <code>${basedir}</code>，容器刪掉就跟著消失，跟 00 課資料庫沒掛 volume 一樣。小專案掛 volume；多台機器就送到集中式服務（Seq、ELK、雲端的 Log Analytics），這時題 7 的 JSON 就派上用場。</li>
+  <li><strong>想讓 appsettings 的 LogLevel 也生效？</strong>實驗 C 提到的 <code>RemoveLoggerFactoryFilter</code> 可以關掉，用法見 NLog.Web 的文件（這頁沒實測）。一般不建議兩邊都設門檻，會搞不清楚是誰擋的。</li>
+</ol>
+
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://github.com/NLog/NLog/wiki/Getting-started-with-ASP.NET-Core-6" target="_blank">Getting started with ASP.NET Core 6</a>（NLog wiki；.NET 6 以後都適用）</li>
+  <li><a href="https://github.com/NLog/NLog/wiki/Configuration-file" target="_blank">Configuration file</a>、<a href="https://github.com/NLog/NLog/wiki/Logging-Rules" target="_blank">Logging rules</a>（<code>finalMinLevel</code> 在這）</li>
+  <li><a href="https://github.com/NLog/NLog/wiki/File-target" target="_blank">File target</a>、<a href="https://github.com/NLog/NLog/wiki/Database-target" target="_blank">Database target</a>、<a href="https://github.com/NLog/NLog/wiki/JsonLayout" target="_blank">JsonLayout</a></li>
+  <li><a href="https://nlog-project.org/config/?tab=layout-renderers" target="_blank">Layout renderers 總表</a>（含 <code>${aspnet-…}</code>）</li>
+  <li><a href="https://github.com/NLog/NLog.Extensions.Logging/wiki/NLog-configuration-with-appsettings.json" target="_blank">NLog configuration with appsettings.json</a></li>
+  <li><a href="https://learn.microsoft.com/dotnet/core/extensions/logging" target="_blank">Logging in .NET</a>（Microsoft，ILogger、category、Provider 的原理）</li>
+  <li><a href="https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2254" target="_blank">CA2254: Template should be a static expression</a></li>
+</ul>
+</div>
+
+<nav class="footer-nav">
+  <a href="httpclient-typed-client.html">← 補充：Typed Client</a>
+  <a href="../index.html">回目錄</a>
+  <a href="rabbitmq-queue.html">補充：RabbitMQ →</a>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>
