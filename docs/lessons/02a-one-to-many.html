@@ -61,7 +61,46 @@
 <h2 id="concept">2. 原理：關聯在資料庫和 EF Core 裡長什麼樣</h2>
 
 <h3 id="fk">2-1. 關聯在資料庫怎麼存：外鍵放在「多」的那一邊</h3>
-<p>一位作者有很多文章，一篇文章只有一位作者，這叫<strong>一對多</strong>。資料庫記這件事的方法只有一種：在「多」的那張表（Posts）加一個欄位，存「一」那邊的主鍵（Authors.Id）。這個欄位叫<strong>外鍵（Foreign Key）</strong>。</p>
+<p>先用具體的人來說。小明寫了〈Docker 入門〉和〈我的第一支 Web API〉兩篇，小華寫了〈小華的第一篇〉一篇。小明有兩篇文章，但〈Docker 入門〉這篇只有小明一位作者。一位作者有很多文章、一篇文章只有一位作者，這叫<strong>一對多</strong>。</p>
+
+<p><strong>怎麼判斷是幾對幾</strong>：站在兩邊各問一次「最多可以有幾個？」</p>
+<div class="table-wrap">
+<table>
+  <tr><th>站在哪邊問</th><th>問題</th><th>答案</th></tr>
+  <tr><td>作者 → 文章</td><td>一位作者最多可以有幾篇文章？</td><td>很多（小明有 2 篇）</td></tr>
+  <tr><td>文章 → 作者</td><td>一篇文章最多可以有幾位作者？</td><td>一位</td></tr>
+</table>
+</div>
+<p>一邊答「一」、一邊答「多」，就是一對多；答「多」的那邊（文章）叫「多的那一邊」。下面 ERD 那條線兩端的符號，標的就是這兩個答案：<code>||</code> 是「恰好一」，<code>o{</code> 是「零或多」。</p>
+
+<p><strong>拿資料來看</strong>：用題 7 會建的資料，假設此刻 Authors 有三位作者、Posts 有三篇文章：</p>
+<div class="table-wrap">
+<table>
+  <tr><th colspan="2">Authors</th></tr>
+  <tr><th>Id</th><th>Name</th></tr>
+  <tr><td>1</td><td>小明</td></tr>
+  <tr><td>2</td><td>小華</td></tr>
+  <tr><td>3</td><td>小芳</td></tr>
+</table>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th colspan="3">Posts</th></tr>
+  <tr><th>Id</th><th>Title</th><th>AuthorId</th></tr>
+  <tr><td>5</td><td>Docker 入門</td><td>1</td></tr>
+  <tr><td>6</td><td>我的第一支 Web API</td><td>1</td></tr>
+  <tr><td>7</td><td>小華的第一篇</td><td>2</td></tr>
+</table>
+</div>
+<p>文章編號以你的資料庫實際產生的為準；筆記用 5、6、7，是因為題 2 清掉舊文章後從 5 接著編。從這兩張表可以讀出：</p>
+<ul>
+  <li>Posts 每一列的 <code>AuthorId</code> 只有一個格子，只放得下一個數字，所以一篇文章只有一位作者。「一」的那個方向是欄位本身保證的</li>
+  <li><code>AuthorId</code> 這一欄裡 <code>1</code> 出現了兩次，資料庫不禁止重複，所以同一位作者可以出現在很多列。「多」的那個方向就在這裡</li>
+  <li>想知道小明寫了什麼：拿 Authors 的 <code>Id = 1</code> 到 Posts 找 <code>AuthorId = 1</code> 的列，找到 5 和 6。SQL 就是 <code>WHERE AuthorId = 1</code></li>
+  <li>想知道文章 5 是誰寫的：拿 Posts 的 <code>AuthorId = 1</code> 回 Authors 找 <code>Id = 1</code>，找到小明。SQL 就是 <code>JOIN Authors ON Posts.AuthorId = Authors.Id</code></li>
+  <li>小芳在 Posts 裡一列都沒有，她還是一位合法的作者。所以作者這邊是「零或多」篇文章，ERD 才用 <code>o{</code> 而不是 <code>|{</code></li>
+</ul>
+<p>資料庫記這件事的方法只有一種：在「多」的那張表（Posts）加一個欄位，存「一」那邊的主鍵（Authors.Id）。這個欄位叫<strong>外鍵（Foreign Key）</strong>。</p>
 <div class="diagram">
 <div class="mermaid">
 erDiagram
@@ -82,7 +121,7 @@ erDiagram
 </div>
 <div class="diagram-caption">Posts 多一個 AuthorId 欄位指向 Authors.Id；Authors 這邊什麼都不用加</div>
 </div>
-<p>為什麼不是反過來、在 Authors 存一串文章編號？因為一個欄位只能放一個值，「一串」放不進去；而且文章新增時要去改作者那一列，兩張表會互相牽制。外鍵放在多的那邊，新增文章只要填一個數字，資料庫還會幫你檢查這個數字真的存在（這就是題 2 和題 6 會撞到的 <code>FOREIGN KEY constraint</code>）。</p>
+<p>為什麼不是反過來、在 Authors 加一欄 <code>PostIds</code> 放 <code>"5,6"</code>？因為一個格子只能放一個值，上面 Posts 每列只有一個 <code>AuthorId</code>，靠的正是這一點；反過來放就是硬把兩個數字塞進一格，資料庫沒辦法幫你查、幫你算。而且文章新增時要去改作者那一列，兩張表會互相牽制。外鍵放在多的那邊，新增文章只要填一個數字，資料庫還會幫你檢查這個數字真的存在（這就是題 2 和題 6 會撞到的 <code>FOREIGN KEY constraint</code>）。</p>
 
 <h3 id="parts">2-2. EF Core 的三個零件：外鍵屬性、參考導覽、集合導覽</h3>
 <p>資料庫只有一個 <code>AuthorId</code> 欄位，C# 這邊卻要寫三個東西：</p>
@@ -811,13 +850,13 @@ Content-Type: application/json
 POST {{BlogApi_HostAddress}}/api/posts
 Content-Type: application/json
 
-{ "title": "EF Core 關聯：一對多", "content": "外鍵放在多的那一邊", "authorId": 1 }
+{ "title": "Docker 入門", "content": "今天把 SQL Server 裝進 Docker", "authorId": 1 }
 
 ### 新增文章（作者 1）→ 201
 POST {{BlogApi_HostAddress}}/api/posts
 Content-Type: application/json
 
-{ "title": "Include 是哪種 JOIN", "content": "必填外鍵是 INNER JOIN", "authorId": 1 }
+{ "title": "我的第一支 Web API", "content": "用 ASP.NET Core 做了文章 CRUD", "authorId": 1 }
 
 ### 新增文章（作者 2）→ 201
 POST {{BlogApi_HostAddress}}/api/posts
@@ -853,7 +892,7 @@ GET {{BlogApi_HostAddress}}/api/authors/99/posts
 PUT {{BlogApi_HostAddress}}/api/posts/5
 Content-Type: application/json
 
-{ "title": "EF Core 關聯：一對多（修訂）", "content": "改內容", "authorId": 2 }
+{ "title": "Docker 入門（修訂）", "content": "改內容", "authorId": 2 }
 
 ### 刪有文章的作者 1 → 409
 DELETE {{BlogApi_HostAddress}}/api/authors/1
