@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 430" width="1000" height="430" role="img" aria-label="把 Action 套回 AddDbContext：它的第 2 個參數 optionsAction 的型別是 Action&lt;DbContextOptionsBuilder&gt;，你寫的 options =&gt; options.UseSqlServer(…) 就是填進這個參數的方法">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --card: #ffffff;
+    --in: #ddf4ff; --in-b: #0969da; --fn: #ede9fe; --fn-b: #7c3aed; --none: #f6f8fa; --orm: #ffe4e6; --orm-b: #e11d48;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --card: #151b23;
+      --in: #0c2d4a; --in-b: #58a6ff; --fn: #231a3d; --fn-b: #a78bfa; --none: #151b23; --orm: #3b1520; --orm-b: #f472b6;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 17px; font-weight: 800; }
+  .b { font-size: 13.5px; font-weight: 700; }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .code { font-size: 13px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; white-space: pre; }
+  .in { fill: var(--in); stroke: var(--in-b); stroke-width: 2; }
+  .fn { fill: var(--fn); stroke: var(--fn-b); stroke-width: 2; }
+  .none { fill: var(--none); stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .ours { fill: var(--orm); stroke: var(--orm-b); stroke-width: 2; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .f-muted { fill: var(--muted); }
+  .t-orm { fill: var(--orm-b); font-weight: 700; }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="430" rx="12"/>
+
+<rect class="ours" x="20" y="20" width="960" height="390" rx="12"/>
+<text class="h" x="40" y="56">套回 AddDbContext：它的第 2 個參數，型別就是 <tspan class="code" style="font-size:15px">Action&lt;DbContextOptionsBuilder&gt;</tspan></text>
+<text class="code" x="40" y="92">public static IServiceCollection AddDbContext&lt;TContext&gt;(</text>
+<text class="code" x="40" y="114">    this IServiceCollection serviceCollection,</text>
+<text class="code" x="40" y="136">    <tspan class="t-orm">Action&lt;DbContextOptionsBuilder&gt;? optionsAction = null</tspan>,</text>
+<text class="code" x="40" y="158">    ServiceLifetime contextLifetime = ServiceLifetime.Scoped,</text>
+<text class="code" x="40" y="180">    ServiceLifetime optionsLifetime = ServiceLifetime.Scoped)</text>
+<text class="code" x="40" y="202">    where TContext : DbContext</text>
+<text class="xs" x="40" y="232">紅字那個參數，就是你那段 lambda 要填進去的位置；其他參數這一行都沒傳，用預設值：</text>
+
+<rect class="in" x="40" y="256" width="280" height="56" rx="8"/>
+<text class="code" x="180" y="280" text-anchor="middle">options</text>
+<text class="xs" x="180" y="300" text-anchor="middle">DbContextOptionsBuilder，EF Core 之後才傳進來</text>
+<path class="arr" d="M322,284 H352" marker-end="url(#am)"/>
+<rect class="fn" x="355" y="256" width="410" height="56" rx="10"/>
+<text class="code" x="560" y="280" text-anchor="middle">options =&gt; options.UseSqlServer(…)</text>
+<text class="xs" x="560" y="300" text-anchor="middle">你寫的 lambda：收一個 options、不回傳</text>
+<path class="arr" d="M767,284 H797" marker-end="url(#am)"/>
+<rect class="none" x="800" y="256" width="160" height="56" rx="8"/>
+<text class="xs" x="880" y="288" text-anchor="middle">不用回傳（Action）</text>
+
+<text class="b" x="40" y="356">重點：填進 optionsAction 的是「一個方法」，不是「一個值」。</text>
+<text class="xs" x="40" y="380">AddDbContext 當下只把它收起來；之後要建 BlogDbContext 時，EF Core 才 new 一個 options、呼叫你的 lambda</text>
+</svg>

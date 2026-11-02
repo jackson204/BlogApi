@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>C# 補充：委派與方法簽章</title>
+<title>C# 補充：看懂方法簽章</title>
 <link rel="stylesheet" href="../assets/style.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
@@ -12,11 +12,12 @@
 <main class="page">
 
 <div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
-<h1>C# 補充：委派（Action / Func）與方法簽章</h1>
-<p class="subtitle">看懂 <code>options =&gt; …</code> 這種寫法，以及怎麼從方法簽章讀出「這個方法要什麼、回傳什麼」</p>
+<h1>C# 補充：看懂方法簽章（方法、擴充方法、委派 Action / Func）</h1>
+<p class="subtitle">先看懂一個方法「要什麼、回什麼」，再看懂第一個參數前面的 <code>this</code>，再看懂參數型別是 <code>Action</code>、<code>Func</code> 時怎麼讀，最後把 <code>AddDbContext</code> 那一行整個拆開。</p>
 <div class="tags">
-  <span class="tag">委派</span><span class="tag">Action</span><span class="tag">Func</span><span class="tag">lambda</span>
-  <span class="tag">方法簽章</span><span class="tag">擴充方法</span><span class="tag">泛型</span>
+  <span class="tag">方法簽章</span><span class="tag">static</span><span class="tag">this</span><span class="tag">擴充方法</span>
+  <span class="tag">泛型</span><span class="tag">where</span><span class="tag">選擇性參數</span><span class="tag">委派</span>
+  <span class="tag">delegate</span><span class="tag">Action</span><span class="tag">Func</span><span class="tag">lambda</span>
 </div>
 
 <div class="callout">
@@ -24,25 +25,195 @@
 <ul>
   <li>第 1 課 3-5：<code>AddDbContext(options =&gt; options.UseSqlServer(…))</code></li>
   <li>第 1 課 3-3：<code>modelBuilder.Entity&lt;Post&gt;(entity =&gt; { … })</code></li>
+  <li>第 1 課 2-4：<code>Where</code> 為什麼能用在 <code>DbSet</code> 上（擴充方法）</li>
   <li>之後的課：<code>Where(p =&gt; …)</code> 這類 LINQ、第 3 課 DI 的 <code>AddScoped</code> 等擴充方法</li>
 </ul>
+<p>每一節比前一節多一個變化：普通方法的簽章 → 第一個參數多了 <code>this</code> → 參數的型別是委派 → 三件事一起出現在同一行。頁面上的範例都是單檔程式實際跑過的，最後一節有一題練習。</p>
 </div>
 
 <nav class="toc">
   <strong>目錄</strong>
   <ol>
-    <li><a href="#delegate">先認識 Action 和 Func</a></li>
-    <li><a href="#signature">學會看方法簽章：拆解 AddDbContext 那一行</a></li>
+    <li><a href="#method">方法簽章是什麼</a></li>
+    <li><a href="#extension">擴充方法：第一個參數前面的 this</a></li>
+    <li><a href="#delegate">委派：Action 和 Func</a></li>
+    <li><a href="#signature">拆解 AddDbContext 那一行</a></li>
+    <li><a href="#exercise">練習：單檔程式</a></li>
   </ol>
 </nav>
 
-<h2 id="delegate">1. 先認識 Action 和 Func</h2>
-<p>看 <code>AddDbContext</code> 的簽章時，會看到參數型別是 <code>Action&lt;DbContextOptionsBuilder&gt;</code>。要看懂它，得先知道什麼是<strong>委派（delegate）</strong>。</p>
-<p><strong>委派就是「裝著一個方法的變數」</strong>。一般的變數裝的是值（數字、字串），委派裝的是「一段可以執行的程式」。.NET 內建兩種最常用的委派：</p>
+<!-- ============================================================ -->
+<h2 id="method">1. 方法簽章是什麼</h2>
+<p>這頁說的<strong>簽章（signature）</strong>，就是一個方法「怎麼呼叫它、它回什麼」：名稱、參數、回傳型別。大括號裡的本體不算，你呼叫別人的方法時也看不到本體，看得到的只有簽章。先用一個簡單的方法認識五個部分：</p>
 
 <div class="diagram">
-<img src="../images/delegates.svg" alt="Action 和 Func 的差別：Action 收參數不回傳，Func 最後一個型別是回傳值；Action&lt;DbContextOptionsBuilder&gt; 就是收一個 options、不回傳的方法" style="width:100%;height:auto">
-<div class="diagram-caption">Action 只做事、不回傳；Func 最後一個型別是回傳值</div>
+<img src="../images/signature-parts.svg" alt="一個方法簽章的五個部分：存取修飾與 static、回傳型別、名稱、參數、選擇性參數，以 public static string Repeat(string text, int count = 2) 為例" style="width:100%;height:auto">
+<div class="diagram-caption">呼叫時用得到的只有 ②③④⑤；① 決定誰能呼叫、要不要先 new 物件</div>
+</div>
+
+<p class="file-label">簡單範例：三種呼叫方式（實際執行過）</p>
+<pre><code class="language-csharp">Console.WriteLine(StringTools.Repeat("ab"));             // count 沒給，用預設值 2 → abab
+Console.WriteLine(StringTools.Repeat("ab", 3));          // 照順序給 → ababab
+Console.WriteLine(StringTools.Repeat("ab", count: 1));   // 用名稱指定 → ab
+
+static class StringTools
+{
+    public static string Repeat(string text, int count = 2)
+    {
+        return string.Concat(Enumerable.Repeat(text, count));
+    }
+}</code></pre>
+<p><code>static</code> 的方法用「類別名稱.方法」呼叫，不用先 <code>new</code> 一個物件。<code>StringTools</code> 是放工具方法的類別，裡面只有 static 方法，所以類別也標 <code>static</code>，表示它不能被 new。</p>
+
+<h3 id="yours">你自己寫過的方法</h3>
+<p>第 1 課 <code>PostsController</code> 的其中一個：</p>
+<pre><code class="language-csharp">public async Task&lt;ActionResult&lt;Post&gt;&gt; GetById(int id)</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>片段</th><th>是哪個部分</th><th>意思</th></tr>
+  <tr><td><code>public</code></td><td>①</td><td>誰都能呼叫；沒有 <code>static</code>，所以要有一個 <code>PostsController</code> 物件才能呼叫（這個物件是框架 new 的，第 3 課）</td></tr>
+  <tr><td><code>async</code></td><td>修飾詞，<strong>不是</strong>簽章的一部分</td><td>告訴編譯器本體裡會有 <code>await</code>。呼叫的人看不到它，只看得到回傳型別是 <code>Task&lt;…&gt;</code></td></tr>
+  <tr><td><code>Task&lt;ActionResult&lt;Post&gt;&gt;</code></td><td>②</td><td>三層包起來：<code>Task</code> 包著 <code>ActionResult</code> 包著 <code>Post</code>。讀法是「最後會給你一個 ActionResult，裡面是 Post」</td></tr>
+  <tr><td><code>GetById</code></td><td>③</td><td>名稱</td></tr>
+  <tr><td><code>int id</code></td><td>④</td><td>一個參數，型別 int、名稱 id；路由的 <code>{id}</code> 就是填到這裡</td></tr>
+</table>
+</div>
+
+<h3 id="generic">名稱後面的角括號：泛型</h3>
+<p>你早就用過 <code>List&lt;string&gt;</code>、<code>List&lt;Post&gt;</code>。寫 <code>List</code> 的人不知道你要裝什麼，所以留一個洞 <code>&lt;T&gt;</code>，<strong>用的人呼叫時才填型別</strong>。方法也可以有這種洞：</p>
+<pre><code class="language-csharp">public static IServiceCollection AddDbContext&lt;TContext&gt;(…)   // 定義：留一個洞叫 TContext
+    where TContext : DbContext                                 // 限制：填進來的型別必須繼承 DbContext
+
+builder.Services.AddDbContext&lt;BlogDbContext&gt;(…);               // 呼叫：填 BlogDbContext</code></pre>
+<p><code>where</code> 那行叫<strong>泛型限制</strong>。<code>BlogDbContext : DbContext</code> 所以可以填；填 <code>string</code> 會編譯錯誤。有了限制，方法本體才能放心把 <code>TContext</code> 當 <code>DbContext</code> 用。</p>
+
+<h3 id="method-table">看簽章時會遇到的記號</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>看到什麼</th><th>代表什麼</th><th>讀法</th></tr>
+  <tr><td><code>static</code></td><td>不用 new 物件，用類別名稱呼叫</td><td><code>StringTools.Repeat(…)</code></td></tr>
+  <tr><td><code>void</code> 在回傳型別的位置</td><td>不回傳</td><td>呼叫完沒有值可以接</td></tr>
+  <tr><td>名稱後面的 <code>&lt;T&gt;</code></td><td>泛型參數，呼叫時填型別</td><td><code>AddDbContext&lt;BlogDbContext&gt;</code></td></tr>
+  <tr><td><code>where T : 某型別</code></td><td>泛型限制</td><td>填進去的型別必須是那個型別或它的子類別</td></tr>
+  <tr><td>參數後面的 <code>= 2</code>、<code>= null</code></td><td>選擇性參數，有預設值</td><td>可以不給；要跳過前面的用名稱指定 <code>count: 1</code></td></tr>
+  <tr><td><code>string?</code>、<code>Action&lt;…&gt;?</code></td><td>可能是 <code>null</code></td><td>接到值要先檢查，或知道這個方法允許你傳 null</td></tr>
+  <tr><td><code>Task&lt;X&gt;</code> 在回傳型別</td><td>非同步方法，最後會給你一個 X</td><td>要 <code>await</code> 才拿得到 X</td></tr>
+  <tr><td>第一個參數前面有 <code>this</code></td><td>擴充方法</td><td>下一節</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="extension">2. 擴充方法：第一個參數前面的 this</h2>
+<p>想對 <code>string</code> 加一個 <code>IsLongTitle()</code>，判斷標題夠不夠長。但 <code>string</code> 是 .NET 的類別，你改不了它的程式碼。C# 的解法是<strong>擴充方法（extension method）</strong>：方法寫在你自己的 static class 裡，只要第一個參數前面加 <code>this</code>，呼叫時就可以寫得像那個型別本來就有的方法。</p>
+
+<p class="file-label">簡單範例：對 string 加一個方法（實際執行過）</p>
+<pre><code class="language-csharp">Console.WriteLine("EF Core 入門".IsLongTitle());                     // 擴充方法的寫法
+Console.WriteLine(StringExtensions.IsLongTitle("EF Core 入門"));    // 編譯器實際翻成的樣子，也合法
+
+static class StringExtensions
+{
+    // this string? title：第一個參數加 this，這個方法就能用 "…".IsLongTitle() 的寫法呼叫
+    public static bool IsLongTitle(this string? title)
+    {
+        Console.WriteLine($"  IsLongTitle 被呼叫了，title 是 {(title is null ? "null" : $"「{title}」")}");
+        return title is not null &amp;&amp; title.Length &gt; 5;
+    }
+}
+
+// 輸出：
+//   IsLongTitle 被呼叫了，title 是 「EF Core 入門」
+// True
+//   IsLongTitle 被呼叫了，title 是 「EF Core 入門」
+// True</code></pre>
+<p>兩種呼叫寫法跑的是同一個方法。<code>"EF Core 入門".IsLongTitle()</code> 只是編譯器幫你改寫成 <code>StringExtensions.IsLongTitle("EF Core 入門")</code>，<strong>點前面的東西變成第一個參數</strong>。所以擴充方法沒有魔法，它就是一個 static 方法加一個語法糖。</p>
+
+<h3 id="ext-rules">寫法的三個條件</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>條件</th><th>為什麼</th></tr>
+  <tr><td>放在 <code>static class</code> 裡</td><td>擴充方法是工具方法，不需要物件</td></tr>
+  <tr><td>方法本身是 <code>static</code></td><td>同上</td></tr>
+  <tr><td>第一個參數前面加 <code>this</code></td><td>告訴編譯器「點前面的東西填到這裡」。<code>this</code> 後面的型別，就是這個方法能掛在誰身上</td></tr>
+</table>
+</div>
+
+<h3 id="ext-used">你早就在用的擴充方法</h3>
+<p>第 1 課寫過的這些，全部都是別人加上去的擴充方法：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>你寫的</th><th>簽章的第一個參數</th><th>所以它掛在</th></tr>
+  <tr><td><code>_db.Posts.Where(p =&gt; …)</code>、<code>.ToListAsync()</code></td><td><code>this IQueryable&lt;T&gt;</code></td><td>任何 <code>IQueryable&lt;T&gt;</code>，<code>DbSet&lt;Post&gt;</code> 有實作它，所以能用（<a href="01-efcore-crud.html#iqueryable">第 1 課 2-4</a>）</td></tr>
+  <tr><td><code>builder.Services.AddControllers()</code>、<code>.AddDbContext(…)</code></td><td><code>this IServiceCollection</code></td><td><code>builder.Services</code>，它的型別就是 <code>IServiceCollection</code></td></tr>
+  <tr><td><code>options.UseSqlServer(…)</code></td><td><code>this DbContextOptionsBuilder</code></td><td>lambda 收到的 <code>options</code></td></tr>
+  <tr><td><code>builder.Configuration.GetConnectionString("BlogDb")</code></td><td><code>this IConfiguration</code></td><td><code>builder.Configuration</code></td></tr>
+</table>
+</div>
+<p>這就是為什麼 <code>builder.Services.AddDbContext(…)</code> 看起來像 <code>IServiceCollection</code> 自己的方法：<code>IServiceCollection</code> 本身只有加減服務的幾個方法，<code>AddControllers</code>、<code>AddDbContext</code>、第 3 課的 <code>AddScoped</code> 都是各個套件用擴充方法掛上去的。這也是為什麼每個套件都要你 <code>using</code> 它的 namespace，不然編譯器找不到那個 static class。</p>
+
+<p class="file-label">進階範例：對集合加方法（實際執行過）</p>
+<pre><code class="language-csharp">var titles = new List&lt;string&gt; { "Docker 入門", "EF Core 關聯：一對多", "Hi" };
+titles.PrintAll();
+
+static class ListExtensions
+{
+    public static void PrintAll(this List&lt;string&gt; items)
+    {
+        foreach (var item in items)
+        {
+            Console.WriteLine($"  - {item}");
+        }
+    }
+}
+
+// 輸出：
+//   - Docker 入門
+//   - EF Core 關聯：一對多
+//   - Hi</code></pre>
+<p>「對集合加方法」正是 LINQ 在做的事：<code>Where</code>、<code>Select</code>、<code>OrderBy</code> 全是掛在 <code>IEnumerable&lt;T&gt;</code> 和 <code>IQueryable&lt;T&gt;</code> 上的擴充方法，差別只在它們多收一個委派當參數（下一節）。</p>
+
+<h3 id="ext-pitfalls">規則和坑</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>情況</th><th>會怎樣</th></tr>
+  <tr><td>沒有 <code>using</code> 到那個 static class 的 namespace</td><td>編譯器說找不到這個方法。Rider 會提示要加哪個 using</td></tr>
+  <tr><td>Rider 的自動完成裡</td><td>擴充方法會標 <code>(extension)</code>，可以分辨哪些是型別本來有的</td></tr>
+  <tr><td>想加欄位或屬性</td><td>不行，擴充方法只能加方法</td></tr>
+  <tr><td>型別本來就有同名方法</td><td>本來的優先，擴充方法不會被呼叫</td></tr>
+  <tr><td>點前面的東西是 <code>null</code></td><td><strong>照樣進到方法裡</strong>，因為它只是第一個參數。一般的實例成員對 null 呼叫會直接炸（實際執行過，見下）</td></tr>
+</table>
+</div>
+<pre><code class="language-csharp">string? nothing = null;
+Console.WriteLine(nothing.IsLongTitle());   // 擴充方法：照樣進到方法裡
+try
+{
+    Console.WriteLine(nothing!.Length);      // 一般的實例成員：直接炸
+}
+catch (NullReferenceException ex)
+{
+    Console.WriteLine($"NullReferenceException: {ex.Message}");
+}
+
+// 輸出：
+//   IsLongTitle 被呼叫了，title 是 null
+// False
+// NullReferenceException: Object reference not set to an instance of an object.</code></pre>
+<p>所以擴充方法的第一個參數宣告成 <code>string?</code>，方法裡面要自己處理 null。</p>
+
+<!-- ============================================================ -->
+<h2 id="delegate">3. 委派：Action 和 Func</h2>
+<p>看 <code>AddDbContext</code> 的簽章時，會看到參數型別是 <code>Action&lt;DbContextOptionsBuilder&gt;</code>。要看懂它，得先知道什麼是<strong>委派（delegate）</strong>。</p>
+<p><strong>委派就是「裝著一個方法的變數」的型別</strong>。一般的變數裝的是值（數字、字串），委派裝的是「一段可以執行的程式」。它是一種型別，可以用 <code>delegate</code> 關鍵字自己定義：</p>
+<pre><code class="language-csharp">// 定義一種委派型別：裝「收一個 string、回傳 bool」的方法
+delegate bool TitleTest(string title);
+
+TitleTest test = title =&gt; title.Length &gt; 5;   // 把一段程式裝進去
+Console.WriteLine(test("Docker 入門"));         // → True
+Console.WriteLine(test("Hi"));                  // → False</code></pre>
+<p>實務上幾乎不用自己定義，因為 .NET 內建兩種泛型的委派，把「收什麼、回什麼」用角括號填就好：</p>
+
+<div class="diagram">
+<img src="../images/delegates.svg" alt="Action 和 Func 的差別：Action 收參數不回傳；Func 最後一個型別是回傳值，Func&lt;int, int, int&gt; 收兩個 int 回傳 int，Func&lt;Post, bool&gt; 收一個 Post 回傳 bool" style="width:100%;height:auto">
+<div class="diagram-caption">Action 只做事、不回傳；Func 最後一個型別是回傳值，回傳什麼型別，看 lambda 最後算出來的是什麼</div>
 </div>
 
 <div class="table-wrap">
@@ -51,6 +222,7 @@
   <tr><td>回傳值</td><td>沒有（等於 <code>void</code> 方法）</td><td>有，<strong>角括號裡最後一個型別</strong>就是回傳型別</td></tr>
   <tr><td>寫法</td><td><code>Action&lt;參數1, 參數2, …&gt;</code></td><td><code>Func&lt;參數1, 參數2, …, 回傳&gt;</code></td></tr>
   <tr><td>例子</td><td><code>Action&lt;string&gt;</code>＝收一個 string、不回傳</td><td><code>Func&lt;int, int, int&gt;</code>＝收兩個 int、回傳 int</td></tr>
+  <tr><td>對應上面的 <code>TitleTest</code></td><td></td><td><code>Func&lt;string, bool&gt;</code>，不用另外定義型別</td></tr>
 </table>
 </div>
 
@@ -72,20 +244,22 @@ greet("小明");                     // → Hi, 小明
 Console.WriteLine(multiply(3, 4)); // → 12
 Console.WriteLine(isLong("EF Core 入門")); // → True</code></pre>
 
-<p><strong>lambda 的讀法</strong>：<code>參數 =&gt; 要做的事</code>。<code>=&gt;</code> 念成「goes to」，左邊是參數，右邊是內容。只有一個參數時可以省略括號，像 <code>name =&gt; …</code>；兩個以上要加括號，像 <code>(a, b) =&gt; …</code>。</p>
+<p><strong>lambda 的讀法</strong>：<code>參數 =&gt; 要做的事</code>。<code>=&gt;</code> 念成「goes to」，左邊是參數，右邊是內容。只有一個參數時可以省略括號，像 <code>name =&gt; …</code>；兩個以上要加括號，像 <code>(a, b) =&gt; …</code>。參數的型別不用寫，編譯器從委派的型別推出來：<code>Func&lt;string, bool&gt;</code> 的 lambda，<code>title</code> 就是 string。</p>
 
 <p class="file-label">進階範例：把方法當參數傳給別人，由別人決定什麼時候執行（實際執行過）</p>
 <pre><code class="language-csharp">void RunLater(Action&lt;string&gt; action)
 {
     Console.WriteLine("RunLater 開始，還沒執行 action");
     action("由 RunLater 傳進來的值");   // 由 RunLater 決定什麼時候執行、傳什麼值
+    Console.WriteLine("RunLater 結束");
 }
 
 RunLater(text =&gt; Console.WriteLine($"action 執行了：{text}"));
 
 // 輸出：
 // RunLater 開始，還沒執行 action
-// action 執行了：由 RunLater 傳進來的值</code></pre>
+// action 執行了：由 RunLater 傳進來的值
+// RunLater 結束</code></pre>
 
 <p><strong>這就是 <code>AddDbContext</code> 的模式</strong>：</p>
 <ul>
@@ -93,9 +267,17 @@ RunLater(text =&gt; Console.WriteLine($"action 執行了：{text}"));
   <li><code>options</code> 是 EF Core 之後會傳進來的，就像上面的 <code>text</code> 是 <code>RunLater</code> 傳進來的</li>
   <li>什麼時候執行，由 EF Core 決定，見第 1 課 3-8「<a href="01-efcore-crud.html#wiring">串起來</a>」</li>
 </ul>
-<p>你其實早就用過 Func 了：<code>_db.Posts.Where(p =&gt; p.Title.Contains(keyword))</code> 裡的 <code>p =&gt; …</code>，寫法就是一個「收 <code>Post</code>、回傳 <code>bool</code>」的 lambda。（細節：EF Core 實際收的型別是 <code>Expression&lt;Func&lt;Post, bool&gt;&gt;</code>，它會把這段 lambda 當成「資料」拆開，才能翻成 SQL；後面的課再細講。）</p>
+<p>你其實早就用過 Func 了：<code>_db.Posts.Where(p =&gt; p.Title.Contains(keyword))</code> 裡的 <code>p =&gt; …</code>，寫法就是一個「收 <code>Post</code>、回傳 <code>bool</code>」的 lambda，也就是第 2 節說的「擴充方法多收一個委派當參數」。（細節：EF Core 實際收的型別是 <code>Expression&lt;Func&lt;Post, bool&gt;&gt;</code>，它會把這段 lambda 當成「資料」拆開，才能翻成 SQL；後面的課再細講。）</p>
 
-<h2 id="signature">2. 學會看方法簽章：拆解 AddDbContext 那一行</h2>
+<!-- ============================================================ -->
+<h2 id="signature">4. 拆解 AddDbContext 那一行</h2>
+<p>三件事現在都看過了，把它們套回你寫過的那一行。先看 <code>AddDbContext</code> 的簽章，第 2 個參數 <code>optionsAction</code> 的型別就是 <code>Action&lt;DbContextOptionsBuilder&gt;</code>，你那段 <code>options =&gt; options.UseSqlServer(…)</code> 就是填進這個參數的「方法」：</p>
+
+<div class="diagram">
+<img src="../images/delegates-adddbcontext.svg" alt="把 Action 套回 AddDbContext：第 2 個參數 optionsAction 的型別是 Action&lt;DbContextOptionsBuilder&gt;，options =&gt; options.UseSqlServer(…) 就是填進去的方法" style="width:100%;height:auto">
+<div class="diagram-caption">AddDbContext 當下只把 lambda 收起來；之後要建 BlogDbContext 時，EF Core 才 new 一個 options、呼叫它</div>
+</div>
+
 <p>這行其實是<strong>三個方法</strong>一層包一層。要看懂它在寫什麼，<strong>由內往外讀</strong>最好懂。這是讀的順序，不是執行的順序：② ③ 寫在 lambda 裡面，程式啟動時只有 ① 執行，② ③ 要等 lambda 被呼叫才跑（見<a href="01-efcore-crud.html#register">第 1 課 3-5</a>）。</p>
 
 <div class="diagram">
@@ -124,17 +306,31 @@ RunLater(text =&gt; Console.WriteLine($"action 執行了：{text}"));
     ServiceLifetime optionsLifetime = ServiceLifetime.Scoped)
     where TContext : DbContext</code></pre>
 
-<h3>簽章怎麼讀：逐一對照</h3>
+<p>在 Rider 裡按 Ctrl + 左鍵跳進 <code>AddDbContext</code>，會比上面多看到兩個東西：</p>
+<pre><code class="language-csharp">public static IServiceCollection AddDbContext
+    &lt;[DynamicallyAccessedMembers(DbContext.DynamicallyAccessedMemberTypes)] TContext&gt;(
+        this IServiceCollection serviceCollection,
+        Action&lt;DbContextOptionsBuilder&gt;? optionsAction = null,
+        ServiceLifetime contextLifetime = ServiceLifetime.Scoped,
+        ServiceLifetime optionsLifetime = ServiceLifetime.Scoped)
+    where TContext : DbContext
+    =&gt; AddDbContext&lt;TContext, TContext&gt;(serviceCollection, optionsAction, contextLifetime, optionsLifetime);</code></pre>
+<ul>
+  <li><code>[DynamicallyAccessedMembers(…)]</code>：掛在 <code>TContext</code> 上的屬性，是給「裁剪（trimming）」和 AOT 編譯用的標記，告訴工具這個型別的建構子會被反射用到、不能砍掉。看簽章時可以略過，它不影響你怎麼呼叫</li>
+  <li><code>=&gt; AddDbContext&lt;TContext, TContext&gt;(…)</code>：方法本體。這個多載自己不做事，只是把四個參數原封不動轉交給另一個有兩個泛型參數的多載（第一個是「要注入的型別」、第二個是「實際建的型別」，兩個填一樣就是我們的情況）。<code>=&gt;</code> 在這裡是「方法本體只有一句 return」的簡寫，不是 lambda</li>
+</ul>
+
+<h3 id="signature-table">簽章怎麼讀：逐一對照</h3>
 <div class="table-wrap">
 <table>
-  <tr><th>看到什麼</th><th>代表什麼</th><th>對應到我們那一行</th></tr>
-  <tr><td><code>static</code> + 第一個參數有 <code>this</code></td><td><strong>擴充方法</strong>（extension method）。可以像「那個型別本來就有的方法」一樣，用 <code>.</code> 呼叫</td><td><code>this IServiceCollection</code> → 所以寫成 <code>builder.Services.AddDbContext(…)</code>，<code>builder.Services</code> 的型別就是 <code>IServiceCollection</code></td></tr>
-  <tr><td>方法名稱後面的 <code>&lt;TContext&gt;</code></td><td><strong>泛型參數</strong>，呼叫時填入型別</td><td><code>AddDbContext&lt;BlogDbContext&gt;</code></td></tr>
-  <tr><td><code>where TContext : DbContext</code></td><td><strong>泛型限制</strong>：填進去的型別必須繼承 <code>DbContext</code></td><td><code>BlogDbContext : DbContext</code>，所以可以；填 <code>string</code> 會編譯錯誤</td></tr>
-  <tr><td><code>Action&lt;DbContextOptionsBuilder&gt;</code></td><td><strong>委派</strong>：「一個收 <code>DbContextOptionsBuilder</code>、沒有回傳值的方法」。可以用 lambda 寫</td><td><code>options =&gt; options.UseSqlServer(…)</code>，這裡的 <code>options</code> 型別就是 <code>DbContextOptionsBuilder</code></td></tr>
-  <tr><td><code>= null</code>、<code>= ServiceLifetime.Scoped</code></td><td><strong>選擇性參數</strong>：沒傳就用預設值</td><td>我們只傳了 lambda，所以生命週期都是 <code>Scoped</code>（一個請求一個，第 3 課講）</td></tr>
-  <tr><td><code>string?</code></td><td>可能是 <code>null</code></td><td>連線字串名稱打錯時，<code>GetConnectionString</code> 回傳 <code>null</code>，啟動後會出現<a href="01-efcore-crud.html#pitfalls">第 1 課常見坑</a>裡的 <code>Value cannot be null</code></td></tr>
-  <tr><td>回傳型別和 <code>this</code> 參數型別相同</td><td>可以<strong>串接</strong>呼叫（Fluent API）</td><td><code>UseSqlServer</code> 回傳 <code>DbContextOptionsBuilder</code>，後面還能再接 <code>.LogTo(…)</code> 這類設定</td></tr>
+  <tr><th>看到什麼</th><th>代表什麼</th><th>在哪一節</th><th>對應到我們那一行</th></tr>
+  <tr><td><code>static</code> + 第一個參數有 <code>this</code></td><td>擴充方法</td><td><a href="#extension">第 2 節</a></td><td><code>this IServiceCollection</code> → 所以寫成 <code>builder.Services.AddDbContext(…)</code></td></tr>
+  <tr><td>方法名稱後面的 <code>&lt;TContext&gt;</code></td><td>泛型參數，呼叫時填型別</td><td><a href="#generic">第 1 節</a></td><td><code>AddDbContext&lt;BlogDbContext&gt;</code></td></tr>
+  <tr><td><code>where TContext : DbContext</code></td><td>泛型限制</td><td><a href="#generic">第 1 節</a></td><td><code>BlogDbContext : DbContext</code>，所以可以；填 <code>string</code> 會編譯錯誤</td></tr>
+  <tr><td><code>Action&lt;DbContextOptionsBuilder&gt;</code></td><td>委派：「一個收 <code>DbContextOptionsBuilder</code>、沒有回傳值的方法」，用 lambda 寫</td><td><a href="#delegate">第 3 節</a></td><td><code>options =&gt; options.UseSqlServer(…)</code>，這裡的 <code>options</code> 型別就是 <code>DbContextOptionsBuilder</code></td></tr>
+  <tr><td><code>= null</code>、<code>= ServiceLifetime.Scoped</code></td><td>選擇性參數，沒傳就用預設值</td><td><a href="#method-table">第 1 節</a></td><td>我們只傳了 lambda，所以生命週期都是 <code>Scoped</code>（一個請求一個，第 3 課講）</td></tr>
+  <tr><td><code>string?</code></td><td>可能是 <code>null</code></td><td><a href="#method-table">第 1 節</a></td><td>連線字串名稱打錯時，<code>GetConnectionString</code> 回傳 <code>null</code>，啟動後會出現<a href="01-efcore-crud.html#pitfalls">第 1 課常見坑</a>裡的 <code>Value cannot be null</code></td></tr>
+  <tr><td>回傳型別和 <code>this</code> 參數型別相同</td><td>可以<strong>串接</strong>呼叫（Fluent API）</td><td></td><td><code>UseSqlServer</code> 回傳 <code>DbContextOptionsBuilder</code>，後面還能再接 <code>.LogTo(…)</code> 這類設定</td></tr>
 </table>
 </div>
 
@@ -148,6 +344,87 @@ RunLater(text =&gt; Console.WriteLine($"action 執行了：{text}"));
 </ul>
 </div>
 
+<!-- ============================================================ -->
+<h2 id="exercise">5. 練習：單檔程式</h2>
+<p>不用開專案。.NET 10 可以直接執行一個 .cs 檔（<a href="https://learn.microsoft.com/dotnet/core/sdk/file-based-apps" target="_blank">file-based apps</a>）：隨便找個資料夾建 <code>signature-lab.cs</code>，在那個資料夾執行 <code>dotnet run signature-lab.cs</code>。</p>
+
+<div class="exercise">
+<h3>題 1：擴充方法、Func、Action 各寫一個</h3>
+<p>需求，三小步都在同一個檔案：</p>
+<ol>
+  <li>一個 <code>List&lt;string&gt;</code> 放三個標題：<code>"Docker 入門"</code>、<code>"EF Core 關聯：一對多"</code>、<code>"Hi"</code>。寫擴充方法 <code>IsLongTitle(this string title)</code>，長度大於 5 回 true；對三個標題各呼叫一次並印出結果</li>
+  <li>寫一個方法 <code>int CountIf(List&lt;string&gt; items, Func&lt;string, bool&gt; test)</code>，數有幾個標題通過 test。呼叫兩次：一次傳 lambda（標題含 <code>"Docker"</code>），一次直接傳 <code>StringExtensions.IsLongTitle</code>（方法名稱，不加括號）</li>
+  <li>寫一個方法 <code>void ForEachTitle(List&lt;string&gt; items, Action&lt;string&gt; action)</code>，對每個標題做一次 action。用 lambda 印出「標題：xxx」</li>
+</ol>
+<p><strong>💡 提示</strong>：單檔程式裡，方法可以直接寫在最上層的程式碼後面；static class 也可以放在檔案最後面。第 2 步傳方法名稱的寫法，就是第 3 節 <code>Action hello = SayHello;</code> 那件事。</p>
+<p class="accept">✅ 驗收：輸出依序是三行 True / True / False、兩個數字 1 和 2、三行「標題：…」</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">signature-lab.cs</p>
+<pre><code class="language-csharp">var titles = new List&lt;string&gt; { "Docker 入門", "EF Core 關聯：一對多", "Hi" };
+
+Console.WriteLine("== (1) 擴充方法");
+foreach (var title in titles)
+{
+    Console.WriteLine($"{title} → {title.IsLongTitle()}");
+}
+
+Console.WriteLine("== (2) 收 Func 的方法");
+Console.WriteLine(CountIf(titles, title =&gt; title.Contains("Docker")));   // 傳 lambda
+Console.WriteLine(CountIf(titles, StringExtensions.IsLongTitle));        // 傳方法名稱，不加括號
+
+Console.WriteLine("== (3) 收 Action 的方法");
+ForEachTitle(titles, title =&gt; Console.WriteLine($"標題：{title}"));
+
+// 收一個「收 string、回傳 bool」的方法，數有幾個標題通過
+int CountIf(List&lt;string&gt; items, Func&lt;string, bool&gt; test)
+{
+    var count = 0;
+    foreach (var item in items)
+    {
+        if (test(item))
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+// 收一個「收 string、不回傳」的方法，對每個標題做一次
+void ForEachTitle(List&lt;string&gt; items, Action&lt;string&gt; action)
+{
+    foreach (var item in items)
+    {
+        action(item);
+    }
+}
+
+static class StringExtensions
+{
+    public static bool IsLongTitle(this string title) =&gt; title.Length &gt; 5;
+}</code></pre>
+<pre><code class="language-plaintext">== (1) 擴充方法
+Docker 入門 → True
+EF Core 關聯：一對多 → True
+Hi → False
+== (2) 收 Func 的方法
+1
+2
+== (3) 收 Action 的方法
+標題：Docker 入門
+標題：EF Core 關聯：一對多
+標題：Hi</code></pre>
+<p>三個觀察：</p>
+<ul>
+  <li><code>CountIf(titles, StringExtensions.IsLongTitle)</code>：擴充方法也是普通的 static 方法，所以可以當方法名稱傳進去。它「收一個 string、回傳 bool」，剛好符合 <code>Func&lt;string, bool&gt;</code></li>
+  <li>如果把 <code>IsLongTitle</code> 改成 <code>(this string title, int min = 5)</code> 加一個選擇性參數，lambda 照樣能用，但傳方法名稱那行會編譯錯誤：<code>error CS0123: 'IsLongTitle' 沒有任何多載符合委派 'Func&lt;string, bool&gt;'</code>。方法名稱轉成委派時，選擇性參數不算數，參數要一模一樣</li>
+  <li><code>CountIf</code> 和 <code>ForEachTitle</code> 就是縮小版的 LINQ <code>Count(…)</code> 和 <code>ForEach(…)</code>：方法本身只管「走訪」，要做什麼由呼叫的人用委派決定</li>
+</ul>
+</div>
+</details>
+</div>
+
 <nav class="footer-nav">
   <a href="01-efcore-crud.html#register">← 回第 1 課 3-5</a>
   <a href="../index.html">回目錄</a>
@@ -156,7 +433,6 @@ RunLater(text =&gt; Console.WriteLine($"action 執行了：{text}"));
 
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"></script>
 <script src="../assets/lesson.js"></script>
 </body>
 </html>
