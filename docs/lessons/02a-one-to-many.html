@@ -224,6 +224,50 @@ foreach (var post in posts)
 <p>還有一種常用的做法不填導覽屬性，直接拿欄位：<strong>Select 投影</strong> <code>_db.Posts.Select(p =&gt; new { p.Title, p.Author.Name })</code>，也是一句 JOIN，但只拿你點名的欄位。回 API 只需要作者名時，主要用這個。</p>
 <p>在 <code>Where</code> 或 <code>Select</code> 裡<strong>用到</strong>導覽屬性（<code>p.Author.Name</code>），EF Core 自己會 JOIN，不需要 <code>Include</code>。<code>Include</code> 是「把整個關聯物件載回來放在 <code>post.Author</code>」才需要。</p>
 
+<h4 id="lazy-more">延遲載入是怎麼做到的，為什麼這一課不開</h4>
+<p>一句話：導覽屬性平常是空的，<strong>第一次碰它的那一刻</strong>，EF Core 才偷偷發一句 SQL 把它填起來。</p>
+<p><strong>怎麼攔到「碰它」這個動作</strong>：C# 讀一個屬性本來不會發生任何事，所以 EF Core 得把那個屬性換掉。開了 <code>UseLazyLoadingProxies()</code> 之後，查詢回來的不是你寫的 <code>Post</code>，而是 EF Core 在執行時動態產生的子類別（proxy），它 override 了標成 <code>virtual</code> 的 <code>Author</code> 屬性：你一讀，它先看載過了沒，沒有就拿手上的 <code>AuthorId</code> 發一句 SQL 填進去，再回給你。這也是導覽屬性一定要 <code>virtual</code> 的原因：不是 virtual 就 override 不了，攔不到（單檔程式實際執行過）：</p>
+<pre><code class="language-csharp">var post = db.Posts.First();
+Console.WriteLine($"你寫的類別：{typeof(Post).Name}，實際拿到的：{post.GetType().Name}，父類別：{post.GetType().BaseType!.Name}");
+
+// 輸出：
+// 你寫的類別：Post，實際拿到的：PostProxy，父類別：Post</code></pre>
+
+<p><strong>三種載入方式放在一起看</strong>：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>方式</th><th>什麼時候發 SQL</th><th>寫法</th><th>幾句 SQL</th></tr>
+  <tr><td>預先載入（Eager）</td><td>查詢那一刻一起載</td><td><code>Include(p =&gt; p.Author)</code></td><td>1 句 JOIN（情境 2）</td></tr>
+  <tr><td>明確載入（Explicit）</td><td>你叫它載才載</td><td><code>db.Entry(post).Reference(p =&gt; p.Author).Load()</code></td><td>1 + 你叫幾次</td></tr>
+  <tr><td>延遲載入（Lazy）</td><td>第一次碰到屬性時自動載</td><td>開 proxies 後直接寫 <code>post.Author</code></td><td>1 + 碰到幾位沒載過的作者（情境 3）</td></tr>
+</table>
+</div>
+<p>明確載入和延遲載入發的 SQL 一模一樣，差別只在「誰決定什麼時候發」：前者是你，後者是 EF Core 在你看不到的地方替你決定：</p>
+<pre><code class="language-csharp">var post = db.Posts.First();
+Console.WriteLine($"查完：{sqlCount} 句 SQL，Author 是 {(post.Author is null ? "null" : post.Author.Name)}");
+db.Entry(post).Reference(p =&gt; p.Author).Load();      // 現在才去載
+Console.WriteLine($"Load 之後：{sqlCount} 句 SQL，Author 是 {post.Author.Name}");
+
+// 輸出：
+// 查完：1 句 SQL，Author 是 null
+// Load 之後：2 句 SQL，Author 是 小明
+// SELECT "a"."Id", "a"."Name"
+// FROM "Authors" AS "a"
+// WHERE "a"."Id" = @p
+// LIMIT 1</code></pre>
+
+<p><strong>為什麼大家說它危險</strong>：</p>
+<ul>
+  <li><strong>N+1 看不見</strong>：情境 3 迴圈裡那行 <code>post.Author.Name</code> 怎麼看都像在讀記憶體，實際上每一輪都可能打一次資料庫，程式碼上沒有任何痕跡</li>
+  <li><strong>序列化會觸發它</strong>：直接回傳 Entity 時，System.Text.Json 把每個屬性都走一遍，走到 <code>Author</code> 就載、走到 <code>Author.Posts</code> 又載，整張關聯圖一路拉進來（再加上 2-4 的循環參照，更慘）</li>
+  <li><strong>DbContext 關掉之後再碰就炸</strong>：Controller 方法結束、請求的 scope 釋放之後，還拿著那個 <code>post</code> 去碰 <code>Author</code>，proxy 會用已經 Dispose 的 context 發 SQL。實際跑一次：先用一個 <code>using</code> 區塊查出 post，離開區塊後再讀 <code>post.Author.Name</code>：
+<pre><code class="nohighlight">InvalidOperationException: An error was generated for warning 'Microsoft.EntityFrameworkCore.Infrastructure.LazyLoadOnDisposedContextWarning':
+An attempt was made to lazy-load navigation 'PostProxy.Author' after the associated DbContext was disposed or returned to the pool,
+or the entity was explicitly detached from the context. …</code></pre></li>
+  <li><strong>同一位作者不會重複查</strong>，因為已經在 change tracker 裡（情境 3 小明的第二篇沒再發）。這讓數字看起來沒那麼糟，但列表裡作者越分散就越接近 N+1</li>
+</ul>
+<p><strong>那它什麼時候有用</strong>：真的「大多數時候用不到關聯、偶爾才碰一下」的情境，例如桌面程式點開某一筆明細才看關聯。Web API 幾乎都是「這個請求要什麼，一開始就知道」，所以這一課的做法是：要整個物件用 <code>Include</code>，只要幾個欄位用 <code>Select</code> 投影，延遲載入不開。第 4 課會把它打開跑一次，看它慢在哪。</p>
+
 <h3 id="cycle">2-4. 直接回傳 Entity 會爆：循環參照</h3>
 <p>01 的延伸問題 3 問過：加上作者之後，直接回傳 <code>Post</code> 會怎樣？現在可以回答了。<code>Include(p =&gt; p.Author)</code> 撈回來之後，EF Core 會做一件貼心的事叫 <strong>fix-up</strong>：把 <code>post.Author</code> 指向作者物件，<strong>同時</strong>把那篇文章塞進 <code>author.Posts</code>。於是：</p>
 <div class="diagram">
