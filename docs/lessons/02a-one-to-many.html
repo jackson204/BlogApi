@@ -168,15 +168,60 @@ flowchart LR
 <p>這一課用 <code>int</code>：部落格的文章一定有人寫。</p>
 
 <h3 id="loading">2-3. 導覽屬性什麼時候有值</h3>
-<p>查出一篇 <code>Post</code>，它的 <code>Author</code> 屬性是 <code>null</code>，<strong>除非你明講要載</strong>。EF Core 不會自動多發一句 SQL 幫你把作者抓回來，原因在 01b 的 L4-04：如果每次碰到 <code>post.Author</code> 都偷偷去查一次，列表 100 篇就是 101 句 SQL（N+1）。所以導覽屬性預設是「寫好的空位」，有三種填法：</p>
+<p>查出一篇 <code>Post</code>，它的 <code>Author</code> 屬性預設是 <code>null</code>：導覽屬性只是「寫好的空位」，要不要填、怎麼填，看你怎麼查。下面用一個練習用的 SQLite 小資料庫（3 位作者、4 篇文章：小明 2 篇、小華 1 篇、小芳 1 篇）跑<strong>三種情境</strong>，每種都用 <code>LogTo</code> 數送了幾句 SQL（單檔程式實際執行過）。</p>
+
+<h4 id="loading-1"><span class="hl a">情境 1</span> 不 Include：空位留著，Author 是 null</h4>
+<pre><code class="language-csharp">var posts = db.Posts.ToList();
+Console.WriteLine($"送了 {sqlCount} 句 SQL，第一篇的 Author 是 {(posts[0].Author is null ? "null" : posts[0].Author.Name)}");
+
+// 輸出：
+// 送了 1 句 SQL，第一篇的 Author 是 null</code></pre>
+<p>一句 SQL 只查 Posts，作者沒撈，<code>post.Author</code> 就是 null。EF Core 不會因為你寫了導覽屬性就自動多查一次。</p>
+
+<h4 id="loading-2"><span class="hl b">情境 2</span> Include：一句 JOIN，Author 有值</h4>
+<pre><code class="language-csharp">var posts = db.Posts.Include(p =&gt; p.Author).ToList();
+Console.WriteLine($"送了 {sqlCount} 句 SQL，第一篇的 Author 是 {posts[0].Author.Name}");
+
+// 輸出：
+// 送了 1 句 SQL，第一篇的 Author 是 小明
+// SELECT "p"."Id", "p"."AuthorId", "p"."Title", "a"."Id", "a"."Name"
+// FROM "Posts" AS "p"
+// INNER JOIN "Authors" AS "a" ON "p"."AuthorId" = "a"."Id"</code></pre>
+<p>還是一句 SQL，但多了 INNER JOIN，作者的欄位一起撈回來，組成完整的 <code>Author</code> 物件放進 <code>post.Author</code>。不管幾篇文章都是 1 句。</p>
+
+<h4 id="loading-3"><span class="hl c">情境 3</span> 延遲載入：碰到 post.Author 才偷偷去查（這一課不開）</h4>
+<p>這個行為預設<strong>沒有</strong>，要另外裝 <code>Microsoft.EntityFrameworkCore.Proxies</code>、在 options 加 <code>UseLazyLoadingProxies()</code>、導覽屬性標 <code>virtual</code>。開了之後：</p>
+<pre><code class="language-csharp">var posts = db.Posts.ToList();
+Console.WriteLine($"ToList 之後：{sqlCount} 句 SQL");
+foreach (var post in posts)
+{
+    var name = post.Author.Name;      // 碰到 Author 才偷偷去查
+    Console.WriteLine($"  {post.Title} → {name}，到目前為止 {sqlCount} 句 SQL");
+}
+
+// 輸出：
+// ToList 之後：1 句 SQL
+//   Docker 入門 → 小明，到目前為止 2 句 SQL
+//   我的第一支 Web API → 小明，到目前為止 2 句 SQL      ← 小明已經查過，記憶體裡有，不用再查
+//   小華的第一篇 → 小華，到目前為止 3 句 SQL
+//   小芳的第一篇 → 小芳，到目前為止 4 句 SQL
+// 最後一句（查作者的）：
+// SELECT "a"."Id", "a"."Name"
+// FROM "Authors" AS "a"
+// WHERE "a"."Id" = @p
+// LIMIT 1</code></pre>
+<p>每碰到一位還沒查過的作者，就多送一句 <code>WHERE "a"."Id" = @p</code>。4 篇文章 3 位作者送了 1 + 3 句；列表 100 篇、100 位作者就是 1 + 100 句，這叫 <strong>N+1</strong>，正是效能問題的來源，第 4 課會示範它有多慢。所以這一課不開它。</p>
+
+<h4 id="loading-table">三種情境對照</h4>
 <div class="table-wrap">
 <table>
-  <tr><th>做法</th><th>寫法</th><th>SQL</th><th>這一課</th></tr>
-  <tr><td><strong>Include</strong>（預先載入）</td><td><code>_db.Posts.Include(p =&gt; p.Author)</code></td><td>一句 JOIN，把作者的<strong>所有欄位</strong>一起撈回來，組成完整的 <code>Author</code> 物件</td><td>要用整個物件時</td></tr>
-  <tr><td><strong>Select 投影</strong></td><td><code>_db.Posts.Select(p =&gt; new { p.Title, p.Author.Name })</code></td><td>一句 JOIN，但只拿你點名的欄位</td><td><strong>主要用這個</strong>：回 API 只需要作者名</td></tr>
-  <tr><td>延遲載入（Lazy Loading）</td><td>碰到 <code>post.Author</code> 時自動查</td><td>每碰一次一句 SQL，就是 N+1</td><td>不開。要裝額外套件，而且正是效能問題的來源，第 4 課會示範它有多慢</td></tr>
+  <tr><th>情境</th><th>寫法</th><th>送幾句 SQL</th><th><code>post.Author</code></th><th>這一課</th></tr>
+  <tr><td><span class="hl a">情境 1</span> 不 Include</td><td><code>_db.Posts</code></td><td>1</td><td>null</td><td>不需要作者時</td></tr>
+  <tr><td><span class="hl b">情境 2</span> Include</td><td><code>_db.Posts.Include(p =&gt; p.Author)</code></td><td>1（JOIN）</td><td>完整的 <code>Author</code> 物件</td><td>要用整個作者物件時</td></tr>
+  <tr><td><span class="hl c">情境 3</span> 延遲載入</td><td>碰到 <code>post.Author</code> 時自動查</td><td>1 + 作者數</td><td>碰到才有</td><td>不開</td></tr>
 </table>
 </div>
+<p>還有一種常用的做法不填導覽屬性，直接拿欄位：<strong>Select 投影</strong> <code>_db.Posts.Select(p =&gt; new { p.Title, p.Author.Name })</code>，也是一句 JOIN，但只拿你點名的欄位。回 API 只需要作者名時，主要用這個。</p>
 <p>在 <code>Where</code> 或 <code>Select</code> 裡<strong>用到</strong>導覽屬性（<code>p.Author.Name</code>），EF Core 自己會 JOIN，不需要 <code>Include</code>。<code>Include</code> 是「把整個關聯物件載回來放在 <code>post.Author</code>」才需要。</p>
 
 <h3 id="cycle">2-4. 直接回傳 Entity 會爆：循環參照</h3>
@@ -1017,9 +1062,9 @@ await _db.SaveChangesAsync();
 </div>
 <h3>從 SQL 看出來的重點</h3>
 <ul>
-  <li><strong>必填外鍵 → INNER JOIN</strong>：<code>int AuthorId</code> 保證每篇文章都對得到作者，不需要 LEFT JOIN。改成 <code>int?</code> 就會變 LEFT JOIN（01b 的 L2-01、L2-02 有對照）</li>
+  <li><strong>必填外鍵 → INNER JOIN</strong>：<code>int AuthorId</code> 保證每篇文章都對得到作者，不需要 LEFT JOIN。改成 <code>int?</code> 就會變 LEFT JOIN（想看兩種 JOIN 的實際 SQL，<a href="01b-linq-sql-lab.html#l2-01">01b 的 L2-01</a> 和 L2-02 有）</li>
   <li><strong>投影 vs Include 的差別只在 SELECT 清單</strong>：JOIN 一樣，差在拿幾個欄位。列表頁用投影，省流量也避開循環參照</li>
-  <li><strong><code>a.Posts.Count</code> 是子查詢，不是 N+1</strong>：一句 SQL 算完所有作者的文章數。寫成「先撈作者，再 foreach 裡 <code>CountAsync</code>」就是 01b L4-04 的 N+1</li>
+  <li><strong><code>a.Posts.Count</code> 是子查詢，不是 N+1</strong>：一句 SQL 算完所有作者的文章數。寫成「先撈作者，再 foreach 裡 <code>CountAsync</code>」就是 2-3 第 (3) 段那種 N+1：每位作者多送一句 SQL</li>
   <li><strong>Cascade 刪除在 SQL 裡看不到</strong>：EF Core 只送一句 <code>DELETE FROM [Authors]</code>，文章是資料庫自己連帶刪的。這就是它可怕的地方</li>
 </ul>
 <p>想看更多關聯查詢（ThenInclude、集合的 Any、SelectMany、GroupBy），在深入課「<a href="01b-linq-sql-lab.html#level2">LINQ ↔ SQL 實驗室</a>」的 Level 2、3。</p>
