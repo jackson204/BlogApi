@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" width="1000" height="400" role="img" aria-label="類別 Post 是圖紙，new 兩次得到 post1（Title 是 Docker 入門）和 post2（Title 是 Hi）兩個物件；呼叫 post2.Describe() 時，方法本體裡的 this 就是 post2">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e;
+    --cls: #ede9fe; --cls-b: #7c3aed; --obj: #ddf4ff; --obj-b: #0969da; --call: #f6f8fa; --this: #ffe4e6; --this-b: #e11d48;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1;
+      --cls: #231a3d; --cls-b: #a78bfa; --obj: #0c2d4a; --obj-b: #58a6ff; --call: #151b23; --this: #3b1520; --this-b: #f472b6;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 15px; font-weight: 800; }
+  .b { font-size: 13.5px; font-weight: 700; }
+  .xs { font-size: 11.5px; fill: var(--muted); }
+  .code { font-size: 13px; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-variant-ligatures: none; white-space: pre; }
+  .cls { fill: var(--cls); stroke: var(--cls-b); stroke-width: 2; }
+  .obj { fill: var(--obj); stroke: var(--obj-b); stroke-width: 2; }
+  .call { fill: var(--call); stroke: var(--muted); stroke-width: 1.5; }
+  .thisbox { fill: var(--this); stroke: var(--this-b); stroke-width: 2; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .arr-this { fill: none; stroke: var(--this-b); stroke-width: 2.5; stroke-dasharray: 7 5; }
+  .f-muted { fill: var(--muted); }
+  .f-this { fill: var(--this-b); }
+  .t-this { fill: var(--this-b); font-weight: 700; }
+</style>
+<defs>
+  <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-this" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="400" rx="12"/>
+
+<!-- 類別（圖紙） -->
+<rect class="cls" x="30" y="40" width="340" height="222" rx="10"/>
+<text class="h" x="200" y="64" text-anchor="middle">類別 Post（圖紙）</text>
+<text class="code" x="48" y="92">class Post</text>
+<text class="code" x="48" y="112">{</text>
+<text class="code" x="48" y="132">    public string Title { get; set; }</text>
+<text class="code" x="48" y="152"></text>
+<text class="code" x="48" y="172">    public string Describe()</text>
+<text class="code" x="48" y="192">    {</text>
+<text class="code" x="48" y="212">        return $"標題「{<tspan class="t-this">this</tspan>.Title}」";</text>
+<text class="code" x="48" y="232">    }</text>
+<text class="code" x="48" y="252">}</text>
+
+<!-- new 兩次 → 兩個物件 -->
+<path class="arr" d="M372,86 H578" marker-end="url(#am)"/>
+<text class="b" x="475" y="78" text-anchor="middle">new</text>
+<rect class="obj" x="580" y="50" width="380" height="72" rx="10"/>
+<text class="code" x="770" y="78" text-anchor="middle">new Post { Title = "Docker 入門" }</text>
+<text class="xs" x="770" y="104" text-anchor="middle">物件 post1，自己的 Title 是 Docker 入門</text>
+
+<path class="arr" d="M372,196 H578" marker-end="url(#am)"/>
+<text class="b" x="475" y="188" text-anchor="middle">new</text>
+<rect class="obj" x="580" y="160" width="380" height="72" rx="10"/>
+<text class="code" x="770" y="188" text-anchor="middle">new Post { Title = "Hi" }</text>
+<text class="xs" x="770" y="214" text-anchor="middle">物件 post2，自己的 Title 是 Hi</text>
+
+<!-- 呼叫方法時的 this -->
+<rect class="call" x="30" y="300" width="340" height="56" rx="8"/>
+<text class="code" x="200" y="324" text-anchor="middle">post2.Describe()</text>
+<text class="xs" x="200" y="346" text-anchor="middle">對 post2 呼叫方法</text>
+<path class="arr" d="M372,328 H428" marker-end="url(#am)"/>
+<rect class="thisbox" x="430" y="300" width="250" height="56" rx="8"/>
+<text class="b" x="555" y="324" text-anchor="middle">方法本體裡的 <tspan class="code t-this">this</tspan></text>
+<text class="xs" x="555" y="346" text-anchor="middle">這一次執行，this 就是 post2</text>
+<path class="arr-this" d="M682,322 L770,236" marker-end="url(#at)"/>
+
+<text class="xs" x="30" y="386">換成 post1.Describe()，同一段方法本體裡的 this 就變成 post1。方法只寫在類別裡一份，但每次執行時 this 指向「這次被呼叫的那個物件」。</text>
+</svg>

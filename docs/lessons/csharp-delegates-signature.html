@@ -98,13 +98,14 @@ builder.Services.AddDbContext&lt;BlogDbContext&gt;(…);               // 呼叫
   <tr><td>參數後面的 <code>= 2</code>、<code>= null</code></td><td>選擇性參數，有預設值</td><td>可以不給；要跳過前面的用名稱指定 <code>count: 1</code></td></tr>
   <tr><td><code>string?</code>、<code>Action&lt;…&gt;?</code></td><td>可能是 <code>null</code></td><td>接到值要先檢查，或知道這個方法允許你傳 null</td></tr>
   <tr><td><code>Task&lt;X&gt;</code> 在回傳型別</td><td>非同步方法，最後會給你一個 X</td><td>要 <code>await</code> 才拿得到 X</td></tr>
-  <tr><td>第一個參數前面有 <code>this</code></td><td>擴充方法</td><td>下一節</td></tr>
+  <tr><td>第一個參數前面有 <code>this</code></td><td>擴充方法</td><td>下一節。這個 <code>this</code> 是參數修飾詞，和類別裡代表「物件自己」的 <code>this</code> 不是同一件事（<a href="csharp-class-object.html#this">類別與物件頁第 2 節</a>）</td></tr>
 </table>
 </div>
 
 <!-- ============================================================ -->
 <h2 id="extension">2. 擴充方法：第一個參數前面的 this</h2>
 <p>想對 <code>string</code> 加一個 <code>IsLongTitle()</code>，判斷標題夠不夠長。但 <code>string</code> 是 .NET 的類別，你改不了它的程式碼。C# 的解法是<strong>擴充方法（extension method）</strong>：方法寫在你自己的 static class 裡，只要第一個參數前面加 <code>this</code>，呼叫時就可以寫得像那個型別本來就有的方法。</p>
+<p>先講清楚：這裡的 <code>this</code> 是<strong>參數修飾詞</strong>，只是告訴編譯器「點前面的東西填進這個參數」。它和類別裡代表「這個物件自己」的 <code>this</code>（例如 <code>this.name = name</code>）不是同一件事，那個在<a href="csharp-class-object.html#this">類別與物件頁第 2 節</a>。</p>
 
 <p class="file-label">簡單範例：對 string 加一個方法（實際執行過）</p>
 <pre><code class="language-csharp">Console.WriteLine("EF Core 入門".IsLongTitle());                     // 擴充方法的寫法
