@@ -12,26 +12,18 @@
 <main class="page">
 
 <div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
-<h1>C# 補充：類別與物件（this、建構子、繼承、介面）</h1>
-<p class="subtitle">先分清楚「類別」和「物件」，再看懂方法裡的 <code>this</code> 是誰、建構子什麼時候被呼叫、<code>: base(…)</code> 在做什麼，最後把 abstract 類別和介面放進同一張圖。</p>
+<h1>C# 補充：類別與物件（this、建構子、static、繼承、介面）</h1>
+<p class="subtitle">先分清楚「類別」和「物件」，再看懂方法裡的 <code>this</code> 是誰、建構子什麼時候被呼叫、<code>static</code> 為什麼沒有 this、<code>: base(…)</code> 在做什麼，最後把 abstract 類別和介面放進同一張圖。</p>
 <div class="tags">
-  <span class="tag">類別</span><span class="tag">物件</span><span class="tag">new</span><span class="tag">this</span>
+  <span class="tag">類別</span><span class="tag">物件</span><span class="tag">new</span><span class="tag">this</span><span class="tag">static</span>
   <span class="tag">建構子</span><span class="tag">readonly</span><span class="tag">record</span><span class="tag">init</span><span class="tag">with</span><span class="tag">主要建構子</span>
   <span class="tag">繼承</span><span class="tag">base</span><span class="tag">protected</span><span class="tag">virtual</span><span class="tag">override</span>
-  <span class="tag">abstract</span><span class="tag">介面</span><span class="tag">IActionResult</span>
+  <span class="tag">abstract</span><span class="tag">介面</span>
 </div>
 
 <div class="callout">
-<p>📌 <strong>什麼時候會用到這頁</strong>：第 1 課你寫的這幾行，每一行都用到這頁的一個概念：</p>
-<ul>
-  <li><code>new Post { Title = request.Title, … }</code>：建構子、物件初始設定式（第 3 節）</li>
-  <li><code>public record PostRequest(string Title, string Content)</code>：有參數的建構子，你其實已經寫過（第 3 節）</li>
-  <li><code>private readonly BlogDbContext _db;</code>、<code>_db = db;</code>：<code>this</code> 什麼時候可以省、<code>readonly</code>（第 2、3 節）</li>
-  <li><code>return NotFound();</code>、<code>NoContent()</code>：繼承來的方法，一直在用卻沒寫 <code>this.</code>（第 4 節）</li>
-  <li><code>BlogDbContext(…) : base(options)</code>、<code>protected override void OnModelCreating(…)</code>：繼承（第 4 節）</li>
-  <li><code>PostsController : ControllerBase</code>、<code>Task&lt;IActionResult&gt;</code>：abstract 類別、介面（第 5 節）</li>
-</ul>
-<p>擴充方法參數前面的 <code>this string title</code> 是另一回事，在<a href="csharp-delegates-signature.html#extension">簽章頁第 2 節</a>；這頁講的 <code>this</code> 是「這個物件自己」。頁面上的範例都是單檔程式實際跑過的，編譯錯誤也是實際的訊息。</p>
+<p>📌 <strong>這頁是 C# 語法</strong>，和專案無關：類別和物件的差別、<code>this</code>、建構子、<code>static</code>、<code>: base(…)</code>、<code>override</code>、abstract、介面。頁面上的範例都是單檔程式實際跑過的，編譯錯誤也是實際的訊息。</p>
+<p>擴充方法參數前面的 <code>this string title</code> 是另一回事，在<a href="csharp-delegates-signature.html#extension">簽章頁第 2 節</a>；這頁講的 <code>this</code> 是「這個物件自己」。</p>
 </div>
 
 <nav class="toc">
@@ -40,6 +32,7 @@
     <li><a href="#class">類別與物件：圖紙和成品</a></li>
     <li><a href="#this">this：這個物件自己</a></li>
     <li><a href="#ctor">建構子：物件誕生時跑的那段程式</a></li>
+    <li><a href="#static">static：屬於類別，不屬於物件</a></li>
     <li><a href="#inherit">繼承：base、protected、virtual / override</a></li>
     <li><a href="#abstract">abstract 類別和介面</a></li>
     <li><a href="#exercise">練習：單檔程式</a></li>
@@ -48,7 +41,7 @@
 
 <!-- ============================================================ -->
 <h2 id="class">1. 類別與物件：圖紙和成品</h2>
-<p><strong>類別（class）</strong>是圖紙，寫一次；<strong>物件（object）</strong>是照圖紙做出來的成品，<code>new</code> 一次做一個。你的 <code>Post</code> 類別只有一份，但資料庫裡每一篇文章讀出來都是一個獨立的 <code>Post</code> 物件，各有自己的 <code>Title</code>。</p>
+<p><strong>類別（class）</strong>是圖紙，寫一次；<strong>物件（object）</strong>是照圖紙做出來的成品，<code>new</code> 一次做一個。同一張圖紙 new 幾次就有幾個物件，每個物件的屬性值各自獨立。</p>
 
 <div class="diagram">
 <img src="../images/class-object-this.svg" alt="類別 Post 是圖紙，new 兩次得到 post1（Title 是 Docker 入門）和 post2（Title 是 Hi）兩個物件；呼叫 post2.Describe() 時，方法本體裡的 this 就是 post2" style="width:100%;height:auto">
@@ -83,19 +76,6 @@ class Post
 // 標題「Docker 入門（修訂）」，長度 13
 // 標題「Hi」，長度 2</code></pre>
 <p>改 <code>post1.Title</code>，<code>post2</code> 完全沒動。<code>Describe()</code> 這段程式只寫了一份，卻對兩個物件印出不同的結果，差別在方法裡的 <code>this</code> 每次指的物件不同。</p>
-
-<h3 id="static-vs-instance">屬於類別的，和屬於物件的</h3>
-<div class="table-wrap">
-<table>
-  <tr><th></th><th>實例成員（沒有 static）</th><th>靜態成員（有 static）</th></tr>
-  <tr><td>屬於誰</td><td>每個物件各有一份</td><td>整個類別只有一份，不用 new</td></tr>
-  <tr><td>怎麼呼叫</td><td><code>post1.Describe()</code>，要先有物件</td><td><code>StringTools.Repeat("ab")</code>，用類別名稱</td></tr>
-  <tr><td>裡面有 this 嗎</td><td>有，就是點前面的那個物件</td><td>沒有，寫了是編譯錯誤</td></tr>
-  <tr><td>你寫過的</td><td><code>Post.Title</code>、<code>PostsController.GetById</code></td><td><code>Program.cs</code> 最上層的程式碼、擴充方法</td></tr>
-</table>
-</div>
-<p><code>static</code> 在簽章裡怎麼讀，<a href="csharp-delegates-signature.html#method">簽章頁第 1 節</a>有講；這頁接下來的東西都是「沒有 static」的那一邊。</p>
-
 <!-- ============================================================ -->
 <h2 id="this">2. this：這個物件自己</h2>
 <p>在實例方法裡，<code>this</code> 就是「<strong>這次被呼叫的那個物件</strong>」。寫 <code>post2.Describe()</code>，方法本體執行時 <code>this</code> 就是 post2；寫 <code>post1.Describe()</code>，<code>this</code> 就是 post1。<code>this.Title</code> 和直接寫 <code>Title</code> 是同一件事，所以平常都省略不寫。</p>
@@ -136,35 +116,8 @@ class AuthorBug
 // 作者：小明
 // 作者：</code></pre>
 <p><code>AuthorBug</code> 編譯會過，但 Rider 和編譯器都會警告：<code>warning CS1717: 對同一個變數進行指派; 您是否想要指派別的東西?</code>。參數 <code>name</code> 把欄位 <code>name</code> 遮住了，不寫 <code>this.</code> 就碰不到欄位。</p>
-<p>你的 <code>PostsController</code> 寫 <code>_db = db;</code> 不用 <code>this.</code>，就是因為欄位叫 <code>_db</code>、參數叫 <code>db</code>，名稱不同，不會遮住。底線開頭是 .NET 的欄位命名慣例，目的之一就是避開這個問題。</p>
-
-<h3 id="this-used">你早就在用的 this</h3>
-<div class="table-wrap">
-<table>
-  <tr><th>你寫的</th><th>完整寫法</th><th>說明</th></tr>
-  <tr><td><code>_db.Posts.FindAsync(id)</code></td><td><code>this._db.Posts.FindAsync(id)</code></td><td><code>_db</code> 是這個 Controller 物件的欄位</td></tr>
-  <tr><td><code>return NotFound();</code></td><td><code>return this.NotFound();</code></td><td><code>NotFound</code> 是父類別 <code>ControllerBase</code> 的方法，繼承下來之後就是自己的方法（第 4 節）</td></tr>
-  <tr><td><code>CreatedAtAction(nameof(GetById), …)</code></td><td><code>this.CreatedAtAction(…)</code></td><td>同上</td></tr>
-  <tr><td><code>Set&lt;Post&gt;()</code>（BlogDbContext 裡）</td><td><code>this.Set&lt;Post&gt;()</code></td><td><code>Set</code> 是父類別 <code>DbContext</code> 的方法</td></tr>
-</table>
-</div>
-
-<h3 id="this-static">static 方法裡沒有 this</h3>
-<pre><code class="language-csharp">Console.WriteLine(Author.Describe());
-
-class Author
-{
-    private string name = "小明";
-
-    public static string Describe()
-    {
-        return $"作者：{this.name}";   // static 方法裡沒有「這個物件」
-    }
-}
-
-// 編譯錯誤：
-// error CS0026: 關鍵字 'this' 在靜態屬性、靜態方法或靜態欄位初始設定式中無效</code></pre>
-<p><code>Author.Describe()</code> 用類別名稱呼叫，點前面沒有物件，所以 <code>this</code> 沒有東西可以指。static 方法只能用 static 的成員和自己的參數。</p>
+<p>常見的做法是欄位用底線開頭命名（<code>_name</code>）、參數叫 <code>name</code>，名稱不同就不會遮住，也就不用寫 <code>this.</code>。</p>
+<p>省略 <code>this</code> 的不只欄位：在 <code>Author</code> 裡呼叫自己的 <code>Describe()</code>，其實是 <code>this.Describe()</code>；從父類別繼承來的方法也一樣，寫方法名稱就是對「這個物件」呼叫（第 5 節）。</p>
 
 <div class="callout warn">
 <p>⚠️ <strong>同一個字，三種用法</strong></p>
@@ -183,20 +136,10 @@ class Author
 <p><strong>建構子（constructor）</strong>是名稱和類別相同、沒有回傳型別的特殊方法。<code>new</code> 的時候執行，<strong>每個物件剛好執行一次</strong>，執行完這個物件才能被使用。它的工作是把物件的欄位設成可用的狀態。</p>
 
 <h3 id="ctor-when">什麼時候被呼叫：每一個 new</h3>
-<p>規則只有一條：<strong>每一次 <code>new</code> 就呼叫一次建構子</strong>。差別在「誰寫了那個 new」。你的專案裡四種物件，只有一種是你自己 new 的：</p>
-<div class="table-wrap">
-<table>
-  <tr><th>類別</th><th>建構子</th><th>誰在 new、什麼時候</th></tr>
-  <tr><td><code>Post</code></td><td>你沒寫，編譯器給一個無參數的</td><td>你自己：<code>Create</code> 裡的 <code>new Post { … }</code>；另外 EF Core 從資料庫讀一筆出來時也 new 一個</td></tr>
-  <tr><td><code>PostRequest</code></td><td><code>record PostRequest(string Title, string Content)</code> 就是建構子</td><td>ASP.NET Core 的 Model Binding：把請求的 JSON 拆成 Title、Content 之後呼叫它</td></tr>
-  <tr><td><code>PostsController</code></td><td><code>PostsController(BlogDbContext db)</code></td><td>ASP.NET Core：<strong>每個請求</strong>進來 new 一個，請求結束丟掉（<a href="01-efcore-crud.html#wiring">第 1 課 3-8</a>）</td></tr>
-  <tr><td><code>BlogDbContext</code></td><td><code>BlogDbContext(DbContextOptions&lt;BlogDbContext&gt; options)</code></td><td>DI：要建 PostsController 時發現它需要一個，先 new 這個（<a href="01-efcore-crud.html#ctor">第 1 課 3-3</a>、<a href="01-efcore-crud.html#flow-3-3">3-8 的 ③-3</a>）</td></tr>
-</table>
-</div>
-<p>後兩個是框架替你 new 的，所以你從來沒寫過 <code>new PostsController(…)</code>，但建構子一樣每次都跑。第 1 課 3-8 用印字證明過：程式啟動時一個都沒 new，請求進來才 new。</p>
+<p>規則只有一條：<strong>每一次 <code>new</code> 就呼叫一次建構子</strong>。不管那個 <code>new</code> 是自己寫的，還是別人的程式（例如框架）替你寫的，建構子都在那一刻跑一次，物件做好才交到你手上。</p>
 
 <h3 id="ctor-order">沒寫建構子時，以及三段程式的順序</h3>
-<p>類別裡一個建構子都沒寫，編譯器會補一個<strong>無參數</strong>的，什麼都不做。你的 <code>Post</code> 就是這樣，所以 <code>new Post()</code> 和 <code>new Post { Title = "Hi" }</code> 都合法。後者的大括號叫<strong>物件初始設定式</strong>，它<strong>不是</strong>建構子的一部分，是 new 完之後再逐一設定屬性。三段程式的順序：</p>
+<p>類別裡一個建構子都沒寫，編譯器會補一個<strong>無參數</strong>的，什麼都不做。一個只寫了屬性的類別，<code>new Post()</code> 和 <code>new Post { Title = "Hi" }</code> 都合法。後者的大括號叫<strong>物件初始設定式</strong>，它<strong>不是</strong>建構子的一部分，是 new 完之後再逐一設定屬性。三段程式的順序：</p>
 <pre><code class="language-csharp">Console.WriteLine("開始 new Post { Title = \"Hi\" }");
 var post = new Post { Title = "Hi" };
 Console.WriteLine($"new 完成，post.Title = {post.Title}");
@@ -233,7 +176,7 @@ class Post
 //   ② 建構子本體，這時 Title 是「」
 //   ③ 物件初始設定式：Title = 「Hi」
 // new 完成，post.Title = Hi</code></pre>
-<p>順序固定是：① 欄位和屬性宣告時的 <code>= …</code> → ② 建構子本體 → ③ <code>{ … }</code> 裡的設定。所以你的 <code>Post</code> 寫 <code>Title { get; set; } = string.Empty;</code>，再用 <code>new Post { Title = request.Title }</code> 蓋掉，兩段都會跑。</p>
+<p>順序固定是：① 欄位和屬性宣告時的 <code>= …</code> → ② 建構子本體 → ③ <code>{ … }</code> 裡的設定。所以一個屬性宣告時寫了 <code>= string.Empty</code>，new 的時候又用 <code>{ Title = "Hi" }</code> 蓋掉，兩段都會跑，最後留下的是 ③ 的值。</p>
 
 <h3 id="ctor-params">有參數的建構子</h3>
 <p>建構子收參數，就能要求「做這個物件一定要給我這些東西」。第 2 節的 <code>Author(string name)</code> 就是：<code>new Author("小明")</code> 一定要給名字。而且<strong>只要你自己寫了任何一個建構子，編譯器就不再補無參數的那個</strong>：</p>
@@ -251,7 +194,6 @@ class Author
 
 // 編譯錯誤：
 // error CS7036: 未提供任何可對應到 'Author.Author(string)' 之必要參數 'name' 的引數</code></pre>
-<p>這和第 1 課 3-3 的 <code>DbContext</code> 是同一件事：它有一個收 <code>DbContextOptions</code> 的建構子，所以你的 <code>BlogDbContext</code> 要先收到 options，才能交給它（第 4 節的 <code>: base(options)</code>）。</p>
 
 <h3 id="ctor-overload">多個建構子，用 : this(…) 共用</h3>
 <p>一個類別可以有好幾個建構子，參數不同就行（多載）。要避免重複寫，一個建構子可以用 <code>: this(…)</code> 先呼叫另一個：</p>
@@ -292,10 +234,10 @@ class Author
 // == new Author("小華", "編輯部")
 //   兩個參數的建構子本體
 // 作者：小華（編輯部）</code></pre>
-<p>注意順序：被 <code>: this(…)</code> 指到的那個先跑完，才輪到自己的本體。第 4 節的 <code>: base(…)</code> 寫法一樣，只是呼叫的是父類別的建構子。</p>
+<p>注意順序：被 <code>: this(…)</code> 指到的那個先跑完，才輪到自己的本體。第 5 節的 <code>: base(…)</code> 寫法一樣，只是呼叫的是父類別的建構子。</p>
 
 <h3 id="ctor-readonly">readonly：只有建構子能設</h3>
-<p>你的 <code>private readonly BlogDbContext _db;</code> 的 <code>readonly</code>，意思是這個欄位<strong>只能在宣告時或建構子裡設定</strong>，之後任何方法都改不了：</p>
+<p><code>readonly</code> 加在欄位上，意思是這個欄位<strong>只能在宣告時或建構子裡設定</strong>，之後任何方法都改不了。想保證「這個東西 new 完就不會被換掉」，就標它：</p>
 <pre><code class="language-csharp">var a = new Author("小明");
 a.Rename("小華");
 
@@ -316,16 +258,10 @@ class Author
 
 // 編譯錯誤：
 // error CS0191: 無法指派給唯讀欄位 (除非位於建構函式內; 或位於已定義此欄位的類型中，僅供初始化的 Setter 內; 或位於變數初始設定式內)</code></pre>
-<p>Controller 收到的 <code>BlogDbContext</code> 在整個請求期間不該被換掉，標 <code>readonly</code> 讓編譯器替你擋。</p>
+<p>常見用法：建構子收進來、之後整個物件生命期都不該被換掉的東西（設定、別的服務物件），就標 <code>readonly</code>，讓編譯器替你擋。</p>
 
-<h3 id="ctor-record">你已經寫過有參數的建構子：record</h3>
-<pre><code class="language-csharp">public record PostRequest(
-    [Required, MaxLength(200)] string Title,
-    [Required] string Content);</code></pre>
-<p>類別名稱後面直接接括號和參數，這叫<strong>主要建構子（primary constructor）</strong>。對 <code>record</code> 來說，這一行同時宣告了建構子 <code>PostRequest(string Title, string Content)</code> 和兩個唯讀屬性 <code>Title</code>、<code>Content</code>。Model Binding 把 JSON 拆開後就是呼叫這個建構子。</p>
-
-<h4 id="record">record 是什麼：專門裝資料的類別</h4>
-<p><code>record</code> 是一種 class，差別是編譯器替你多做了幾件「裝資料的類別」都需要的事。同樣一份資料，用 record 一行寫完，用 class 要自己寫建構子和兩個屬性，而且還是少了下面幾項：</p>
+<h3 id="record">record：專門裝資料的類別</h3>
+<p><code>record</code> 是一種 class，專門用來裝資料。宣告時把屬性直接寫在名稱後面的括號裡：<code>record PostRequest(string Title, string Content);</code>，這一行就同時宣告了建構子 <code>PostRequest(string Title, string Content)</code> 和兩個唯讀屬性 <code>Title</code>、<code>Content</code>。除此之外，編譯器還替你多做了幾件「裝資料的類別」都需要的事。同樣一份資料，用 class 要自己寫建構子和兩個屬性，而且還是少了下面幾項：</p>
 <div class="table-wrap">
 <table>
   <tr><th></th><th><code>record PostRequest(string Title, string Content)</code></th><th>自己寫的 class</th></tr>
@@ -396,19 +332,9 @@ record PostRequest(string Title, string Content);
 
 // 編譯錯誤：
 // error CS8852: 只有物件初始設定式中，或執行個體建構函式中 'this' 或 'base' 上僅供初始化的屬性或索引子 'PostRequest.Title' 或 'init' 存取子可以指派。</code></pre>
-<p>要「改」只能用 <code>with</code> 做一份新的。這就是 record 的用途：<strong>從請求來、往回應去的資料</strong>，只需要裝著、不改內容、比內容，用 record 最省事，所以 <code>PostRequest</code> 是 record，第 2a 課的 <code>AuthorRequest</code>、<code>PostResponse</code> 也是。EF Core 的實體 <code>Post</code> 則維持 class：<code>Update</code> 裡 <code>post.Title = request.Title</code> 是在原地改同一個物件，EF Core 靠 <code>Id</code> 追蹤它是哪一筆，和 record「不改、比內容」的性質剛好相反。</p>
-<p>一般的 <code>class</code> 從 C# 12 起也能這樣寫，Rider 看到你的 <code>PostsController</code> 可能會提議改成：</p>
-<pre><code class="language-csharp">public class PostsController(BlogDbContext db) : ControllerBase
-{
-    // 不用宣告欄位、不用寫建構子本體，整個類別裡直接用 db
-    [HttpGet("{id}")]
-    public async Task&lt;ActionResult&lt;Post&gt;&gt; GetById(int id)
-    {
-        var post = await db.Posts.FindAsync(id);
-        …
-    }
-}</code></pre>
-<p>意思一樣，少寫三行。差別只有一個：主要建構子的參數<strong>不是 readonly</strong>，類別裡任何地方都能改它，編譯器不會擋（實際執行過：下面的 <code>start++</code> 編譯會過、輸出 12）。要不要改用，看你喜不喜歡多那層保護；這份筆記的範例都維持 <code>private readonly</code> 加建構子的寫法。</p>
+<p>要「改」只能用 <code>with</code> 做一份新的。這就是 record 適合的場合：<strong>只需要裝著、不改內容、比內容</strong>的資料。會在原地被修改、靠編號認身分的東西，維持 class。</p>
+<h4 id="primary-ctor">主要建構子（primary constructor）</h4>
+<p>類別名稱後面直接接括號和參數，這叫<strong>主要建構子</strong>。上面 record 的寫法就是一種；一般的 <code>class</code> 從 C# 12 起也能這樣寫，參數在整個類別裡都能直接用，不用宣告欄位、不用寫建構子本體：</p>
 <pre><code class="language-csharp">var c = new Counter(10);
 c.Bump();
 c.Bump();
@@ -427,20 +353,102 @@ class Counter(int start)
 
 // 輸出：
 // Current = 12</code></pre>
+<p>和「欄位加建構子」的寫法差別只有一個：主要建構子的參數<strong>不是 readonly</strong>，類別裡任何地方都能改它，編譯器不會擋（上面的 <code>start++</code> 編譯會過、輸出 12）。要不要用，看你喜不喜歡多那層保護；這份筆記的範例都維持 <code>private readonly</code> 加建構子的寫法。Rider 看到「欄位加建構子」的類別，可能會提議改成主要建構子，接不接受都可以。</p>
 
 <!-- ============================================================ -->
-<h2 id="inherit">4. 繼承：base、protected、virtual / override</h2>
-<p><code>class 子類別 : 父類別</code> 的意思是：<strong>子類別拿到父類別所有 public 和 protected 的成員</strong>，自己再加新的或換掉其中幾個。你的兩個類別都是這樣來的：</p>
+<h2 id="static">4. static：屬於類別，不屬於物件</h2>
+<p>前三節的欄位、方法、建構子都是「每個物件各有一份」：post1 有自己的 Title，post2 有自己的 Title。但有些東西天生只該有一份，例如「到目前為止 new 了幾個 Author」，它不屬於哪一個 Author，屬於整個類別。這種成員加 <code>static</code>。</p>
+
+<p class="file-label">簡單範例：三個物件共用同一份 Count（實際執行過）</p>
+<pre><code class="language-csharp">Console.WriteLine($"還沒 new：Author.Count = {Author.Count}");
+
+var a = new Author("小明");
+var b = new Author("小華");
+var c = new Author("小芳");
+
+Console.WriteLine($"new 了三個：Author.Count = {Author.Count}");
+Console.WriteLine(a.Describe());
+Console.WriteLine(c.Describe());
+
+class Author
+{
+    public static int Count;            // static 欄位：整個類別只有一份，不屬於任何物件
+
+    private readonly string name;       // 實例欄位：每個物件各有一份
+    private readonly int number;
+
+    public Author(string name)
+    {
+        this.name = name;
+        Count++;                        // 三個物件的建構子改的是同一份 Count
+        number = Count;
+    }
+
+    public string Describe() =&gt; $"第 {number} 位作者：{name}";
+}
+
+// 輸出：
+// 還沒 new：Author.Count = 0
+// new 了三個：Author.Count = 3
+// 第 1 位作者：小明
+// 第 3 位作者：小芳</code></pre>
+<p>三個物件的建構子改的是同一個 <code>Count</code>，所以最後是 3；<code>number</code> 沒有 static，每個物件各記自己的號碼。存取 static 成員用<strong>類別名稱</strong>：<code>Author.Count</code>，不用先 new。反過來用物件去存取它是編譯錯誤：</p>
+<pre><code class="language-csharp">var a = new Author("小明");
+Console.WriteLine(a.Count);                 // 用物件存取 static 成員
+
+// 編譯錯誤：
+// error CS0176: 成員 'Author.Count' 無法以執行個體參考進行存取; 請改用類型名稱</code></pre>
+
+<h3 id="static-method">static 方法：用類別名稱呼叫，裡面沒有 this</h3>
+<p>方法也可以 static。它不屬於任何物件，所以不用 new、用類別名稱呼叫；也因為不屬於任何物件，本體裡<strong>沒有 this</strong>，碰不到實例欄位：</p>
+<pre><code class="language-csharp">Console.WriteLine(Author.Describe());
+
+class Author
+{
+    private string name = "小明";
+
+    public static string Describe()
+    {
+        return $"作者：{this.name}";   // static 方法裡沒有「這個物件」
+    }
+}
+
+// 編譯錯誤：
+// error CS0026: 關鍵字 'this' 在靜態屬性、靜態方法或靜態欄位初始設定式中無效</code></pre>
+<p><code>Author.Describe()</code> 用類別名稱呼叫，點前面沒有物件，所以 <code>this</code> 沒有東西可以指。static 方法只能用 static 的成員和自己的參數，適合放「只靠參數就能算出結果」的工具方法。</p>
+
+<h3 id="static-class">static class：整個類別都不能 new</h3>
+<p>一個類別裡全部都是 static 成員（工具類別）時，類別本身也標 <code>static</code>，編譯器就會擋掉 new：</p>
+<pre><code class="language-csharp">var tools = new StringTools();              // new 一個 static class
+
+static class StringTools
+{
+    public static string Repeat(string text, int count = 2) =&gt; string.Concat(Enumerable.Repeat(text, count));
+}
+
+// 編譯錯誤：
+// error CS0712: 無法建立靜態類別 'StringTools' 的執行個體</code></pre>
+<p>簽章頁<a href="csharp-delegates-signature.html#method">第 1 節</a>的 <code>StringTools.Repeat("ab")</code>、<a href="csharp-delegates-signature.html#extension">第 2 節</a>的擴充方法，放的都是這種類別。</p>
+
+<h3 id="static-vs-instance">屬於類別的，和屬於物件的</h3>
 <div class="table-wrap">
 <table>
-  <tr><th>你寫的</th><th>父類別</th><th>沒寫就有的東西</th></tr>
-  <tr><td><code>BlogDbContext : DbContext</code></td><td>EF Core 的 <code>DbContext</code></td><td><code>SaveChangesAsync()</code>、<code>Set&lt;Post&gt;()</code>、<code>Add</code>、<code>Remove</code>、<code>OnModelCreating</code></td></tr>
-  <tr><td><code>PostsController : ControllerBase</code></td><td>ASP.NET Core 的 <code>ControllerBase</code></td><td><code>NotFound()</code>、<code>NoContent()</code>、<code>CreatedAtAction(…)</code>、<code>Ok(…)</code>、<code>Request</code>、<code>User</code>（<a href="01-efcore-crud.html#controllerbase">第 1 課 3-1</a>）</td></tr>
+  <tr><th></th><th>實例成員（沒有 static）</th><th>靜態成員（有 static）</th></tr>
+  <tr><td>屬於誰</td><td>每個物件各有一份</td><td>整個類別只有一份</td></tr>
+  <tr><td>怎麼存取</td><td><code>a.Describe()</code>，要先有物件</td><td><code>Author.Count</code>、<code>StringTools.Repeat("ab")</code>，用類別名稱，不用 new</td></tr>
+  <tr><td>裡面有 this 嗎</td><td>有，就是點前面的那個物件</td><td>沒有，寫了是編譯錯誤</td></tr>
+  <tr><td>什麼時候用</td><td>資料和行為屬於某一個物件</td><td>計數器、共用的設定、只靠參數就能算的工具方法</td></tr>
 </table>
 </div>
+<p>這頁後面的繼承、abstract、介面，都是「沒有 static」那一邊的事。</p>
+
+<!-- ============================================================ -->
+<h2 id="inherit">5. 繼承：base、protected、virtual / override</h2>
+<p><code>class 子類別 : 父類別</code> 的意思是：<strong>子類別拿到父類別所有 public 和 protected 的成員</strong>，自己再加新的或換掉其中幾個。</p>
+<p>.NET 的框架大多這樣用：你寫一個子類別，繼承框架給的父類別，父類別裡寫好的方法不用寫就有，你只補自己的部分。</p>
 
 <h3 id="inherit-ctor">建構子的順序：父類別先跑，: base(…) 把東西交上去</h3>
-<p>new 一個子類別物件時，<strong>父類別的建構子一定先跑完</strong>，才輪到子類別的本體。父類別的建構子要參數的話，子類別用 <code>: base(…)</code> 交給它。你的 <code>BlogDbContext(…) : base(options)</code> 就是這樣：先把 options 交給 <code>DbContext</code> 的建構子，它跑完，才跑你的空本體。</p>
+<p>new 一個子類別物件時，<strong>父類別的建構子一定先跑完</strong>，才輪到子類別的本體。父類別的建構子要參數的話，子類別用 <code>: base(…)</code> 交給它。</p>
 
 <div class="diagram">
 <div class="mermaid">
@@ -523,22 +531,12 @@ class Staff : Author
 
 // 編譯錯誤（指在 Staff 建構子那一行）：
 // error CS7036: 未提供任何可對應到 'Author.Author(string)' 之必要參數 'name' 的引數</code></pre>
-<p>和第 3 節 <code>new Author()</code> 的錯誤是同一個編號：沒寫 <code>: base(…)</code> 等於寫 <code>: base()</code>，也就是想呼叫父類別的無參數建構子，但它不存在。<code>DbContext</code> 的情況在 <a href="01-efcore-crud.html#ctor">第 1 課 3-3</a> 用反射列過：它有一個 <code>protected</code> 無參數建構子和一個 <code>public DbContext(DbContextOptions)</code>，所以不寫 <code>: base(options)</code> 編譯會過，但 options 送不進去。實際跑一個沒寫 <code>: base(options)</code> 的 DbContext（用 <code>UseSqlServer</code> 做好 options 傳進建構子，再讀 <code>Database.ProviderName</code>），第一次用到它就丟例外：</p>
-<pre><code class="nohighlight">InvalidOperationException: No database provider has been configured for this DbContext. A provider can be configured by overriding the 'DbContext.OnConfiguring' method or by using 'AddDbContext' on the application service provider. If 'AddDbContext' is used, then also ensure that your DbContext type accepts a DbContextOptions&lt;TContext&gt; object in its constructor and passes it to the base constructor for DbContext.</code></pre>
-<p>最後一句講的就是這件事：建構子要收 <code>DbContextOptions&lt;TContext&gt;</code>，而且要「passes it to the base constructor」。</p>
-
+<p>和第 3 節 <code>new Author()</code> 的錯誤是同一個編號：沒寫 <code>: base(…)</code> 等於寫 <code>: base()</code>，也就是想呼叫父類別的無參數建構子，但它不存在。</p>
 <h3 id="inherit-protected">protected：子類別用得到，外面用不到</h3>
-<p>第 1 課的修飾詞只用到 <code>public</code> 和 <code>private</code>。<code>protected</code> 在中間：<strong>自己和子類別</strong>看得到，其他類別看不到。上面的 <code>protected readonly string name</code> 就是讓 <code>Staff</code> 的 <code>Describe</code> 能讀 <code>name</code>，但 <code>Program.cs</code> 不能寫 <code>s.name</code>。</p>
-<p>你的 <code>protected override void OnModelCreating(ModelBuilder modelBuilder)</code> 也是：這個方法是給 EF Core 透過父類別 <code>DbContext</code> 呼叫的，Controller 不應該、也不能呼叫 <code>_db.OnModelCreating(…)</code>。</p>
+<p>前面只用到 <code>public</code> 和 <code>private</code>。<code>protected</code> 在中間：<strong>自己和子類別</strong>看得到，其他類別看不到。上面的 <code>protected readonly string name</code> 就是讓 <code>Staff</code> 的 <code>Describe</code> 能讀 <code>name</code>，但類別外面不能寫 <code>s.name</code>。框架常把「給子類別覆寫、外面不該直接呼叫」的方法標成 <code>protected</code>。</p>
 
 <h3 id="inherit-override">virtual / override：父類別允許你換掉它的方法</h3>
-<p>父類別把方法標 <code>virtual</code>，意思是「子類別可以換成自己的版本」；子類別用 <code>override</code> 換掉；換掉之後還想用父類別原本的，寫 <code>base.方法()</code>。上面的 <code>Staff.Describe</code> 就是三件事一起用：<code>override</code> 換掉、本體裡 <code>base.Describe()</code> 拿父類別的結果再補一段。</p>
-<p>你的 <code>OnModelCreating</code> 是同一回事。查 EF Core 10.0.13 的原始碼，<code>DbContext</code> 裡它長這樣（<a href="https://github.com/dotnet/efcore/blob/v10.0.13/src/EFCore/DbContext.cs#L561-L563" target="_blank">GitHub 第 561–563 行</a>）：</p>
-<pre><code class="language-csharp">protected internal virtual void OnModelCreating(ModelBuilder modelBuilder)
-{
-}</code></pre>
-<p>本體是空的（用反射看它的 IL 只有一個 <code>ret</code> 指令）。所以你的版本沒寫 <code>base.OnModelCreating(modelBuilder)</code> 不會漏掉任何事。但這是查過才知道的；<strong>一般原則是：不確定父類別的版本做了什麼，就在自己的 override 裡先呼叫 <code>base.XXX(…)</code></strong>，多呼叫一個空方法沒有成本，漏呼叫一個有內容的方法會出怪事。</p>
-
+<p>父類別把方法標 <code>virtual</code>，意思是「子類別可以換成自己的版本」；子類別用 <code>override</code> 換掉；換掉之後還想用父類別原本的，寫 <code>base.方法()</code>。上面的 <code>Staff.Describe</code> 就是三件事一起用：<code>override</code> 換掉、本體裡 <code>base.Describe()</code> 拿父類別的結果再補一段。<strong>一般原則：不確定父類別的版本做了什麼，就在自己的 override 裡先呼叫 <code>base.XXX(…)</code></strong>，多呼叫一個空方法沒有成本，漏呼叫一個有內容的方法會出怪事。</p>
 <h3 id="inherit-isa">子類別物件可以放進父類別型別的變數</h3>
 <p><code>Staff</code> 是一種 <code>Author</code>，所以 <code>Author</code> 型別的變數、<code>List&lt;Author&gt;</code>、收 <code>Author</code> 的參數，都能放 <code>Staff</code> 物件。呼叫 <code>virtual</code> 方法時，跑的是<strong>物件實際型別</strong>的版本，不是變數型別的版本：</p>
 <pre><code class="language-csharp">// 變數型別是父類別 Author，但放進去的可以是 Author 或它的子類別
@@ -558,11 +556,11 @@ Console.WriteLine($"one 的實際型別：{one.GetType().Name}");
 // 作者：小華（編輯部）
 // 作者：小芳（行銷部）
 // one 的實際型別：Staff</code></pre>
-<p>這就是簽章頁 <a href="csharp-delegates-signature.html#generic">第 1 節</a>的 <code>where TContext : DbContext</code> 在說的事：<code>AddDbContext&lt;BlogDbContext&gt;</code> 填得進去，因為 <code>BlogDbContext</code> 是一種 <code>DbContext</code>；EF Core 拿到它之後，當成 <code>DbContext</code> 來呼叫 <code>OnModelCreating</code>，跑的是你 override 的版本。</p>
+<p>簽章頁 <a href="csharp-delegates-signature.html#generic">第 1 節</a>的泛型限制 <code>where T : Author</code> 就是這件事：填進去的可以是 <code>Author</code>，也可以是 <code>Staff</code>。</p>
 
 <!-- ============================================================ -->
-<h2 id="abstract">5. abstract 類別和介面</h2>
-<p>第 4 節的 <code>Author</code> 自己可以 new，也可以被繼承。有時候父類別<strong>只是用來被繼承的</strong>，自己 new 出來沒意義，甚至有些方法它寫不出來、要子類別才知道怎麼做。這就是 <code>abstract</code>；再極端一點，連一行程式都沒有、只剩「約定」，就是<strong>介面（interface）</strong>。</p>
+<h2 id="abstract">6. abstract 類別和介面</h2>
+<p>第 5 節的 <code>Author</code> 自己可以 new，也可以被繼承。有時候父類別<strong>只是用來被繼承的</strong>，自己 new 出來沒意義，甚至有些方法它寫不出來、要子類別才知道怎麼做。這就是 <code>abstract</code>；再極端一點，連一行程式都沒有、只剩「約定」，就是<strong>介面（interface）</strong>。</p>
 
 <div class="table-wrap">
 <table>
@@ -572,7 +570,6 @@ Console.WriteLine($"one 的實際型別：{one.GetType().Name}");
   <tr><td>子類別一定要做什麼</td><td>不用</td><td>把每個 abstract 方法 <code>override</code> 寫完</td><td>把每個方法都寫出來（實作）</td></tr>
   <tr><td>一個類別可以接幾個</td><td colspan="2">父類別只能有一個</td><td>介面可以同時實作很多個</td></tr>
   <tr><td>讀法</td><td colspan="2">「X <strong>是一種</strong> Y」</td><td>「X <strong>做得到</strong> Y」</td></tr>
-  <tr><td>你碰過的</td><td><code>DbContext</code>、<code>Author</code></td><td><code>ControllerBase</code>、<code>DbSet&lt;T&gt;</code></td><td><code>IActionResult</code>、<code>IQueryable&lt;T&gt;</code>、<code>IServiceCollection</code>、<code>IConfiguration</code></td></tr>
 </table>
 </div>
 
@@ -653,16 +650,10 @@ var item = new IPublishable();         // 介面也不能 new
 // error CS0144: 無法建立抽象類型或介面 'Content' 的執行個體
 // error CS0144: 無法建立抽象類型或介面 'IPublishable' 的執行個體</code></pre>
 
-<h3 id="abstract-used">你早就在用的</h3>
-<ul>
-  <li><strong><code>ControllerBase</code> 是 abstract 類別</strong>（用反射查 <code>typeof(ControllerBase).IsAbstract</code> 是 True）。它寫好了 <code>NotFound()</code>、<code>NoContent()</code> 這些方法給你用，但它自己不能 new，一定要有一個像 <code>PostsController</code> 的子類別</li>
-  <li><strong><code>IActionResult</code> 是介面</strong>。你的 <code>Update</code> 回傳型別寫 <code>Task&lt;IActionResult&gt;</code>，本體裡一個 <code>return NotFound();</code> 一個 <code>return NoContent();</code>。這兩個方法回傳的是<strong>不同類別</strong>的物件（<code>NotFoundResult</code> 和 <code>NoContentResult</code>），能寫在同一個 <code>return</code> 位置，就是因為兩個類別都實作了 <code>IActionResult</code>。ASP.NET Core 拿到之後只管呼叫介面約定的那個方法，不管實際是哪個類別</li>
-  <li><strong><code>IQueryable&lt;T&gt;</code> 是介面</strong>，<code>DbSet&lt;Post&gt;</code> 實作它，所以 <code>Where</code> 這些掛在 <code>IQueryable&lt;T&gt;</code> 上的擴充方法在 <code>_db.Posts</code> 用得了（<a href="csharp-delegates-signature.html#ext-used">簽章頁第 2 節</a>）。<code>DbSet&lt;T&gt;</code> 本身也是 abstract 類別</li>
-  <li><code>IServiceCollection</code>、<code>IConfiguration</code> 也是介面。第 3 課 DI 會自己寫介面，例如 <code>IPostService</code>，讓 Controller 只依賴約定、不依賴某個實作類別</li>
-</ul>
+<p>.NET 本身到處是這兩種東西：所有集合都實作 <code>IEnumerable&lt;T&gt;</code> 這個介面，所以 <code>foreach</code> 和 LINQ 對 <code>List</code>、陣列都能用；框架給你繼承的父類別很多是 abstract，自己不能 new，一定要寫子類別才用得到。</p>
 
 <!-- ============================================================ -->
-<h2 id="exercise">6. 練習：單檔程式</h2>
+<h2 id="exercise">7. 練習：單檔程式</h2>
 <p>和簽章頁一樣用單檔程式（<a href="https://learn.microsoft.com/dotnet/core/sdk/file-based-apps" target="_blank">file-based apps</a>）：建 <code>class-lab.cs</code>，在那個資料夾執行 <code>dotnet run class-lab.cs</code>。</p>
 
 <div class="exercise">
@@ -741,14 +732,14 @@ class Staff : Author
 <ul>
   <li>(2) 的兩行「建構子」順序是先 Author 再 Staff：<code>: base(name)</code> 讓父類別先跑完</li>
   <li>(3) 的 <code>Print()</code> 寫在 <code>Author</code> 裡，本體呼叫的是 <code>Describe()</code>，也就是 <code>this.Describe()</code>。對 Staff 物件呼叫時 <code>this</code> 是 Staff，所以跑的是 override 過的版本，印出有部門的那行</li>
-  <li><code>List&lt;IPrintable&gt;</code> 裡放的是 Author 和 Staff 兩種物件，迴圈那行只知道「它做得到 Print」，不用知道實際是哪個類別。這和 <code>Task&lt;IActionResult&gt;</code> 能同時回 <code>NotFound()</code> 和 <code>NoContent()</code> 是同一件事</li>
+  <li><code>List&lt;IPrintable&gt;</code> 裡放的是 Author 和 Staff 兩種物件，迴圈那行只知道「它做得到 Print」，不用知道實際是哪個類別</li>
 </ul>
 </div>
 </details>
 </div>
 
 <nav class="footer-nav">
-  <a href="01-efcore-crud.html#ctor">← 回第 1 課 3-3</a>
+  <span></span>
   <a href="../index.html">回目錄</a>
   <a href="csharp-delegates-signature.html">C# 補充：看懂方法簽章 →</a>
 </nav>

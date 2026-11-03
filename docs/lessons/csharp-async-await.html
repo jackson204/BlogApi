@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C# 補充：Task 與 async / await</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>C# 補充：Task 與 async / await</h1>
+<p class="subtitle">先看「等」有兩種等法，再看 <code>Task</code> 是什麼、<code>await</code> 做了什麼、幾件事怎麼一起等，最後是五個常見的坑，每一個都實際跑給你看。</p>
+<div class="tags">
+  <span class="tag">Task</span><span class="tag">Task&lt;T&gt;</span><span class="tag">async</span><span class="tag">await</span>
+  <span class="tag">非同步</span><span class="tag">Task.Delay</span><span class="tag">Task.WhenAll</span><span class="tag">執行緒</span>
+  <span class="tag">.Result</span><span class="tag">async void</span><span class="tag">CS4014</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>這頁是 C# 語法</strong>，和專案無關。簽章頁看到回傳型別是 <code>Task&lt;X&gt;</code> 時只需要知道「要 await 才拿得到 X」；這頁講的是等的時候發生了什麼事。範例都是單檔程式實際跑過的，時間數字每次會差幾 ms。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#sync">「等」有兩種等法</a></li>
+    <li><a href="#task">Task：一件還在做的事的收據</a></li>
+    <li><a href="#await">await：等它做完，拆出結果</a></li>
+    <li><a href="#whenall">幾件事一起等：Task.WhenAll</a></li>
+    <li><a href="#pitfalls">常見的坑</a></li>
+    <li><a href="#exercise">練習：單檔程式</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="sync">1. 「等」有兩種等法</h2>
+<p>程式常常要等：等資料庫回資料、等檔案讀完、等網路回應。等的方式有兩種：<strong>卡住等</strong>，這條執行緒站在原地什麼都不做；<strong>放掉等</strong>，這條執行緒先去做別的事，事情好了再回來接著跑。<code>Thread.Sleep</code> 是前者，<code>await Task.Delay</code> 是後者。</p>
+
+<p class="file-label">簡單範例：兩種等法各等 1 秒，印時間和執行緒編號（實際執行過）</p>
+<pre><code class="language-csharp">using System.Diagnostics;
+
+var sw = Stopwatch.StartNew();
+
+Log("開始");
+Log("同步版：Thread.Sleep(1000) 開始等");
+Thread.Sleep(1000);                 // 這條執行緒卡在這裡 1 秒，什麼都不能做
+Log("同步版：等完了");
+
+Log("非同步版：await Task.Delay(1000) 開始等");
+await Task.Delay(1000);             // 這條執行緒被放掉去做別的事，1 秒後再接著往下跑
+Log("非同步版：等完了");
+
+void Log(string msg)
+{
+    Console.WriteLine($"[{sw.ElapsedMilliseconds,5} ms] 執行緒 {Environment.CurrentManagedThreadId}：{msg}");
+}
+
+// 輸出：
+// [    1 ms] 執行緒 2：開始
+// [    5 ms] 執行緒 2：同步版：Thread.Sleep(1000) 開始等
+// [ 1007 ms] 執行緒 2：同步版：等完了
+// [ 1007 ms] 執行緒 2：非同步版：await Task.Delay(1000) 開始等
+// [ 2011 ms] 執行緒 5：非同步版：等完了</code></pre>
+<p>兩種都等了 1 秒，差別在最後一行的執行緒編號：同步版從頭到尾都是執行緒 2，它卡著；非同步版等完回來的是<strong>執行緒 5</strong>，表示原本的執行緒 2 在等的那 1 秒被放走了，時間到了由另一條執行緒接著跑剩下的部分。</p>
+<p>為什麼在乎這個：一條執行緒同一時間只能做一件事。伺服器同時進來 100 個請求，每個都卡住等 1 秒，就要 100 條執行緒；放掉等的話，幾條執行緒就能輪流照顧 100 個請求。這就是 Web API 裡的方法幾乎都寫成 <code>async</code> 的原因。</p>
+
+<!-- ============================================================ -->
+<h2 id="task">2. Task：一件還在做的事的收據</h2>
+<p>放掉等要成立，呼叫一個「要花時間的方法」時，不能站在那裡等結果，得先拿到一個東西代表「這件事在做了」。這個東西就是 <code>Task</code>。它像一張收據：事情還沒做完也能先拿著，上面寫著做完了沒（<code>IsCompleted</code>）、做完的結果是什麼。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>回傳型別</th><th>意思</th><th>方法本體 return 什麼</th><th>await 之後拿到什麼</th></tr>
+  <tr><td><code>Task</code></td><td>一件還在做的事，做完沒有結果</td><td>什麼都不用 return</td><td>什麼都沒有，只知道做完了</td></tr>
+  <tr><td><code>Task&lt;string&gt;</code></td><td>一件還在做的事，做完會給你一個 string</td><td><code>return "…";</code>，直接 return string</td><td>一個 string</td></tr>
+</table>
+</div>
+
+<p class="file-label">簡單範例：拿到 Task 時事情還沒做完（實際執行過）</p>
+<pre><code class="language-csharp">Task&lt;string&gt; task = LoadTitleAsync();          // 拿到的是「收據」，事情還沒做完
+Console.WriteLine($"拿到 Task，IsCompleted = {task.IsCompleted}");
+
+string title = await task;                     // 等它做完，把 string 拆出來
+Console.WriteLine($"await 之後，IsCompleted = {task.IsCompleted}，結果 = {title}");
+
+Task saving = SaveAsync();                     // 沒有結果的版本：Task
+await saving;
+Console.WriteLine("SaveAsync 也做完了");
+
+async Task&lt;string&gt; LoadTitleAsync()
+{
+    await Task.Delay(500);                     // 假裝去資料庫讀，要 0.5 秒
+    return "Docker 入門";                       // 回傳型別寫 Task&lt;string&gt;，本體 return 的是 string
+}
+
+async Task SaveAsync()
+{
+    await Task.Delay(500);                     // 假裝寫入，沒有東西要回傳
+}
+
+// 輸出：
+// 拿到 Task，IsCompleted = False
+// await 之後，IsCompleted = True，結果 = Docker 入門
+// SaveAsync 也做完了</code></pre>
+<p>三個記號一起看：</p>
+<ul>
+  <li><strong>回傳型別 <code>Task&lt;string&gt;</code></strong>：呼叫的人拿到的是收據，不是 string。這是簽章的一部分，呼叫的人看得到</li>
+  <li><strong><code>async</code></strong>：修飾詞，告訴編譯器「這個方法本體裡有 await，請把本體改寫成可以暫停、再繼續的形式」。它不是簽章的一部分（<a href="csharp-delegates-signature.html#yours">簽章頁第 1 節</a>），而且本體裡有 await 的方法一定要標它</li>
+  <li><strong>本體的 <code>return "Docker 入門"</code></strong>：return 的是 string，包成 Task 的事編譯器做</li>
+</ul>
+<p>方法名稱結尾加 <code>Async</code> 是慣例，不是語法；看到它就知道回傳的是 Task、要 await。</p>
+
+<!-- ============================================================ -->
+<h2 id="await">3. await：等它做完，拆出結果</h2>
+<p><code>await</code> 做兩件事：<strong>等這張收據變成完成</strong>，然後<strong>把結果拆出來</strong>（<code>Task&lt;string&gt;</code> 拆成 string）。關鍵在「等」的方式：碰到 await 時，如果事情還沒好，<strong>這個方法先暫停，把自己的 Task 交回給呼叫它的人</strong>，呼叫的人可以先做別的；事情好了，方法再從暫停的那一行接著跑。</p>
+
+<p class="file-label">簡單範例：印出執行順序（實際執行過）</p>
+<pre><code class="language-csharp">Console.WriteLine("1. 呼叫 LoadTitleAsync");
+var task = LoadTitleAsync();
+Console.WriteLine("3. LoadTitleAsync 回來了，但事情還沒做完，先做別的");
+Console.WriteLine("4. 開始 await");
+var title = await task;
+Console.WriteLine($"6. 拿到結果：{title}");
+
+async Task&lt;string&gt; LoadTitleAsync()
+{
+    Console.WriteLine("2. LoadTitleAsync 開始，碰到 await 先暫停、把 Task 交回去");
+    await Task.Delay(500);
+    Console.WriteLine("5. 0.5 秒到了，LoadTitleAsync 從暫停的地方繼續");
+    return "Docker 入門";
+}
+
+// 輸出：
+// 1. 呼叫 LoadTitleAsync
+// 2. LoadTitleAsync 開始，碰到 await 先暫停、把 Task 交回去
+// 3. LoadTitleAsync 回來了，但事情還沒做完，先做別的
+// 4. 開始 await
+// 5. 0.5 秒到了，LoadTitleAsync 從暫停的地方繼續
+// 6. 拿到結果：Docker 入門</code></pre>
+
+<div class="diagram">
+<div class="mermaid">
+sequenceDiagram
+    participant Top as 最上層程式
+    participant Load as LoadTitleAsync
+    participant Timer as Task.Delay（計時器）
+    Top->>Load: 1. 呼叫 LoadTitleAsync()
+    Load->>Timer: 2. await Task.Delay(500)，開始計時
+    Load-->>Top: 先把 Task（收據）交回去，自己暫停
+    Note over Top: 3. 先做別的事
+    Note over Top: 4. await task，等收據變成完成
+    Timer-->>Load: 5. 0.5 秒到了，從暫停的那一行繼續，return 結果
+    Load-->>Top: 6. Task 完成，await 拆出 string
+</div>
+<div class="diagram-caption">2 和 3 的順序是重點：LoadTitleAsync 在 await 那行暫停，呼叫它的人先拿到收據繼續跑</div>
+</div>
+
+<p>注意 2 → 3：呼叫 <code>LoadTitleAsync()</code> 時它<strong>有開始跑</strong>（印了 2），跑到 <code>await Task.Delay</code> 發現要等，才暫停回來。所以 Task 不是「排隊等著被執行」，是「已經開始、卡在等待的那一行」。</p>
+<p>第 1 節的執行緒編號也能解釋了：暫停的時候執行緒被放掉；5 和 6 是由哪條執行緒接著跑，看當時誰有空。所以 await 前後不要假設是同一條執行緒。</p>
+
+<!-- ============================================================ -->
+<h2 id="whenall">4. 幾件事一起等：Task.WhenAll</h2>
+<p>三件各要 1 秒的事，逐一 <code>await</code> 要 3 秒，因為第一件做完才開始第二件。既然 Task 是收據，就可以<strong>先把三張收據都拿到手，再一起等</strong>：</p>
+<pre><code class="language-csharp">using System.Diagnostics;
+
+var sw = Stopwatch.StartNew();
+
+Console.WriteLine("== 逐一 await");
+var a = await LoadAsync("A");
+var b = await LoadAsync("B");
+var c = await LoadAsync("C");
+Console.WriteLine($"花了 {sw.ElapsedMilliseconds} ms：{a}、{b}、{c}");
+
+sw.Restart();
+Console.WriteLine("== 先全部發出去，再用 Task.WhenAll 一起等");
+Task&lt;string&gt; ta = LoadAsync("A");
+Task&lt;string&gt; tb = LoadAsync("B");
+Task&lt;string&gt; tc = LoadAsync("C");
+string[] all = await Task.WhenAll(ta, tb, tc);
+Console.WriteLine($"花了 {sw.ElapsedMilliseconds} ms：{string.Join("、", all)}");
+
+async Task&lt;string&gt; LoadAsync(string name)
+{
+    await Task.Delay(1000);                    // 每一件都要 1 秒
+    return $"{name} 好了";
+}
+
+// 輸出：
+// == 逐一 await
+// 花了 3008 ms：A 好了、B 好了、C 好了
+// == 先全部發出去，再用 Task.WhenAll 一起等
+// 花了 1000 ms：A 好了、B 好了、C 好了</code></pre>
+<p>差別只在<strong>什麼時候 await</strong>：第一段每呼叫一次就 await 一次；第二段先呼叫三次（三個計時器同時開始跑），再用 <code>Task.WhenAll</code> 把三張收據合成一張，await 它一次。<code>WhenAll</code> 回傳的是 <code>Task&lt;string[]&gt;</code>，拆出來是三個結果照順序排好的陣列。</p>
+<p>這不是「開三條執行緒」：三件事都在等計時器，等的期間誰都不占執行緒。什麼時候該這樣寫：幾件事<strong>彼此不相依</strong>（B 不需要 A 的結果）才能一起發出去。</p>
+
+<!-- ============================================================ -->
+<h2 id="pitfalls">5. 常見的坑</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>寫法</th><th>會怎樣</th></tr>
+  <tr><td>呼叫 async 方法但忘了 <code>await</code></td><td>事情在背景跑，程式不等它就往下走；它丟的例外沒有人接到</td></tr>
+  <tr><td>用 <code>.Result</code> 或 <code>.Wait()</code> 拿結果</td><td>變回卡住等；在有 UI 的程式裡會整個卡死</td></tr>
+  <tr><td><code>async void</code></td><td>沒有 Task 可以 await，例外沒地方放，直接把整個程式弄掛</td></tr>
+  <tr><td>以為例外在呼叫時就會丟</td><td>例外存在 Task 裡，<strong>await 那一行</strong>才丟出來</td></tr>
+</table>
+</div>
+
+<h3 id="pit-noawait">忘了 await：程式不等它</h3>
+<pre><code class="language-csharp">Console.WriteLine("開始");
+SaveAsync();                       // 忘了 await
+Console.WriteLine("結束（SaveAsync 還沒做完，程式就往下走了）");
+await Task.Delay(1500);            // 只是讓程式晚點結束，看 SaveAsync 後來有沒有印
+
+async Task SaveAsync()
+{
+    await Task.Delay(1000);
+    Console.WriteLine("SaveAsync 做完了");
+}
+
+// 編譯警告：
+// warning CS4014: 因為未等候此呼叫，所以在呼叫完成之前會繼續執行目前的方法。請考慮將 'await' 運算子套用至呼叫的結果。
+// 輸出：
+// 開始
+// 結束（SaveAsync 還沒做完，程式就往下走了）
+// SaveAsync 做完了</code></pre>
+<p>編譯器會警告 CS4014，Rider 也會畫底線。「結束」印在「SaveAsync 做完了」前面：沒有 await，呼叫端拿到收據就繼續跑了。如果最後那行 <code>Task.Delay(1500)</code> 拿掉，程式會在 SaveAsync 做完之前就結束。</p>
+
+<h3 id="pit-lost">忘了 await：例外不見了</h3>
+<pre><code class="language-csharp">try
+{
+    FailAsync();                   // 忘了 await：例外不會進到下面的 catch
+    Console.WriteLine("try 區塊跑完了");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"catch 到：{ex.Message}");
+}
+
+await Task.Delay(500);
+Console.WriteLine("程式結束，沒有人接到那個例外");
+
+async Task FailAsync()
+{
+    await Task.Delay(100);
+    throw new InvalidOperationException("存檔失敗");
+}
+
+// 輸出：
+// try 區塊跑完了
+// 程式結束，沒有人接到那個例外</code></pre>
+<p>例外有發生，但它被放在那張沒人拿的收據裡，<code>catch</code> 什麼都沒接到，程式也沒有掛，就這樣靜靜地過去了。這是最難找的那種 bug：存檔沒成功，卻沒有任何錯誤訊息。</p>
+
+<h3 id="pit-throws">例外在 await 那一行才丟出來</h3>
+<pre><code class="language-csharp">var task = FailAsync();
+Console.WriteLine($"拿到 Task 了，IsFaulted = {task.IsFaulted}");
+
+await Task.Delay(300);
+Console.WriteLine($"0.3 秒後，IsFaulted = {task.IsFaulted}，例外已經發生，但還沒有人接到");
+
+try
+{
+    await task;                    // 例外在這一行才丟出來
+}
+catch (InvalidOperationException ex)
+{
+    Console.WriteLine($"await 那一行 catch 到：{ex.Message}");
+}
+
+async Task FailAsync()
+{
+    await Task.Delay(100);
+    throw new InvalidOperationException("存檔失敗");
+}
+
+// 輸出：
+// 拿到 Task 了，IsFaulted = False
+// 0.3 秒後，IsFaulted = True，例外已經發生，但還沒有人接到
+// await 那一行 catch 到：存檔失敗</code></pre>
+<p>所以 <code>try</code> 要包住的是 <code>await</code> 那一行，不是呼叫方法那一行。平常寫 <code>await FailAsync()</code> 兩件事在同一行，不會有感覺；一旦把呼叫和 await 分開（第 4 節的 WhenAll 寫法就是），就要記得例外是在 await 時出現。</p>
+
+<h3 id="pit-result">.Result：變回卡住等</h3>
+<pre><code class="language-csharp">using System.Diagnostics;
+
+var sw = Stopwatch.StartNew();
+Console.WriteLine($"執行緒 {Environment.CurrentManagedThreadId}：用 .Result 硬等");
+var title = LoadTitleAsync().Result;      // 不 await，直接拿結果：這條執行緒卡住直到做完
+Console.WriteLine($"執行緒 {Environment.CurrentManagedThreadId}：{title}，卡了 {sw.ElapsedMilliseconds} ms");
+
+async Task&lt;string&gt; LoadTitleAsync()
+{
+    await Task.Delay(1000);
+    return "Docker 入門";
+}
+
+// 輸出：
+// 執行緒 2：用 .Result 硬等
+// 執行緒 2：Docker 入門，卡了 1008 ms</code></pre>
+<p>結果拿得到，但執行緒編號前後都是 2：它站在原地卡了 1 秒，第 1 節「放掉等」的好處全沒了。在 Console 程式裡只是浪費一條執行緒；在有畫面的程式（WinForms、WPF）裡會整個卡死，這頁沒示範。原則：拿到 Task 就 <code>await</code>，不要 <code>.Result</code>、<code>.Wait()</code>。</p>
+
+<h3 id="pit-void">async void：例外把程式弄掛</h3>
+<pre><code class="language-csharp">try
+{
+    FireAndForget();
+    await Task.Delay(500);
+    Console.WriteLine("這行印不到：例外已經把整個程式弄掛了");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"catch 到：{ex.Message}");
+}
+
+async void FireAndForget()         // 回傳 void：沒有 Task 可以 await，例外沒地方放
+{
+    await Task.Delay(100);
+    throw new InvalidOperationException("async void 裡的例外");
+}
+
+// 輸出（程式直接結束）：
+// Unhandled exception. System.InvalidOperationException: async void 裡的例外
+//    at Program.&lt;&lt;Main&gt;$&gt;g__FireAndForget|0_0() in …\pitfall-asyncvoid.cs:line 15
+//    at System.Threading.Tasks.Task.&lt;&gt;c.&lt;ThrowAsync&gt;b__124_1(Object state)
+//    …</code></pre>
+<p>和「忘了 await」的差別：那個例外至少還躺在收據裡；<code>async void</code> 連收據都沒有，例外沒地方放，就直接炸掉整個程式，<code>try/catch</code> 也救不了。async 方法的回傳型別永遠寫 <code>Task</code> 或 <code>Task&lt;T&gt;</code>，<code>async void</code> 只有事件處理常式那種「語法規定必須是 void」的地方才用。</p>
+
+<!-- ============================================================ -->
+<h2 id="exercise">6. 練習：單檔程式</h2>
+<p>和前兩頁一樣用單檔程式（<a href="https://learn.microsoft.com/dotnet/core/sdk/file-based-apps" target="_blank">file-based apps</a>）：建 <code>async-lab.cs</code>，在那個資料夾執行 <code>dotnet run async-lab.cs</code>。</p>
+
+<div class="exercise">
+<h3>題 1：await 一個、逐一 await 三個、一起等三個</h3>
+<p>需求，三小步都在同一個檔案，用 <code>Stopwatch</code> 量每一步花多久：</p>
+<ol>
+  <li>寫方法 <code>Task&lt;string&gt; LoadTitleAsync(int id)</code>：<code>await Task.Delay(1000)</code> 假裝讀 1 秒，回傳「文章 1」這種字串。呼叫一次並 await，印結果和耗時</li>
+  <li>逐一 await 三次（id 1、2、3），印三個結果和總耗時</li>
+  <li>先呼叫三次拿到三張 Task，用 <code>Task.WhenAll</code> 一起等，印三個結果和總耗時</li>
+</ol>
+<p><strong>💡 提示</strong>：第 3 步 <code>Task.WhenAll</code> 可以直接把三個呼叫寫在括號裡，await 之後拿到的是 <code>string[]</code>。</p>
+<p class="accept">✅ 驗收：(1) 約 1 秒；(2) 約 3 秒；(3) 約 1 秒，三個結果都在</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">async-lab.cs</p>
+<pre><code class="language-csharp">using System.Diagnostics;
+
+var sw = Stopwatch.StartNew();
+
+Console.WriteLine("== (1) await 一個 Task&lt;string&gt;");
+var one = await LoadTitleAsync(1);
+Console.WriteLine($"{one}（{sw.ElapsedMilliseconds} ms）");
+
+Console.WriteLine("== (2) 逐一 await 三個");
+sw.Restart();
+var t1 = await LoadTitleAsync(1);
+var t2 = await LoadTitleAsync(2);
+var t3 = await LoadTitleAsync(3);
+Console.WriteLine($"{t1} / {t2} / {t3}（{sw.ElapsedMilliseconds} ms）");
+
+Console.WriteLine("== (3) Task.WhenAll 一起等");
+sw.Restart();
+string[] titles = await Task.WhenAll(LoadTitleAsync(1), LoadTitleAsync(2), LoadTitleAsync(3));
+Console.WriteLine($"{string.Join(" / ", titles)}（{sw.ElapsedMilliseconds} ms）");
+
+async Task&lt;string&gt; LoadTitleAsync(int id)
+{
+    await Task.Delay(1000);                 // 假裝去資料庫讀，要 1 秒
+    return $"文章 {id}";
+}</code></pre>
+<p class="file-label">輸出（實際執行）</p>
+<pre><code class="nohighlight">== (1) await 一個 Task&lt;string&gt;
+文章 1（1007 ms）
+== (2) 逐一 await 三個
+文章 1 / 文章 2 / 文章 3（3001 ms）
+== (3) Task.WhenAll 一起等
+文章 1 / 文章 2 / 文章 3（1000 ms）</code></pre>
+<p>兩個觀察：</p>
+<ul>
+  <li>(2) 和 (3) 呼叫的是同一個方法、各三次，差別只在 await 的位置：每次都 await 是 3 秒，先拿三張收據再一起等是 1 秒</li>
+  <li>(3) 的 <code>Task.WhenAll(…)</code> 括號裡三個呼叫是依序執行的，但每個都在 <code>Task.Delay</code> 那行就暫停回來，所以三個計時器幾乎同時開始</li>
+</ul>
+</div>
+</details>
+</div>
+
+<nav class="footer-nav">
+  <a href="csharp-delegates-signature.html">← C# 補充：看懂方法簽章</a>
+  <a href="../index.html">回目錄</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>
