@@ -71,7 +71,7 @@
   <tr><td>文章 → 作者</td><td>一篇文章最多可以有幾位作者？</td><td>一位</td></tr>
 </table>
 </div>
-<p>一邊答「一」、一邊答「多」，就是一對多；答「多」的那邊（文章）叫「多的那一邊」。下面 ERD 那條線兩端的符號，標的就是這兩個答案：<code>||</code> 是「恰好一」，<code>o{</code> 是「零或多」。</p>
+<p>一邊答「一」、一邊答「多」，就是一對多；答「多」的那邊（文章）叫「多的那一邊」。</p>
 
 <p><strong>拿資料來看</strong>：用題 7 會建的資料，假設此刻 Authors 有三位作者、Posts 有三篇文章：</p>
 <div class="table-wrap">
@@ -98,9 +98,9 @@
   <li><code>AuthorId</code> 這一欄裡 <code>1</code> 出現了兩次，資料庫不禁止重複，所以同一位作者可以出現在很多列。「多」的那個方向就在這裡</li>
   <li>想知道小明寫了什麼：拿 Authors 的 <code>Id = 1</code> 到 Posts 找 <code>AuthorId = 1</code> 的列，找到 5 和 6。SQL 就是 <code>WHERE AuthorId = 1</code></li>
   <li>想知道文章 5 是誰寫的：拿 Posts 的 <code>AuthorId = 1</code> 回 Authors 找 <code>Id = 1</code>，找到小明。SQL 就是 <code>JOIN Authors ON Posts.AuthorId = Authors.Id</code></li>
-  <li>小芳在 Posts 裡一列都沒有，她還是一位合法的作者。所以作者這邊是「零或多」篇文章，ERD 才用 <code>o{</code> 而不是 <code>|{</code></li>
+  <li>小芳在 Posts 裡一列都沒有，她還是一位合法的作者。所以作者這邊是「零或多」篇文章</li>
 </ul>
-<p>資料庫記這件事的方法只有一種：在「多」的那張表（Posts）加一個欄位，存「一」那邊的主鍵（Authors.Id）。這個欄位叫<strong>外鍵（Foreign Key）</strong>。</p>
+<p>資料庫記這件事的方法只有一種：在「多」的那張表（Posts）加一個欄位，存「一」那邊的主鍵（Authors.Id）。這個欄位叫<strong>外鍵（Foreign Key）</strong>。畫成 ERD 如下，那條線兩端的符號標的就是上面問的兩個答案：Author 這端 <code>||</code> 是「恰好一」（一篇文章恰好一位作者），Post 這端 <code>o{</code> 是「零或多」（一位作者可以零篇、也可以很多篇；小芳就是零篇，所以是 <code>o{</code> 不是 <code>|{</code>）：</p>
 <div class="diagram">
 <div class="mermaid">
 erDiagram
@@ -119,7 +119,7 @@ erDiagram
         int AuthorId FK
     }
 </div>
-<div class="diagram-caption">Posts 多一個 AuthorId 欄位指向 Authors.Id；Authors 這邊什麼都不用加</div>
+<div class="diagram-caption">線的上端（Author 這頭）||＝恰好一，下端（Post 這頭）o{＝零或多。Posts 多一個 AuthorId 欄位指向 Authors.Id；Authors 這邊什麼都不用加</div>
 </div>
 <p>為什麼不是反過來、在 Authors 加一欄 <code>PostIds</code> 放 <code>"5,6"</code>？因為一個格子只能放一個值，上面 Posts 每列只有一個 <code>AuthorId</code>，靠的正是這一點；反過來放就是硬把兩個數字塞進一格，資料庫沒辦法幫你查、幫你算。而且文章新增時要去改作者那一列，兩張表會互相牽制。外鍵放在多的那邊，新增文章只要填一個數字，資料庫還會幫你檢查這個數字真的存在（這就是題 2 和題 6 會撞到的 <code>FOREIGN KEY constraint</code>）。</p>
 
