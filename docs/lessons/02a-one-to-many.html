@@ -150,7 +150,13 @@ flowchart LR
 </div>
 <div class="diagram-caption">兩個導覽屬性是 C# 這邊的方便，資料表裡只有 AuthorId 一個欄位和一條外鍵約束</div>
 </div>
-<p>EF Core 靠<strong>慣例</strong>把三個零件對起來：看到 <code>Post</code> 有一個 <code>Author</code> 型別的屬性叫 <code>Author</code>，又有一個 <code>int</code> 叫 <code>AuthorId</code>（導覽屬性名 + Id），就認定這是外鍵。名字對不上時，要用 3-2 的 Fluent API 明講。這一課就算名字對得上也會用 Fluent API 寫一次，因為 <code>OnDelete</code> 只能在那裡設。</p>
+<p>EF Core 靠<strong>慣例</strong>把三個零件對起來。它看的是<strong>名字</strong>，下面三個顏色各代表一件事：</p>
+<pre><code class="nohighlight">public class Post
+{
+    public int <span class="hl b">Author</span><span class="hl c">Id</span> { get; set; }               // 外鍵屬性：名字 = <span class="hl b">導覽屬性的名字</span> + <span class="hl c">Id</span>
+    public <span class="hl a">Author</span> <span class="hl b">Author</span> { get; set; } = null!;   // 參考導覽屬性：型別是 <span class="hl a">Author</span> 類別，名字叫 <span class="hl b">Author</span>
+}</code></pre>
+<p>看到 <code>Post</code> 有一個 <span class="hl a">Author</span> 型別的屬性叫 <span class="hl b">Author</span>，又有一個 <code>int</code> 叫 <span class="hl b">Author</span><span class="hl c">Id</span>（<span class="hl b">導覽屬性名</span> + <span class="hl c">Id</span>），就認定這是外鍵。<span class="hl a">藍色</span>是要連到哪個類別、<span class="hl b">綠色</span>是導覽屬性的名字、<span class="hl c">紅色</span>是固定接在後面的 Id，三個對上，不用你多寫一個字。名字對不上時（例如導覽屬性叫 <code>Writer</code>、外鍵卻叫 <code>AuthorId</code>），要用 3-2 的 Fluent API 明講。這一課就算名字對得上也會用 Fluent API 寫一次，因為 <code>OnDelete</code> 只能在那裡設。</p>
 <p><strong><code>int</code> 還是 <code>int?</code></strong>，決定這段關聯是「必填」還是「可以沒有」：</p>
 <div class="table-wrap">
 <table>
@@ -185,10 +191,55 @@ flowchart LR
 </div>
 <div class="diagram-caption">物件之間互相指來指去是正常的，記憶體裡沒問題；問題出在要把它寫成 JSON 的時候</div>
 </div>
-<p>JSON 是一棵樹，沒有「指回去」這種東西。System.Text.Json 從 <code>Post</code> 走到 <code>Author</code>，再走到 <code>Author.Posts[0]</code>，又是那篇 <code>Post</code>，再走到它的 <code>Author</code>……走到第 32 層放棄，丟出例外（實測，題 4 會親眼看到）：</p>
+<p>用程式碼看同一件事。不用資料庫，自己把 fix-up 做完的樣子接起來：一位作者、兩篇文章，<code>post.Author</code> 指向作者，<code>author.Posts</code> 裝著那兩篇（單檔程式實際執行過）：</p>
+<pre><code class="language-csharp">var author = new Author { Id = 1, Name = "小明" };
+var post5 = new Post { Id = 5, Title = "Docker 入門", AuthorId = 1, Author = author };
+var post6 = new Post { Id = 6, Title = "我的第一支 Web API", AuthorId = 1, Author = author };
+author.Posts.Add(post5);
+author.Posts.Add(post6);
+
+// 記憶體裡繞一圈回到自己，完全沒問題
+Console.WriteLine($"post5.Author.Name = {post5.Author.Name}");
+Console.WriteLine($"post5.Author.Posts.Count = {post5.Author.Posts.Count}");
+Console.WriteLine($"post5.Author.Posts[0] 就是 post5 自己嗎：{ReferenceEquals(post5.Author.Posts[0], post5)}");
+Console.WriteLine($"post5.Author.Posts[0].Author.Posts[0].Author.Posts[0].Title = {post5.Author.Posts[0].Author.Posts[0].Author.Posts[0].Title}");
+
+// 輸出：
+// post5.Author.Name = 小明
+// post5.Author.Posts.Count = 2
+// post5.Author.Posts[0] 就是 post5 自己嗎：True
+// post5.Author.Posts[0].Author.Posts[0].Author.Posts[0].Title = Docker 入門</code></pre>
+<p>第三行是重點：<code>post5.Author.Posts[0]</code> 不是另一份複本，<strong>就是 post5 自己</strong>（同一個物件）。所以最後一行 <code>.Author.Posts[0]</code> 可以無限接下去，每接一次就繞回原點，C# 完全不介意。</p>
+<p>JSON 是一棵樹，沒有「指回去」這種東西。System.Text.Json 從 <code>Post</code> 走到 <code>Author</code>，再走到 <code>Author.Posts[0]</code>，又是那篇 <code>Post</code>，再走到它的 <code>Author</code>……用迴圈模擬它的走法：</p>
+<pre><code class="language-csharp">object current = post5;
+for (var depth = 1; depth &lt;= 6; depth++)
+{
+    if (current is Post p)
+    {
+        Console.WriteLine($"第 {depth} 層：Post #{p.Id}，接著寫它的 Author");
+        current = p.Author;
+    }
+    else if (current is Author a)
+    {
+        Console.WriteLine($"第 {depth} 層：Author #{a.Id}，接著寫它的 Posts[0]");
+        current = a.Posts[0];
+    }
+}
+Console.WriteLine("……永遠走不完");
+
+// 輸出：
+// 第 1 層：Post #5，接著寫它的 Author
+// 第 2 層：Author #1，接著寫它的 Posts[0]
+// 第 3 層：Post #5，接著寫它的 Author
+// 第 4 層：Author #1，接著寫它的 Posts[0]
+// 第 5 層：Post #5，接著寫它的 Author
+// 第 6 層：Author #1，接著寫它的 Posts[0]
+// ……永遠走不完</code></pre>
+<p>序列化器就是這樣一層一層往下寫，走到第 32 層放棄，丟出例外（實測，題 4 會親眼看到）：</p>
 <pre><code class="nohighlight">System.Text.Json.JsonException: A possible object cycle was detected. This can either be due to a cycle
 or if the object depth is larger than the maximum allowed depth of 32. Consider using ReferenceHandler.Preserve
 on JsonSerializerOptions to support cycles. Path: $.Author.Posts.Author.Posts.Author.Posts.Author.Posts…</code></pre>
+<p>上面那個單檔程式接著寫 <code>JsonSerializer.Serialize(post5)</code> 也會丟同一個例外，只是訊息裡的深度是 64：直接用 <code>JsonSerializer</code> 預設最多 64 層，ASP.NET Core 把它設成 32，所以題 4 看到的是 32。</p>
 <p>三種解法：</p>
 <div class="table-wrap">
 <table>
