@@ -1,6 +1,7 @@
 namespace BlogApi.Models;
 
-public class AuthorResponse
-{
-    
-}
+public record AuthorResponse(
+    int Id,
+    string Name,
+    string? Bio,
+    int PostCount);

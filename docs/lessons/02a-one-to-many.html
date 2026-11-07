@@ -907,6 +907,11 @@ Error Number:547,State:0,Class:16</code></pre>
 <p>意思是：Posts 裡有幾列的 <code>AuthorId = 0</code>，但 Authors 沒有 Id 是 0 的作者，外鍵約束不允許這種「指向不存在的東西」的列存在。</p>
 <p>這幾篇是 01 的測試文章，清掉就好。Rider → Database → 對 BlogDb 按右鍵 → <em>New Query Console</em>：</p>
 <pre><code class="language-sql">DELETE FROM Posts;</code></pre>
+<div class="callout">
+<p>📌 Rider 執行前會跳出提醒：<code>Unsafe query: 'Delete' statement without 'where' clears all data in the table</code>。這是 Rider 偵測到 <code>DELETE</code> 沒有 <code>WHERE</code>、會清空整張表，先讓你確認一次，不是錯誤。這裡要清的就是整張表的測試文章，選執行就好。</p>
+<p>想只刪「指向不存在作者」的那幾列，改寫 <code>WHERE AuthorId = 0</code> 在這裡行不通：migration 失敗時整個回滾，<code>AuthorId</code> 欄位也一起被撤銷了，會得到「無效的資料行名稱 'AuthorId'」。</p>
+<p>對正式資料下 <code>DELETE</code>、<code>UPDATE</code> 之前，習慣先用同樣的 <code>WHERE</code> 跑一次 <code>SELECT</code>，確認會影響哪幾列。</p>
+</div>
 <p>再執行一次 <code>dotnet ef database update</code>，會從頭套用整個 migration（剛才的回滾很乾淨），這次 <code>Done.</code>。</p>
 <div class="callout">
 <p>📌 之後新增的文章，<code>id</code> 會從 <strong>5</strong> 開始，不是 1。自動編號的計數器不會因為刪資料而歸零，這是正常的。</p>
@@ -1038,15 +1043,52 @@ ORDER BY [a].[Id]</code></pre>
 <!-- 題 4 -->
 <div class="exercise">
 <h3>題 4：PostsController 改版（先爆一次循環參照）</h3>
-<p>需求：</p>
+<p><strong>目標</strong>：文章現在有作者了，但 <code>PostsController</code> 還是 01 的版本：新增文章時不能指定作者，回應裡也看不到作者是誰。這題分四步改，<strong>照順序做</strong>，每一步做完都可以先跑一次。</p>
+
+<h4>步驟 1：新增、修改文章時要帶作者（改 <code>PostRequest</code>、<code>Create</code>、<code>Update</code>）</h4>
 <ul>
-  <li><code>PostRequest</code> 加 <code>AuthorId</code>，沒帶或是 0 要回 400</li>
-  <li><code>POST</code>、<code>PUT</code>：作者不存在時回 400，錯誤放在 <code>errors.AuthorId</code></li>
-  <li>新增 <code>PostResponse</code>，<code>GET</code> 列表、<code>GET</code> 單筆、<code>POST</code> 的回應都改用它，多一個 <code>authorName</code></li>
+  <li><code>PostRequest</code> 加一個 <code>int AuthorId</code>。前端沒帶、或帶 <code>0</code> 時，要在進 Controller 之前就回 400</li>
+  <li><code>Create</code> 的 <code>new Post { … }</code> 把 <code>request.AuthorId</code> 設給 <code>AuthorId</code>；<code>Update</code> 也把 <code>post.AuthorId</code> 改成 <code>request.AuthorId</code></li>
 </ul>
-<p>🧪 <strong>先故意做錯一次</strong>：寫 <code>PostResponse</code> 之前，先把 <code>GetAll</code> 的回傳型別留著 <code>List&lt;Post&gt;</code>，只加上 <code>.Include(p =&gt; p.Author)</code>，啟動後打 <code>GET /api/posts</code>（要先有至少一篇文章；暫時用 <code>POST</code> 建一篇，<code>authorId</code> 填題 3 建的作者）。猜：回應會是什麼？看完再改成 <code>PostResponse</code>。</p>
-<p><strong>💡 提示</strong>：3-3 的投影寫法、3-4 的 <code>[Range]</code>、3-5 的 <code>ValidationProblem</code>。<code>POST</code> 回應需要作者名，用 <code>FindAsync(request.AuthorId)</code> 拿作者，順便就能判斷存不存在。</p>
-<p class="accept">✅ 驗收：<code>POST</code> 帶不存在的 <code>authorId</code> 回 400 且 <code>errors.AuthorId</code> 是「作者不存在」；不帶 <code>authorId</code> 回 400；列表每筆有 <code>authorName</code>；Run 視窗的 SQL 是 <code>INNER JOIN</code> 而且只 SELECT 了 <code>[a].[Name]</code></p>
+<p>💡 <code>int</code> 沒帶的時候是 <code>0</code>，<code>[Required]</code> 擋不住，見 3-4。</p>
+<p>✔ 做完確認：<code>POST /api/posts</code> 不帶 <code>authorId</code> → 400；帶題 3 建的作者 Id → 201</p>
+
+<h4>步驟 2：🧪 故意做錯一次：直接回傳帶作者的 Entity</h4>
+<ul>
+  <li>先用步驟 1 的 <code>POST</code> 建至少一篇文章</li>
+  <li><code>GetAll</code> 的回傳型別<strong>維持</strong> <code>List&lt;Post&gt;</code>，只在查詢裡加 <code>.Include(p =&gt; p.Author)</code></li>
+  <li>啟動後打 <code>GET /api/posts</code></li>
+</ul>
+<p>打之前先猜：回應會是什麼？看完結果再往下做。</p>
+
+<h4>步驟 3：回應改用 <code>PostResponse</code>，多一個 <code>authorName</code>（新增 <code>PostResponse</code>，改 <code>GetAll</code>、<code>GetById</code>、<code>Create</code>）</h4>
+<ul>
+  <li>新增 <code>Models/PostResponse.cs</code>：<code>Post</code> 原本的欄位（<code>Id</code>、<code>Title</code>、<code>Content</code>、<code>CreatedAt</code>、<code>UpdatedAt</code>、<code>AuthorId</code>），再加 <code>string AuthorName</code>，<strong>不放</strong> <code>Author</code> 導覽屬性</li>
+  <li>步驟 2 加的 <code>.Include</code> 拿掉，三個方法的回傳型別從 <code>Post</code> 改成 <code>PostResponse</code>：</li>
+</ul>
+<div class="table-wrap">
+<table>
+  <tr><th>方法</th><th>要改什麼</th></tr>
+  <tr><td><code>GetAll</code></td><td>回 <code>List&lt;PostResponse&gt;</code>，用 <code>Select</code> 投影，作者名從 <code>p.Author.Name</code> 拿</td></tr>
+  <tr><td><code>GetById</code></td><td>回 <code>PostResponse</code>。<code>FindAsync</code> 只能拿整個 Entity，沒辦法投影，要改成 <code>Where</code> + <code>Select</code> + <code>FirstOrDefaultAsync</code>（題 3 的單筆就是這樣寫）</td></tr>
+  <tr><td><code>Create</code></td><td>回 201 + <code>PostResponse</code>。剛存好的 <code>post</code> 沒有作者名，要另外拿到作者</td></tr>
+  <tr><td><code>Update</code>、<code>Delete</code></td><td>不用改回傳，還是 204</td></tr>
+</table>
+</div>
+<p>💡 投影寫法見 3-3。</p>
+<p>✔ 做完確認：<code>GET /api/posts</code> 每筆有 <code>authorName</code>；Run 視窗的 SQL 是 <code>INNER JOIN</code>，而且作者那邊只 SELECT 了 <code>[a].[Name]</code></p>
+
+<h4>步驟 4：作者不存在要擋下來（改 <code>Create</code>、<code>Update</code>）</h4>
+<p>步驟 1 只擋得住「沒帶」和「0」。帶一個資料庫裡沒有的 Id（例如 <code>999</code>），格式上沒問題，會一路跑到 <code>SaveChangesAsync()</code>，被外鍵擋下來變成 500。要在存之前自己檢查，回 400，格式和 <code>[ApiController]</code> 自動擋下的 400 一樣：</p>
+<pre><code class="language-json">{
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": { "AuthorId": ["作者不存在"] }
+}</code></pre>
+<p>💡 <code>ModelState.AddModelError</code> + <code>ValidationProblem()</code>，見 3-5。<code>Create</code> 步驟 3 本來就要拿作者名，用 <code>FindAsync(request.AuthorId)</code> 拿到作者，順便就知道存不存在；<code>Update</code> 只需要知道存不存在。</p>
+<p>✔ 做完確認：<code>POST</code>、<code>PUT</code> 帶 <code>"authorId": 999</code> → 400，<code>errors.AuthorId</code> 是「作者不存在」</p>
+
+<p class="accept">✅ 驗收：步驟 1、3、4 的「做完確認」全部通過</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">

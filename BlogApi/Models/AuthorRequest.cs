@@ -1,6 +1,6 @@
-namespace BlogApi.Models;
+using System.ComponentModel.DataAnnotations;
 
-public class AuthorRequest
-{
-    
-}
+namespace BlogApi.Models;
+public record AuthorRequest(
+    [Required, MaxLength(50)] string Name,
+    [MaxLength(500)] string? Bio);
