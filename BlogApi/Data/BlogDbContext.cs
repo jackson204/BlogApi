@@ -19,8 +19,11 @@ public class BlogDbContext : DbContext
         modelBuilder.Entity<Post>(entity =>
         {
             entity.Property(p => p.Title).HasMaxLength(200);
+            entity.HasOne(p => p.Author)
+                .WithMany(a => a.Posts)
+                .HasForeignKey(p => p.AuthorId);
         });
-        
+
         modelBuilder.Entity<Author>(entity =>
         {
             entity.Property(a => a.Name).HasMaxLength(50);
