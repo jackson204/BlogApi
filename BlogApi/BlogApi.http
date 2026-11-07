@@ -1,11 +1,16 @@
 @BlogApi_HostAddress = http://localhost:5107
 
+# 文章的 id 會一直往後跳（刪過、失敗過都會用掉編號）。
+# 「單篇／修改／刪除」要填實際存在的 id：先送「文章列表」看，再改下面網址的數字。
+# authorId 也一樣，先送「作者列表」確認作者的 id。
+
 
 ### 新增文章 1 → 201
 POST {{BlogApi_HostAddress}}/api/posts
 Content-Type: application/json
 
 {
+  "authorId": 1,
   "title": "Docker 入門",
   "content": "用 Docker 跑 MSSQL"
 }
@@ -15,8 +20,28 @@ POST {{BlogApi_HostAddress}}/api/posts
 Content-Type: application/json
 
 {
+  "authorId": 1,
   "title": "EF Core 入門",
   "content": "DbContext 與 Migration"
+}
+
+### 沒帶 authorId → 400
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "title": "沒有作者的文章",
+  "content": "AuthorId 是 0，被 [Range] 擋下"
+}
+
+### 新增：作者不存在 → 400，errors.AuthorId 是「作者不存在」
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "authorId": 999,
+  "title": "作者不存在的文章",
+  "content": "格式沒問題，但 Authors 表沒有 999"
 }
 
 ### 文章列表 → 200
@@ -25,23 +50,34 @@ GET {{BlogApi_HostAddress}}/api/posts
 ### 關鍵字搜尋 → 200
 GET {{BlogApi_HostAddress}}/api/posts?keyword=Docker
 
-### 單篇文章 → 200
-GET {{BlogApi_HostAddress}}/api/posts/1
+### 單篇文章 → 200（id 換成文章列表裡實際的）
+GET {{BlogApi_HostAddress}}/api/posts/1003
 
 ### 不存在的文章 → 404
 GET {{BlogApi_HostAddress}}/api/posts/999
 
-### 修改文章 → 204
-PUT {{BlogApi_HostAddress}}/api/posts/1
+### 修改文章 → 204（id 換成文章列表裡實際的）
+PUT {{BlogApi_HostAddress}}/api/posts/1003
 Content-Type: application/json
 
 {
-  "title": "Docker 入門（修訂）",
+  "authorId": 1,
+  "title": "EF Core 入門（修訂）",
   "content": "更新內容"
 }
 
-### 刪除文章 → 204
-DELETE {{BlogApi_HostAddress}}/api/posts/2
+### 修改：作者不存在 → 400（id 換成文章列表裡實際的）
+PUT {{BlogApi_HostAddress}}/api/posts/1003
+Content-Type: application/json
+
+{
+  "authorId": 999,
+  "title": "換到不存在的作者",
+  "content": "應該被擋下"
+}
+
+### 刪除文章 → 204（id 換成文章列表裡實際的）
+DELETE {{BlogApi_HostAddress}}/api/posts/1003
 
 ### 驗證失敗 → 400
 POST {{BlogApi_HostAddress}}/api/posts
@@ -57,7 +93,43 @@ Content-Type: application/json
 
 {
   "id": 999,
+  "authorId": 1,
   "title": "我想自己指定 id 和時間",
   "content": "看看會不會被接受",
   "createdAt": "1999-01-01T00:00:00"
+}
+
+
+### 新增作者 1 → 201
+POST {{BlogApi_HostAddress}}/api/authors
+Content-Type: application/json
+
+{
+  "name": "小明",
+  "bio": "寫後端的"
+}
+
+### 新增作者 2 → 201（bio 可以不帶）
+POST {{BlogApi_HostAddress}}/api/authors
+Content-Type: application/json
+
+{
+  "name": "小華"
+}
+
+### 作者列表 → 200
+GET {{BlogApi_HostAddress}}/api/authors
+
+### 單一作者 → 200
+GET {{BlogApi_HostAddress}}/api/authors/1
+
+### 不存在的作者 → 404
+GET {{BlogApi_HostAddress}}/api/authors/999
+
+### 沒帶 name → 400
+POST {{BlogApi_HostAddress}}/api/authors
+Content-Type: application/json
+
+{
+  "bio": "只有簡介"
 }
