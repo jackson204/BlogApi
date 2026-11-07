@@ -52,8 +52,17 @@ public class PostsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Post>> Create(PostRequest request)
     {
+        // 作者不存在就回 400；拿到的 author 之後回應要放作者名時會用到
+        var author = await _db.Authors.FindAsync(request.AuthorId);
+        if (author is null)
+        {
+            ModelState.AddModelError(nameof(request.AuthorId), "作者不存在");
+            return ValidationProblem();
+        }
+
         var post = new Post
         {
+            AuthorId = request.AuthorId,
             Title = request.Title,
             Content = request.Content,
             CreatedAt = DateTime.UtcNow
@@ -75,6 +84,15 @@ public class PostsController : ControllerBase
             return NotFound();
         }
 
+        // Update 不需要作者的欄位，只問存不存在（SQL 是 EXISTS）
+        bool authorExists = await _db.Authors.AnyAsync(a => a.Id == request.AuthorId);
+        if (!authorExists)
+        {
+            ModelState.AddModelError(nameof(request.AuthorId), "作者不存在");
+            return ValidationProblem();
+        }
+
+        post.AuthorId = request.AuthorId;
         post.Title = request.Title;
         post.Content = request.Content;
         post.UpdatedAt = DateTime.UtcNow;
