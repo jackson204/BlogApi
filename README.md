@@ -52,6 +52,7 @@ flowchart LR
 | 02b 使用者與個人檔案：一對一 | `HasOne` / `WithOne` | ⏳ |
 | 02c 文章與標籤：多對多 | 中介表 | ⏳ |
 | 03 程式分層與 DI | 沒有 DI 會怎樣、生命週期 | ⏳ |
+| 03b Middleware：請求管線 | 請求一層一層經過的關卡、順序、短路、在 middleware 裡用 Scoped 服務 | ⏳ |
 | 04 文章列表效能優化 | N+1、延遲載入、`Select` 投影、`SelectMany`、`AsNoTracking`、分頁 | ⏳ |
 | 05 選修 | JWT、FluentValidation、錯誤處理、單元測試 | ⏳ |
 
