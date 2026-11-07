@@ -5,13 +5,15 @@ namespace BlogApi.Data;
 
 public class BlogDbContext : DbContext
 {
-    public BlogDbContext(DbContextOptions<BlogDbContext> options) : base(options)
+    public BlogDbContext(DbContextOptions<BlogDbContext> options)
+        : base(options)
     {
-        
     }
-    
-    public DbSet<Post> Posts  => Set<Post>();
-    
+
+    public DbSet<Post> Posts => Set<Post>();
+
+    public DbSet<Author> Authors => Set<Author>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Post>(entity =>

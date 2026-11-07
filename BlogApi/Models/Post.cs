@@ -10,5 +10,9 @@ public class Post
 
     public DateTime CreatedAt { get; set; }
 
-    public DateTime? UpdatedAt { get; set; } 
+    public DateTime? UpdatedAt { get; set; }
+
+    public Author Author { get; set; } = null!;
+
+    public int AuthorId { get; set; }
 }
