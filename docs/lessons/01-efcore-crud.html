@@ -565,7 +565,7 @@ app.Run();                           // 開始聽 port，卡在這行直到關�
 <p class="file-label">Controllers/WeatherForecastController.cs</p>
 <pre><code class="language-csharp">[ApiController]                                          // (4) 幫 API 自動做幾件事（下方「ApiController 做了什麼」）
 [Route("[controller]")]                                  // (3) 路徑：[controller] 換成類別名去掉 Controller → weatherforecast
-public class WeatherForecastController : ControllerBase  // (5) 繼承 ControllerBase，(2) 才會把它當成 Controller
+public class WeatherForecastController : ControllerBase  // (5) 繼承 ControllerBase：拿到 Ok()、NotFound() 這些回傳方法
 {
     [HttpGet(Name = "GetWeatherForecast")]               // (3) 動詞：GET。所以這支 API 是 GET /weatherforecast
     public IEnumerable&lt;WeatherForecast&gt; Get()
@@ -573,7 +573,7 @@ public class WeatherForecastController : ControllerBase  // (5) 繼承 Controlle
         return Enumerable.Range(1, 5).Select(index =&gt; new WeatherForecast { … }).ToArray();
     }
 }</code></pre>
-<p>(1) 到 (5) 分成下面四段講。<code>CreateBuilder</code>、<code>Build()</code>、<code>Run()</code> 各是什麼、port 從哪裡來，在這一節最後的「<a href="#program-lifecycle">Program.cs 的四個階段</a>」和「<a href="#launchsettings">launchSettings.json</a>」。</p>
+<p>(1) 到 (5) 分成下面五段講。<code>CreateBuilder</code>、<code>Build()</code>、<code>Run()</code> 各是什麼、port 從哪裡來，在這一節最後的「<a href="#program-lifecycle">Program.cs 的四個階段</a>」和「<a href="#launchsettings">launchSettings.json</a>」。</p>
 
 <h4 id="verbs">一支 API = 動詞 + 路徑</h4>
 <p>HTTP 請求的第一行是「<strong>動詞 路徑</strong>」，例如 <code>GET /weatherforecast</code>。路徑說<strong>對誰做</strong>，動詞說<strong>做什麼</strong>。這一課的五支 API 用到四個動詞：</p>
@@ -594,7 +594,7 @@ public class WeatherForecastController : ControllerBase  // (5) 繼承 Controlle
 <div class="mermaid">
 flowchart TD
     subgraph BOOT["啟動時：app.MapControllers()"]
-        SCAN["找出專案裡所有繼承 ControllerBase 的類別"] --> READ["讀每個方法上的 Route、HttpGet 這些 attribute"]
+        SCAN["找出專案裡所有 Controller 類別<br>名稱結尾是 Controller，或繼承 ControllerBase"] --> READ["讀每個方法上的 Route、HttpGet 這些 attribute"]
         READ --> TABLE["路由表<br>GET /weatherforecast → WeatherForecastController.Get()"]
     end
     subgraph REQ["每個請求進來"]
@@ -637,25 +637,161 @@ POST /weatherforecast       → 405   路徑有，但沒有方法標 [HttpPost]<
 </div>
 <p>這套「看參數長相決定去哪裡拿」的規則是 <code>[ApiController]</code> 提供的，所以題 6 通常<strong>不用</strong>寫 <code>[FromRoute]</code>、<code>[FromQuery]</code>、<code>[FromBody]</code>；只有想要和規則不同時才寫。JSON 文字變成 C# 物件這一步叫<strong>反序列化</strong>，字串和中文怎麼處理見「<a href="encoding-json-html.html">補充：編碼器</a>」。</p>
 
-<h4 id="controllerbase">為什麼繼承 ControllerBase、[ApiController] 做了什麼</h4>
+<h4 id="controllerbase">為什麼繼承 ControllerBase</h4>
+<p>ASP.NET Core 有兩個 Controller 父類別可以選：</p>
 <div class="table-wrap">
 <table>
   <tr><th></th><th><code>ControllerBase</code></th><th><code>Controller</code></th></tr>
-  <tr><td>給你什麼</td><td><code>Ok()</code>、<code>NotFound()</code>、<code>CreatedAtAction()</code>、<code>NoContent()</code> 這些回傳方法；<code>Request</code>、<code>Response</code>（Cookie 那頁用到）；<code>ModelState</code></td><td><code>ControllerBase</code> 的全部，再加 <code>View()</code>、<code>ViewBag</code>、<code>PartialView()</code> 這些<strong>產生 HTML 畫面</strong>用的東西</td></tr>
+  <tr><td>給你什麼</td><td><code>Ok()</code>、<code>NotFound()</code>、<code>CreatedAtAction()</code>、<code>NoContent()</code> 這些回傳方法；<code>Request</code>、<code>Response</code>；<code>ModelState</code></td><td><code>ControllerBase</code> 的全部，再加 <code>View()</code>、<code>ViewBag</code>、<code>PartialView()</code> 這些<strong>產生 HTML 畫面</strong>用的東西</td></tr>
   <tr><td>用在</td><td>Web API：回 JSON</td><td>MVC 網站：回 HTML 頁面</td></tr>
 </table>
 </div>
-<p><code>Controller</code> 本身就是繼承 <code>ControllerBase</code> 再加東西。Web API 不產生畫面，所以選 <code>ControllerBase</code>，不會多出一堆用不到的方法。另外 (2) 的掃描認的就是「繼承 <code>ControllerBase</code> 的類別」，沒繼承的話，就算類別名叫 <code>XxxController</code>、方法上有 <code>[HttpGet]</code>，也不會進路由表。</p>
-<p><code>[ApiController]</code> 加在類別上，幫 API 自動做三件事：</p>
+<p><code>Controller</code> 本身就是繼承 <code>ControllerBase</code>，再多加產生畫面的那些方法。Web API 只回 JSON、不產生畫面，所以繼承 <code>ControllerBase</code> 就夠了，不會多出一堆用不到的方法。</p>
+<p>那 <code>app.MapControllers()</code> 啟動時掃描，是怎麼判斷「這個類別是 Controller」的？只要是 <code>public</code>、不是 <code>abstract</code> 的類別，符合下面<strong>任一條</strong>就算：</p>
+<ul>
+  <li>類別名稱以 <code>Controller</code> 結尾，例如 <code>WeatherForecastController</code></li>
+  <li>類別本身或它繼承的類別上標了 <code>[Controller]</code>。<code>ControllerBase</code> 身上就標了這個，所以繼承它的類別，不管叫什麼名字都會被認出來</li>
+</ul>
+<p>實測三種寫法，看哪些會被掃到（.NET 10）：</p>
+<pre><code class="language-csharp">// 名稱結尾是 Controller，沒繼承任何東西 → 符合第一條，會被掃到
+[Route("poco")]
+public class PocoController
+{
+    [HttpGet("{id}")]
+    public IActionResult Get(int id)
+    {
+        // 沒繼承 ControllerBase，類別裡沒有 NotFound()、Ok() 可以呼叫，
+        // 只能自己 new 出結果物件
+        if (id != 1)
+        {
+            return new NotFoundResult();
+        }
+        return new OkObjectResult(new { id });
+    }
+}
+
+// 名稱沒有 Controller 結尾，但繼承 ControllerBase → 符合第二條，會被掃到
+[Route("hello")]
+public class Hello : ControllerBase
+{
+    [HttpGet]
+    public IActionResult Get()
+    {
+        return Ok("hello");
+    }
+}
+
+// 兩條都不符合 → 不會被掃到
+[Route("nope")]
+public class Nope
+{
+    [HttpGet]
+    public string Get()
+    {
+        return "nope";
+    }
+}</code></pre>
+<pre><code class="nohighlight">GET /poco/1   → 200  {"id":1}
+GET /poco/2   → 404
+GET /hello    → 200  hello
+GET /nope     → 404  Nope 沒被認成 Controller，它的方法不在路由表裡</code></pre>
+<p>所以「繼承 <code>ControllerBase</code>」不是被掃到的必要條件；它真正的用處是那些回傳方法。對照 <code>PocoController</code> 和 <code>Hello</code> 就看得出來：一個要自己 <code>new NotFoundResult()</code>，一個直接 <code>return Ok(…)</code>。實務上 API 的 Controller 名稱以 <code>Controller</code> 結尾、也繼承 <code>ControllerBase</code>，兩條都符合，範本的 <code>WeatherForecastController</code> 就是這樣。</p>
+
+<h4 id="apicontroller">[ApiController] 做了什麼</h4>
+<p><code>[ApiController]</code> 加在類別上，幫 API 自動做三件事。下面兩個 Controller 的方法內容一樣，差別只在有沒有 <code>[ApiController]</code>，用來實測：</p>
+<pre><code class="language-csharp">public class CreateRequest
+{
+    [Required]                       // 必填，沒填就驗證失敗
+    public string? Title { get; set; }
+}
+
+[ApiController]                      // ← 有
+[Route("with")]
+public class WithController : ControllerBase
+{
+    [HttpPost]
+    public IActionResult Create(CreateRequest request)
+    {
+        // new { … } 是匿名物件，轉成 JSON 就是 {"called":true,"title":…}
+        // called 用來看這個方法到底有沒有被呼叫
+        return Ok(new { called = true, request.Title });
+    }
+
+    [HttpGet("{id}")]
+    public IActionResult Get(int id)
+    {
+        return NotFound();
+    }
+}
+
+[Route("without")]                   // ← 沒有 [ApiController]
+public class WithoutController : ControllerBase
+{
+    // 多回傳 ModelState.IsValid，看驗證結果
+    [HttpPost]
+    public IActionResult Create(CreateRequest request)
+    {
+        return Ok(new { called = true, request.Title, valid = ModelState.IsValid });
+    }
+
+    // 和上面一樣，只是參數多標了 [FromBody]（② 會講為什麼）
+    [HttpPost("body")]
+    public IActionResult CreateBody([FromBody] CreateRequest request)
+    {
+        return Ok(new { called = true, request.Title, valid = ModelState.IsValid });
+    }
+
+    [HttpGet("{id}")]
+    public IActionResult Get(int id)
+    {
+        return NotFound();
+    }
+}</code></pre>
+
+<p><strong>① 驗證失敗自動回 400，方法不會被呼叫</strong></p>
+<p>送一個沒有 <code>title</code> 的 JSON：</p>
+<pre><code class="nohighlight">POST /with           body: {}
+→ 400 {"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1",
+       "title":"One or more validation errors occurred.","status":400,
+       "errors":{"Title":["The Title field is required."]},"traceId":"…"}
+
+POST /without/body   body: {}
+→ 200 {"called":true,"title":null,"valid":false}</code></pre>
+<p>有 <code>[ApiController]</code> 的那邊，回應裡沒有 <code>called</code>，代表 <code>Create()</code> 根本沒被呼叫，框架在進方法之前就擋下來回 400 了。沒有的那邊，方法照樣被呼叫，<code>Title</code> 是 <code>null</code>，只是 <code>ModelState.IsValid</code> 變成 <code>false</code>。要擋的話，每個方法開頭都得自己寫：</p>
+<pre><code class="language-csharp">if (!ModelState.IsValid)
+{
+    return BadRequest(ModelState);
+}</code></pre>
+
+<p><strong>② 自動推斷參數來源</strong></p>
+<p>這次送有 <code>title</code> 的 JSON：</p>
+<pre><code class="nohighlight">POST /with           body: {"title":"Hi"}
+→ 200 {"called":true,"title":"Hi"}
+
+POST /without        body: {"title":"Hi"}
+→ 200 {"called":true,"title":null,"valid":false}
+
+POST /without/body   body: {"title":"Hi"}
+→ 200 {"called":true,"title":"Hi","valid":true}</code></pre>
+<p>有 <code>[ApiController]</code> 時，框架照<a href="#binding">上一節的規則</a>看到 <code>CreateRequest</code> 是物件型別，就去 body 的 JSON 拿。沒有的話，物件型別參數預設是從表單欄位、query string 找，<strong>不會去讀 body 的 JSON</strong>，所以 JSON 送了等於沒送，<code>Title</code> 是 <code>null</code>。要自己在參數前標 <code>[FromBody]</code>，像 <code>/without/body</code> 那樣，才拿得到。</p>
+
+<p><strong>③ 錯誤回應統一用 ProblemDetails 格式</strong></p>
+<pre><code class="nohighlight">GET /with/5      → 404 {"type":"https://tools.ietf.org/html/rfc9110#section-15.5.5",
+                        "title":"Not Found","status":404,"traceId":"…"}
+
+GET /without/5   → 404（body 是空的）</code></pre>
+<p>兩邊都是 <code>return NotFound();</code>，有 <code>[ApiController]</code> 的那邊會自動補上一段 JSON。這個格式叫 <strong>ProblemDetails</strong>，固定有 <code>type</code>、<code>title</code>、<code>status</code> 欄位；① 的 400 也是同一個格式，只是多了 <code>errors</code>。這樣前端不管收到哪種錯誤，都用同一套方式讀。</p>
+
+<p>整理成一張表：</p>
 <div class="table-wrap">
 <table>
-  <tr><th>做什麼</th><th>目的是什麼</th></tr>
-  <tr><td>參數驗證失敗（例如題 6 的 <code>[Required]</code> 沒填）時<strong>自動回 400</strong>，方法不會被呼叫</td><td>不用在每個方法開頭寫 <code>if (!ModelState.IsValid) return BadRequest();</code></td></tr>
-  <tr><td>照上一節的規則<strong>自動推斷參數來源</strong></td><td>不用每個參數都標 <code>[FromBody]</code> 等</td></tr>
-  <tr><td>錯誤回應用統一的 <strong>ProblemDetails</strong> JSON 格式（有 <code>type</code>、<code>title</code>、<code>status</code>、<code>errors</code> 欄位）</td><td>前端收到的錯誤長得都一樣，好處理</td></tr>
+  <tr><th>做什麼</th><th>沒有 [ApiController] 的話</th></tr>
+  <tr><td>① 驗證失敗<strong>自動回 400</strong>，方法不會被呼叫</td><td>方法照樣被呼叫，要自己寫 <code>if (!ModelState.IsValid) return BadRequest(ModelState);</code></td></tr>
+  <tr><td>② <strong>自動推斷參數來源</strong>，物件型別從 body 的 JSON 拿</td><td>物件型別不讀 JSON，要自己標 <code>[FromBody]</code></td></tr>
+  <tr><td>③ 錯誤回應用 <strong>ProblemDetails</strong> JSON 格式</td><td><code>NotFound()</code> 只回狀態碼，body 是空的</td></tr>
 </table>
 </div>
-<p>看完這四段，題 1 確認範本能跑之後就可以刪掉 WeatherForecast 那兩個檔案；題 6 的 <code>PostsController</code> 用的是同一套規則，只是路徑改成 <code>api/[controller]</code>、方法變成五個。</p>
+<p>看完這幾段，題 1 確認範本能跑之後就可以刪掉 WeatherForecast 那兩個檔案；題 6 的 <code>PostsController</code> 用的是同一套規則，只是路徑改成 <code>api/[controller]</code>、方法變成五個。</p>
 
 <h4 id="program-lifecycle">Program.cs 的四個階段：CreateBuilder → Build → Use／Map → Run</h4>
 <p>把範本的 <code>Program.cs</code> 從頭看一遍，它是四個階段，順序不能換：</p>
@@ -693,6 +829,90 @@ flowchart LR
   <tr><td><code>app.Run()</code></td><td>啟動 Kestrel 伺服器，開始聽 port，然後<strong>卡在這一行</strong>，直到 Ctrl+C 或程序被關掉。寫在 <code>Run()</code> 後面的程式碼要等伺服器關掉才會執行（實測）</td><td>開門營業。到這裡之前，一個請求都還沒進來</td></tr>
 </table>
 </div>
+<p><strong>實測：在每個階段印一行，看執行順序</strong></p>
+<p>把範本的 <code>Program.cs</code> 改成下面這樣。<code>Greeter</code> 是一個建構子裡會印字的小類別，用來看它「什麼時候被做出來」：</p>
+<p class="file-label">Program.cs</p>
+<pre><code class="language-csharp">var builder = WebApplication.CreateBuilder(args);
+// $"…{x}…" 是字串插值：把 x 的值填進字串
+Console.WriteLine($"[1] 環境：{builder.Environment.EnvironmentName}");
+Console.WriteLine($"[1] 設定檔讀到的 log 等級：{builder.Configuration["Logging:LogLevel:Default"]}");
+
+builder.Services.AddControllers();
+builder.Services.AddScoped&lt;Greeter&gt;();
+Console.WriteLine("[1] AddScoped&lt;Greeter&gt;() 寫完了");
+
+var app = builder.Build();
+Console.WriteLine("[2] Build() 完成");
+
+// app.Use 在管線裡加一道關卡，每個請求都會經過這裡。
+// await next() 這行把請求交給下一關（最後到 Controller），
+// 等後面全部做完才繼續往下印「回應出去」
+app.Use(async (context, next) =&gt;
+{
+    Console.WriteLine($"[3] 請求進來：{context.Request.Method} {context.Request.Path}");
+    await next();
+    Console.WriteLine($"[3] 回應出去：{context.Response.StatusCode}");
+});
+app.MapControllers();
+Console.WriteLine("[3] 管線排好了");
+
+Console.WriteLine("[4] 呼叫 Run()");
+app.Run();
+Console.WriteLine("[4] Run() 後面這行，伺服器關掉才會印");
+
+public class Greeter
+{
+    public Greeter()
+    {
+        Console.WriteLine("    Greeter 被做出來了");
+    }
+}</code></pre>
+<p class="file-label">Controllers/GreetController.cs</p>
+<pre><code class="language-csharp">[ApiController]
+[Route("greet")]
+public class GreetController : ControllerBase
+{
+    // 建構子要一個 Greeter，框架會照登記簿做一個傳進來
+    public GreetController(Greeter greeter)
+    {
+        Console.WriteLine("    GreetController 被做出來了");
+    }
+
+    [HttpGet]
+    public IActionResult Get()
+    {
+        Console.WriteLine("    Get() 執行");
+        return Ok("hi");
+    }
+}</code></pre>
+<p>啟動後送 <code>GET /greet</code>、再送一個不存在的 <code>GET /nothing</code>，主控台印出（.NET 10 實測，框架的 log 只留一行）：</p>
+<pre><code class="nohighlight">[1] 環境：Development
+[1] 設定檔讀到的 log 等級：Information
+[1] AddScoped&lt;Greeter&gt;() 寫完了
+[2] Build() 完成
+[3] 管線排好了
+[4] 呼叫 Run()
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5299        ← 到這裡才開始聽 port
+[3] 請求進來：GET /greet
+    Greeter 被做出來了                                ← 有請求要用，才照登記簿做出來
+    GreetController 被做出來了
+    Get() 執行
+[3] 回應出去：200
+[3] 請求進來：GET /nothing
+[3] 回應出去：404                                     ← 路由表沒有，Controller 沒被做出來</code></pre>
+<p>從這份輸出可以對回上面的表：</p>
+<ul>
+  <li><strong>階段 1</strong>：<code>CreateBuilder</code> 一結束，<code>appsettings.json</code> 裡的 <code>"Information"</code> 和環境名稱 <code>Development</code> 就讀得到了。</li>
+  <li><strong>AddScoped 只是登記</strong>：印了「寫完了」，但「Greeter 被做出來了」要等到第一個 <code>/greet</code> 請求才出現。</li>
+  <li><strong>階段 3</strong>：<code>app.Use</code> 裡的程式碼在啟動時<strong>一次都沒跑</strong>，要等請求進來才跑，而且每個請求都會經過，連 404 的 <code>/nothing</code> 也一樣。</li>
+  <li><strong>階段 4</strong>：「Run() 後面這行」沒有印出來，因為程式還卡在 <code>app.Run()</code>；按 Ctrl+C 關掉伺服器後才會印。</li>
+</ul>
+<p><strong>實測：Build 之後再登記</strong></p>
+<pre><code class="language-csharp">var app = builder.Build();
+builder.Services.AddScoped&lt;Greeter&gt;();   // Build 之後才登記</code></pre>
+<pre><code class="nohighlight">Unhandled exception. System.InvalidOperationException: The service collection cannot be modified because it is read-only.</code></pre>
+<p>一啟動就丟例外，連 <code>Run()</code> 都走不到。所以所有 <code>builder.Services.Add…</code> 都要寫在 <code>Build()</code> 前面。</p>
 <p>所以 3-8 說「<code>Build</code> 和 <code>Run</code> 之後一個 DbContext 都沒有」：階段 1 只是寫登記簿，階段 4 之後有請求進來、路由表命中 Controller，才會照登記簿做出第一個 DbContext。</p>
 
 <h4 id="launchsettings">Run() 要聽哪個 port：Properties/launchSettings.json</h4>
