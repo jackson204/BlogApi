@@ -452,6 +452,174 @@ Unhandled exception. System.NullReferenceException: Object reference not set to 
 </div>
 </details>
 
+<p>那 <code>Post.Author</code> 為什麼寫 <code>= null!</code>，不寫成 <code>Author?</code>？兩種都能編譯，差在讀 <code>post.Author.Name</code> 的時候：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>寫法</th><th>對編譯器說的話</th><th>讀 <code>post.Author.Name</code></th></tr>
+  <tr><td><code>Author Author = null!;</code></td><td>這個關聯一定有值，一開始是 null 只是 EF Core 還沒填</td><td>沒有警告</td></tr>
+  <tr><td><code>Author? Author;</code></td><td>這個屬性可能真的沒有值</td><td>CS8602 警告，每個地方都要寫 <code>?.</code> 或先判斷 null，就算已經 <code>Include</code> 了也一樣</td></tr>
+</table>
+</div>
+<p>選哪一種，看資料庫那邊：<code>AuthorId</code> 是 <code>int</code>，欄位是 <code>NOT NULL</code>，每篇文章一定有作者，所以 C# 也寫成「一定有值」的 <code>Author</code>。如果是選填關聯（外鍵是 <code>int?</code>，欄位允許 NULL），null 是真的會出現的狀態，才寫 <code>Author?</code>。</p>
+<div class="callout warn">
+<p>⚠️ <code>null!</code> 的代價：編譯器不再幫你檢查。忘了 <code>Include</code> 就讀 <code>post.Author.Name</code>，會在執行時丟出 <code>NullReferenceException</code>，編譯時沒有任何提示。</p>
+</div>
+<div class="callout">
+<p>📌 C# 的 <code>?</code> 只影響<strong>編譯器的警告</strong>；資料庫欄位能不能存 NULL，是建表時（migration）決定的。兩邊對不上的時候，編譯器不會擋，要等 <code>SaveChanges()</code> 把 SQL 送到資料庫，才會被 SQL Server 拒絕。</p>
+</div>
+
+<details class="aside">
+<summary>📎 動手試：C# 寫可空、資料庫是 NOT NULL，會發生什麼事</summary>
+<div class="aside-body">
+<p>需要第 0 課的 SQL Server 開著。程式會<strong>另外建一個 <code>NullabilityLab</code> 資料庫</strong>來測，不會動到 <code>BlogDb</code>。新增 <code>null-lab.cs</code>：</p>
+<pre><code class="language-csharp">#:package Microsoft.EntityFrameworkCore.SqlServer@10.0.14
+// file-based app 預設開啟 NativeAOT，EF Core 在這個模式下不能在執行時建立 model，所以關掉
+#:property PublishAot=false
+
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+
+using var db = new LabContext();
+db.Database.EnsureDeleted();
+db.Database.EnsureCreated();
+
+Console.WriteLine("===== 資料表長這樣 =====");
+Console.WriteLine(db.Database.GenerateCreateScript());
+
+Console.WriteLine("===== 情況 1：C# 的 Bio 是 string?，資料庫是 NOT NULL，存 null =====");
+try
+{
+    db.Authors.Add(new Author { Name = "小明", Bio = null });
+    db.SaveChanges();
+    Console.WriteLine("存成功");
+}
+catch (DbUpdateException ex)
+{
+    Print(ex);
+}
+db.ChangeTracker.Clear();
+
+Console.WriteLine("===== 情況 2：Post.Author 是 Author?，沒設作者就存 =====");
+try
+{
+    db.Posts.Add(new Post { Title = "沒有作者的文章" });
+    db.SaveChanges();
+    Console.WriteLine("存成功");
+}
+catch (DbUpdateException ex)
+{
+    Print(ex);
+}
+db.ChangeTracker.Clear();
+
+Console.WriteLine("===== 情況 3：有作者的文章，查詢時有沒有 Include =====");
+var author = new Author { Name = "小華", Bio = "寫程式的人" };
+db.Posts.Add(new Post { Title = "第一篇", Author = author });
+db.SaveChanges();
+db.ChangeTracker.Clear();
+
+var noInclude = db.Posts.First();
+Console.WriteLine($"沒 Include：AuthorId = {noInclude.AuthorId}，Author 是 null？{noInclude.Author is null}");
+db.ChangeTracker.Clear();
+
+var withInclude = db.Posts.Include(p =&gt; p.Author).First();
+Console.WriteLine($"有 Include：Author.Name = {withInclude.Author?.Name}");
+
+static void Print(DbUpdateException ex)
+{
+    Console.WriteLine($"例外型別：{ex.GetType().Name}");
+    if (ex.InnerException is SqlException sql)
+    {
+        Console.WriteLine($"SQL Server 錯誤編號：{sql.Number}");
+        Console.WriteLine($"訊息：{sql.Message}");
+    }
+}
+
+class Author
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Bio { get; set; }
+    public List&lt;Post&gt; Posts { get; set; } = new();
+}
+
+class Post
+{
+    public int Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public int AuthorId { get; set; }
+    public Author? Author { get; set; }
+}
+
+class LabContext : DbContext
+{
+    public DbSet&lt;Author&gt; Authors =&gt; Set&lt;Author&gt;();
+    public DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder options) =&gt;
+        options.UseSqlServer("Server=localhost,1433;Database=NullabilityLab;User Id=sa;Password=Blog_Dev_2026!;TrustServerCertificate=True");
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        // C# 寫 string?，但用 Fluent API 要求資料庫 NOT NULL
+        modelBuilder.Entity&lt;Author&gt;().Property(a =&gt; a.Bio).IsRequired();
+
+        modelBuilder.Entity&lt;Post&gt;()
+            .HasOne(p =&gt; p.Author)
+            .WithMany(a =&gt; a.Posts)
+            .HasForeignKey(p =&gt; p.AuthorId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}</code></pre>
+<p>執行 <code>dotnet run null-lab.cs</code> 之前，先猜：</p>
+<ol>
+  <li><code>Post.Author</code> 寫成 <code>Author?</code>，<code>Posts.AuthorId</code> 欄位會變成允許 NULL 嗎？</li>
+  <li>情況 1：<code>Bio = null</code> 那一行，編譯器會警告嗎？<code>SaveChanges()</code> 會成功嗎？如果失敗，是 EF Core 擋的還是 SQL Server 擋的？</li>
+  <li>情況 2：沒設作者的文章，<code>AuthorId</code> 會是多少？存得進去嗎？</li>
+  <li>情況 3：沒 <code>Include</code> 的時候，<code>AuthorId</code> 和 <code>Author</code> 各是什麼？</li>
+</ol>
+<details class="answer">
+<summary>實際結果（跑完再打開）</summary>
+<div class="answer-body">
+<p>① 不會。<code>AuthorId</code> 還是 <code>NOT NULL</code>，因為有外鍵屬性時，EF Core 看的是<strong>外鍵的型別</strong>（<code>int</code>），不看導覽屬性有沒有 <code>?</code>。<code>Bio</code> 雖然 C# 寫 <code>string?</code>，被 <code>IsRequired()</code> 改成了 <code>NOT NULL</code>：</p>
+<pre><code class="language-sql">CREATE TABLE [Authors] (
+    [Id] int NOT NULL IDENTITY,
+    [Name] nvarchar(max) NOT NULL,
+    [Bio] nvarchar(max) NOT NULL,
+    CONSTRAINT [PK_Authors] PRIMARY KEY ([Id])
+);
+CREATE TABLE [Posts] (
+    [Id] int NOT NULL IDENTITY,
+    [Title] nvarchar(max) NOT NULL,
+    [AuthorId] int NOT NULL,
+    CONSTRAINT [PK_Posts] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_Posts_Authors_AuthorId] FOREIGN KEY ([AuthorId]) REFERENCES [Authors] ([Id]) ON DELETE NO ACTION
+);</code></pre>
+<p>② 編譯器<strong>沒有警告</strong>，因為 C# 這邊說 <code>Bio</code> 可以是 null。EF Core 也沒擋，照樣把 <code>INSERT</code> 送出去，是 <strong>SQL Server</strong> 拒絕的（錯誤 515）：</p>
+<pre><code class="nohighlight">例外型別：DbUpdateException
+SQL Server 錯誤編號：515
+訊息：Cannot insert the value NULL into column 'Bio', table 'NullabilityLab.dbo.Authors'; column does not allow nulls. INSERT fails.</code></pre>
+<p>③ <code>AuthorId</code> 是 <code>int</code> 的預設值 <code>0</code>。欄位允許 0，但外鍵要求 Authors 裡真的有 Id = 0 的作者，所以被外鍵約束擋下（錯誤 547，跟題 2 撞牆的是同一種錯誤）：</p>
+<pre><code class="nohighlight">例外型別：DbUpdateException
+SQL Server 錯誤編號：547
+訊息：The INSERT statement conflicted with the FOREIGN KEY constraint "FK_Posts_Authors_AuthorId". The conflict occurred in database "NullabilityLab", table "dbo.Authors", column 'Id'.</code></pre>
+<p>④ <code>AuthorId</code> 有值，<code>Author</code> 是 null。外鍵是 Posts 表自己的欄位，查 Posts 就會一起帶回來；作者的資料在另一張表，沒 <code>Include</code> 就不會去查：</p>
+<pre><code class="nohighlight">沒 Include：AuthorId = 2，Author 是 null？True
+有 Include：Author.Name = 小華</code></pre>
+<p>小華的 Id 是 2 不是 1：情況 1 失敗的那次 <code>INSERT</code> 已經用掉了 1 號。自動編號被用掉就不會還回來，和題 2 的「id 從 5 開始」是同一件事。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>C# 寫法</th><th>資料庫欄位</th><th>什麼時候出錯</th></tr>
+  <tr><td><code>string? Bio</code> + <code>IsRequired()</code></td><td><code>NOT NULL</code></td><td>編譯時沒警告，<code>SaveChanges()</code> 存 null 才被 SQL Server 拒絕（515）</td></tr>
+  <tr><td><code>Author? Author</code> + <code>int AuthorId</code></td><td><code>AuthorId NOT NULL</code></td><td>沒設作者時 <code>AuthorId = 0</code>，被外鍵擋（547）</td></tr>
+  <tr><td><code>Author Author = null!</code> + <code>int AuthorId</code></td><td><code>AuthorId NOT NULL</code></td><td>存的時候一樣；差別只在讀 <code>post.Author</code> 時編譯器警不警告</td></tr>
+</table>
+</div>
+</div>
+</details>
+</div>
+</details>
+
 <h3 id="fluent">3-2. Fluent API：明講關聯和刪除行為</h3>
 <pre><code class="language-csharp">modelBuilder.Entity&lt;Post&gt;(entity =&gt;
 {
