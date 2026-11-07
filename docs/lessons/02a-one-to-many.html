@@ -647,6 +647,99 @@ SQL Server 錯誤編號：547
 </div>
 <p>關聯只要在<strong>一邊</strong>設定就好（這裡選 Post 這邊），EF Core 會知道兩邊是同一條關聯。</p>
 
+<details class="aside">
+<summary>📎 動手試：外鍵的型別跟主鍵對不上會怎樣</summary>
+<div class="aside-body">
+<p>命名慣例只決定 EF Core 去找<strong>哪一個屬性</strong>當外鍵，外鍵的<strong>型別</strong>還是要跟 Author 的主鍵一樣：主鍵是 <code>int</code>，外鍵就是 <code>int AuthorId</code>；主鍵如果改成 <code>Guid</code>，外鍵就要寫 <code>Guid AuthorId</code>（SQL Server 的欄位型別是 <code>uniqueidentifier</code>）。</p>
+<p>下面故意把 Author 的主鍵改成 <code>Guid</code>，外鍵還是寫 <code>int AuthorId</code>。新增 <code>fk-type.cs</code>：</p>
+<pre><code class="language-csharp">#:package Microsoft.EntityFrameworkCore.SqlServer@10.0.14
+// file-based app 預設開啟 NativeAOT，EF Core 在這個模式下不能在執行時建立 model，所以關掉
+#:property PublishAot=false
+
+using Microsoft.EntityFrameworkCore;
+
+// 只建 model、產生建表 SQL，不會真的連資料庫，所以 SQL Server 不用開
+Console.WriteLine("===== 情況 1：只靠命名慣例 =====");
+using (var db = new ConventionContext())
+{
+    var script = db.Database.GenerateCreateScript();
+    var start = script.IndexOf("CREATE TABLE [Posts]");
+    Console.WriteLine(script.Substring(start, script.IndexOf("GO", start) - start).Trim());
+}
+
+Console.WriteLine("===== 情況 2：用 HasForeignKey 明講 =====");
+try
+{
+    using var db = new FluentContext();
+    db.Database.GenerateCreateScript();
+}
+catch (InvalidOperationException ex)
+{
+    Console.WriteLine(ex.Message);
+}
+
+class Author
+{
+    public Guid Id { get; set; }
+}
+
+class Post
+{
+    public int Id { get; set; }
+    public int AuthorId { get; set; }
+    public Author Author { get; set; } = null!;
+}
+
+class ConventionContext : DbContext
+{
+    public DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder options) =&gt;
+        options.UseSqlServer("Server=.;Database=x");
+}
+
+class FluentContext : ConventionContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =&gt;
+        modelBuilder.Entity&lt;Post&gt;()
+            .HasOne(p =&gt; p.Author)
+            .WithMany()
+            .HasForeignKey(p =&gt; p.AuthorId);
+}</code></pre>
+<p>執行 <code>dotnet run fk-type.cs</code> 之前，先猜：</p>
+<ol>
+  <li>情況 1：名字 <code>AuthorId</code> 完全符合慣例，但型別是 <code>int</code>。EF Core 會拿它當外鍵嗎？會報錯嗎？</li>
+  <li>情況 2：用 <code>HasForeignKey</code> 指定 <code>AuthorId</code>，結果跟情況 1 一樣嗎？</li>
+</ol>
+<details class="answer">
+<summary>實際結果（跑完再打開）</summary>
+<div class="answer-body">
+<p>① <strong>不報錯，但外鍵不是你寫的 <code>AuthorId</code></strong>。EF Core 發現 <code>int</code> 對不上 <code>Guid</code>，就不用它，自己另外產生一個 <code>Guid</code> 型別的 <code>AuthorId1</code>，真正的外鍵約束掛在 <code>AuthorId1</code> 上：</p>
+<pre><code class="language-sql">CREATE TABLE [Posts] (
+    [Id] int NOT NULL IDENTITY,
+    [AuthorId] int NOT NULL,
+    [AuthorId1] uniqueidentifier NOT NULL,
+    CONSTRAINT [PK_Posts] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_Posts_Author_AuthorId1] FOREIGN KEY ([AuthorId1]) REFERENCES [Author] ([Id]) ON DELETE CASCADE
+);</code></pre>
+<p><code>AuthorId1</code> 只存在 EF Core 的 model 裡，<code>Post</code> 類別上沒有這個屬性，這種屬性叫 <strong>shadow property</strong>。你寫的 <code>AuthorId</code> 變成一個跟作者無關的普通 <code>int</code> 欄位，設 <code>post.AuthorId = 5</code> 不會連到任何作者。編譯和執行都不會出錯，只有打開 migration 看到多出來的 <code>AuthorId1</code> 才會發現。</p>
+<p>② <strong>直接丟 <code>InvalidOperationException</code></strong>。明確指定了外鍵，EF Core 就會檢查型別，對不上就拒絕：</p>
+<pre><code class="nohighlight">The relationship from 'Post.Author' to 'Author' with foreign key properties {'AuthorId' : int}
+cannot target the primary key {'Id' : Guid} because it is not compatible.
+Configure a principal key or a set of foreign key properties with compatible types for this relationship.</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>只靠命名慣例</th><th>寫 <code>HasForeignKey</code></th></tr>
+  <tr><td>型別對</td><td>✅ 用你寫的 <code>AuthorId</code></td><td>✅ 用你寫的 <code>AuthorId</code></td></tr>
+  <tr><td>型別不對</td><td>⚠️ 不報錯，另外產生 <code>AuthorId1</code> 當外鍵</td><td>❌ 建 model 時就丟例外</td></tr>
+</table>
+</div>
+<p>這就是上面表格說 <code>HasForeignKey</code>「寫出來比較清楚」之外的另一個好處：寫錯的時候會馬上報錯，不會悄悄多出一個欄位。</p>
+</div>
+</details>
+</div>
+</details>
+
 <h3 id="query">3-3. 查詢：Include 和 Select 投影</h3>
 <pre><code class="language-csharp">// Include：把整個 Author 物件載回來。回傳型別還是 Post，post.Author 有值
 var posts = await _db.Posts
