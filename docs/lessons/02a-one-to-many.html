@@ -389,6 +389,68 @@ on JsonSerializerOptions to support cycles. Path: $.Author.Posts.Author.Posts.Au
 <pre><code class="language-csharp">public int AuthorId { get; set; }                           // 外鍵屬性：會變成 Posts.AuthorId 欄位
 public Author Author { get; set; } = null!;                 // 參考導覽屬性：查詢時由 EF Core 填，所以用 null! 關掉警告</code></pre>
 <p><code>= null!</code> 的意思是「我知道它一開始是 null，不用警告我」。<code>Nullable</code> 開著的時候，不加會有「可能是 null」的警告；它的值不是我們 new 的，是 2-3 說的 <code>Include</code> 填進來的。</p>
+<p>集合那邊反過來，用 <code>= new()</code>（<code>= new List&lt;Post&gt;()</code> 的簡寫，型別從左邊推出來）。<code>new Author()</code> 的時候，<code>Posts</code> 會直接拿到一個 0 筆的 <code>List&lt;Post&gt;</code>，不是 <code>null</code>，所以 <code>author.Posts.Add(...)</code>、<code>author.Posts.Count</code> 都可以直接呼叫。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>導覽屬性</th><th>初始值</th><th>為什麼</th></tr>
+  <tr><td>集合：<code>List&lt;Post&gt; Posts</code></td><td><code>= new()</code></td><td>空清單是合理的起點：新作者本來就還沒有文章，之後可以直接 <code>Add</code></td></tr>
+  <tr><td>單一：<code>Author Author</code></td><td><code>= null!</code></td><td>自己 new 一個空的 <code>Author</code> 等於捏造一位不存在的作者，所以留給 EF Core 填</td></tr>
+</table>
+</div>
+<div class="callout warn">
+<p>⚠️ 從資料庫查作者、但<strong>沒有</strong> <code>Include(a =&gt; a.Posts)</code> 的時候，EF Core 不會去查文章，<code>Posts</code> 會停在 <code>new()</code> 給的空清單，<code>Count</code> 是 <code>0</code>。這個 <code>0</code> 的意思是「文章沒有被載入」，不是「這位作者沒有文章」。</p>
+</div>
+
+<details class="aside">
+<summary>📎 動手試：把 <code>= new()</code> 拿掉會怎樣</summary>
+<div class="aside-body">
+<p>在專案外面開一個資料夾，新增 <code>nav-new.cs</code>（file-based app，不需要 csproj），貼上：</p>
+<pre><code class="language-csharp">var good = new GoodAuthor { Name = "小明" };
+good.Posts.Add(new Post { Title = "第一篇" });
+Console.WriteLine($"GoodAuthor 加完之後有 {good.Posts.Count} 篇");
+
+var bad = new BadAuthor { Name = "小華" };
+bad.Posts.Add(new Post { Title = "第一篇" });
+Console.WriteLine($"BadAuthor 加完之後有 {bad.Posts.Count} 篇");
+
+class Post
+{
+    public string Title { get; set; } = string.Empty;
+}
+
+class GoodAuthor
+{
+    public string Name { get; set; } = string.Empty;
+    public List&lt;Post&gt; Posts { get; set; } = new();
+}
+
+// 跟 GoodAuthor 只差在 Posts 沒有初始值
+class BadAuthor
+{
+    public string Name { get; set; } = string.Empty;
+    public List&lt;Post&gt; Posts { get; set; }
+}</code></pre>
+<p>執行 <code>dotnet run nav-new.cs</code> 之前，先猜：</p>
+<ol>
+  <li>編譯會過嗎？會有警告嗎？警告指向哪一行？</li>
+  <li>兩行 <code>Console.WriteLine</code> 各會印出什麼？</li>
+</ol>
+<details class="answer">
+<summary>實際結果（跑完再打開）</summary>
+<div class="answer-body">
+<p>① 編譯會過，只有一個警告，指向 <code>BadAuthor</code> 的 <code>Posts</code> 那一行：</p>
+<pre><code class="nohighlight">warning CS8618: 退出建構函式時，不可為 Null 的 屬性 'Posts' 必須包含非 Null 值。
+請考慮新增 'required' 修飾元，或將 屬性 宣告為可以為 Null。</code></pre>
+<p>② 第一行正常印出，第二行沒有機會印出來，程式在 <code>bad.Posts.Add(...)</code> 那一行就停了：</p>
+<pre><code class="nohighlight">GoodAuthor 加完之後有 1 篇
+Unhandled exception. System.NullReferenceException: Object reference not set to an instance of an object.
+   at Program.&lt;Main&gt;$(String[] args) in ...\nav-new.cs:line 6</code></pre>
+<p>重點：<strong>CS8618 只是警告，不會擋編譯</strong>。編譯器在編譯時就提醒過「<code>Posts</code> 建好之後會是 null」，忽略它的結果，就是執行到 <code>.Add</code> 時才爆 <code>NullReferenceException</code>。</p>
+<p>📌 警告只在編譯時出現。同一個檔案沒改就再跑一次，會直接用上次編好的結果，看不到警告；要再看一次可以執行 <code>dotnet build nav-new.cs --no-incremental</code>。</p>
+</div>
+</details>
+</div>
+</details>
 
 <h3 id="fluent">3-2. Fluent API：明講關聯和刪除行為</h3>
 <pre><code class="language-csharp">modelBuilder.Entity&lt;Post&gt;(entity =&gt;
