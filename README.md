@@ -1,7 +1,7 @@
 # BlogApi：從零做一個部落格 Web API
 
 一邊做部落格 Web API，一邊學 .NET 後端的學習專案。
-以部落格的功能當主線，每個階段遇到問題時，再學對應的主題：Docker、資料表關聯、LINQ / EF Core、DI、查詢效能優化。
+以部落格的功能當主線，每個階段遇到問題時，再學對應的主題：Docker、資料表關聯、LINQ / EF Core、DI、查詢效能優化、登入與權限。
 
 📖 **學習筆記（HTML 版）**：https://jackson204.github.io/BlogApi/
 > 筆記放在 [`docs/`](docs/)，透過 GitHub Pages 發布。每一課都有圖解和練習題，參考答案預設摺疊，寫完再打開對照。
@@ -38,9 +38,11 @@
 flowchart LR
     S0["0 Docker<br>跑 MSSQL"] --> S1["1 文章 CRUD<br>EF Core 入門"]
     S1 --> S2["2 資料表關聯<br>一對多 / 一對一 / 多對多"]
-    S2 --> S3["3 程式分層<br>DI"]
+    S2 --> S3["3 程式分層 DI<br>3b Middleware"]
     S3 --> S4["4 效能優化<br>N+1、投影、分頁"]
-    S4 --> S5["5 選修<br>JWT、驗證、測試"]
+    S4 --> S5["5 登入與權限<br>JWT"]
+    S5 --> S6["6 選修<br>驗證、錯誤處理、測試"]
+    S6 --> SHOP["進階：購物網站<br>上傳、交易、訂單、部署"]
 ```
 
 | 課程 | 主題 | 狀態 |
@@ -54,7 +56,12 @@ flowchart LR
 | 03 程式分層與 DI | 沒有 DI 會怎樣、生命週期 | ⏳ |
 | 03b Middleware：請求管線 | 請求一層一層經過的關卡、順序、短路、在 middleware 裡用 Scoped 服務 | ⏳ |
 | 04 文章列表效能優化 | N+1、延遲載入、`Select` 投影、`SelectMany`、`AsNoTracking`、分頁 | ⏳ |
-| 05 選修 | JWT、FluentValidation、錯誤處理、單元測試 | ⏳ |
+| 05 登入與權限 | 註冊、密碼雜湊、JWT、`[Authorize]`、只能改自己的文章 | ⏳ |
+| 06 選修 | FluentValidation、錯誤處理、單元與整合測試 | ⏳ |
+| 進階 購物 01 商品與分類 | 小商店 schema、商品圖片上傳（`IFormFile`） | ⏳ |
+| 進階 購物 02 下單：交易與並行 | Transaction、`RowVersion`、扣庫存、搶最後一件 | ⏳ |
+| 進階 購物 03 購物車與訂單狀態 | 把會員、權限、驗證、佇列、推播串起來 | ⏳ |
+| 進階 購物 04 部署 | API 包進 Docker、和 MSSQL 一起跑、正式環境設定 | ⏳ |
 
 ## 專案結構
 
