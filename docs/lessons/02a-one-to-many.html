@@ -190,6 +190,13 @@ Console.WriteLine($"送了 {sqlCount} 句 SQL，第一篇的 Author 是 {posts[0
 <p>還是一句 SQL，但多了 INNER JOIN，作者的欄位一起撈回來，組成完整的 <code>Author</code> 物件放進 <code>post.Author</code>。不管幾篇文章都是 1 句。</p>
 
 <h4 id="loading-3"><span class="hl c">情境 3</span> 延遲載入：碰到 post.Author 才偷偷去查（這一課不開）</h4>
+<div class="callout">
+<p>📌 這裡先看它<strong>會發幾句 SQL</strong>。另外兩件事在別的地方：</p>
+<ul>
+  <li>它是怎麼攔到「碰 <code>post.Author</code>」、為什麼大家說它危險：本課 <a href="#lazy-more">延遲載入是怎麼做到的，為什麼這一課不開</a></li>
+  <li>實際打開它、量 N+1 慢在哪，再跟 <code>Include</code>、<code>Select</code> 投影比：第 4 課「文章列表效能優化」</li>
+</ul>
+</div>
 <p>這個行為預設<strong>沒有</strong>，要另外裝 <code>Microsoft.EntityFrameworkCore.Proxies</code>、在 options 加 <code>UseLazyLoadingProxies()</code>、導覽屬性標 <code>virtual</code>。開了之後：</p>
 <pre><code class="language-csharp">var posts = db.Posts.ToList();
 Console.WriteLine($"ToList 之後：{sqlCount} 句 SQL");
