@@ -943,7 +943,14 @@ Error Number:547,State:0,Class:16</code></pre>
   <li><code>GET /api/authors/{id}</code>：單一作者，找不到 404</li>
 </ul>
 <p><strong>💡 提示</strong>：<code>PostCount</code> 在 <code>Select</code> 裡寫 <code>a.Posts.Count</code>（3-3）；單筆要投影，用 <code>Where</code> + <code>FirstOrDefaultAsync</code>。</p>
-<p class="accept">✅ 驗收：先建兩位作者，<code>GET /api/authors</code> 回兩筆、<code>postCount</code> 都是 0；Run 視窗那句 SQL 裡有子查詢 <code>SELECT COUNT(*)</code></p>
+<p>測試用的請求：在 <code>BlogApi.http</code> 底下接著加作者的請求（01 的文章請求先留著，題 7 會把整個檔案改成這一課的完整流程）：</p>
+<ul>
+  <li>新增作者兩位 → 201</li>
+  <li>作者列表 → 200</li>
+  <li>單一作者 → 200；不存在的作者（例如 <code>999</code>）→ 404</li>
+  <li>沒帶 <code>name</code> → 400</li>
+</ul>
+<p class="accept">✅ 驗收：用 <code>.http</code> 先建兩位作者，<code>GET /api/authors</code> 回兩筆、<code>postCount</code> 都是 0；Run 視窗那句 SQL 裡有子查詢 <code>SELECT COUNT(*)</code></p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
@@ -1036,6 +1043,41 @@ public class AuthorsController : ControllerBase
     WHERE [a].[Id] = [p].[AuthorId])
 FROM [Authors] AS [a]
 ORDER BY [a].[Id]</code></pre>
+<p class="file-label">BlogApi/BlogApi.http（接在原本的請求後面）</p>
+<pre><code class="language-plaintext">### 新增作者 1 → 201
+POST {{BlogApi_HostAddress}}/api/authors
+Content-Type: application/json
+
+{
+  "name": "小明",
+  "bio": "寫後端的"
+}
+
+### 新增作者 2 → 201（bio 可以不帶）
+POST {{BlogApi_HostAddress}}/api/authors
+Content-Type: application/json
+
+{
+  "name": "小華"
+}
+
+### 作者列表 → 200
+GET {{BlogApi_HostAddress}}/api/authors
+
+### 單一作者 → 200
+GET {{BlogApi_HostAddress}}/api/authors/1
+
+### 不存在的作者 → 404
+GET {{BlogApi_HostAddress}}/api/authors/999
+
+### 沒帶 name → 400
+POST {{BlogApi_HostAddress}}/api/authors
+Content-Type: application/json
+
+{
+  "bio": "只有簡介"
+}</code></pre>
+<p>作者的 Id 不一定是 1、2：同一個請求多送幾次、或新增失敗過，自動編號都會往後跳。先送「作者列表」看實際的 Id，再改單一作者那行的網址。</p>
 </div>
 </details>
 </div>
@@ -1048,61 +1090,32 @@ ORDER BY [a].[Id]</code></pre>
   <li><strong><code>POST /api/posts</code> 會失敗</strong>：<code>Create</code> 沒有設 <code>AuthorId</code>，存進去是 <code>int</code> 的預設值 <code>0</code>，Authors 表沒有 Id 是 0 的作者，被外鍵擋下來回 500</li>
   <li><strong>回應看不到作者是誰</strong>：<code>GET</code> 直接回 <code>Post</code>，裡面只有 <code>authorId</code> 這個數字；沒有 <code>Include</code>，<code>author</code> 是 <code>null</code>，看不到作者名字</li>
 </ul>
-<p>這題分四步改，<strong>照順序做</strong>，每一步做完都可以先跑一次。</p>
+<p>這題分四步改，<strong>照順序做</strong>。每一步後面有那一步的參考答案，做完、跑過再打開。</p>
 
 <h4>步驟 1：新增、修改文章時要帶作者（改 <code>PostRequest</code>、<code>Create</code>、<code>Update</code>）</h4>
 <ul>
   <li><code>PostRequest</code> 加一個 <code>int AuthorId</code>。前端沒帶、或帶 <code>0</code> 時，要在進 Controller 之前就回 400</li>
-  <li><code>Create</code> 的 <code>new Post { … }</code> 把 <code>request.AuthorId</code> 設給 <code>AuthorId</code>；<code>Update</code> 也把 <code>post.AuthorId</code> 改成 <code>request.AuthorId</code></li>
+  <li><code>Create</code>：<code>new Post { … }</code> 裡多設一個 <code>AuthorId</code>，值是 <code>request.AuthorId</code></li>
+  <li><code>Update</code>：在 <code>post.Title = request.Title;</code>、<code>post.Content = request.Content;</code> 那幾行旁邊，用同樣的寫法多一行，把 <code>request.AuthorId</code> 設給 <code>post.AuthorId</code>（這篇文章改掛到另一位作者）</li>
 </ul>
-<p>💡 <code>int</code> 沒帶的時候是 <code>0</code>，<code>[Required]</code> 擋不住，見 3-4。</p>
-<p>✔ 做完確認：<code>POST /api/posts</code> 不帶 <code>authorId</code> → 400；帶題 3 建的作者 Id → 201</p>
-
-<h4>步驟 2：🧪 故意做錯一次：直接回傳帶作者的 Entity</h4>
+<div class="callout warn">
+<p>⚠️ <code>Update</code> 裡有兩個 Id，不要搞混。以 <code>PUT /api/posts/7</code>、body 帶 <code>"authorId": 2</code> 為例：</p>
 <ul>
-  <li>先用步驟 1 的 <code>POST</code> 建至少一篇文章</li>
-  <li><code>GetAll</code> 的回傳型別<strong>維持</strong> <code>List&lt;Post&gt;</code>，只在查詢裡加 <code>.Include(p =&gt; p.Author)</code></li>
-  <li>啟動後打 <code>GET /api/posts</code></li>
+  <li><code>id</code> = <code>7</code>，從網址來，是<strong>文章</strong>的 Id。<code>_db.Posts.FindAsync(id)</code> 是去 Posts 表找 7 號文章，<strong>這行不用改</strong></li>
+  <li><code>request.AuthorId</code> = <code>2</code>，從 body 來，是<strong>作者</strong>的 Id。如果寫成 <code>_db.Posts.FindAsync(request.AuthorId)</code>，找到的是 <strong>2 號文章</strong>，接下來會改到別篇文章</li>
 </ul>
-<p>打之前先猜：回應會是什麼？看完結果再往下做。</p>
-
-<h4>步驟 3：回應改用 <code>PostResponse</code>，多一個 <code>authorName</code>（新增 <code>PostResponse</code>，改 <code>GetAll</code>、<code>GetById</code>、<code>Create</code>）</h4>
-<ul>
-  <li>新增 <code>Models/PostResponse.cs</code>：<code>Post</code> 原本的欄位（<code>Id</code>、<code>Title</code>、<code>Content</code>、<code>CreatedAt</code>、<code>UpdatedAt</code>、<code>AuthorId</code>），再加 <code>string AuthorName</code>，<strong>不放</strong> <code>Author</code> 導覽屬性</li>
-  <li>步驟 2 加的 <code>.Include</code> 拿掉，三個方法的回傳型別從 <code>Post</code> 改成 <code>PostResponse</code>：</li>
-</ul>
-<div class="table-wrap">
-<table>
-  <tr><th>方法</th><th>要改什麼</th></tr>
-  <tr><td><code>GetAll</code></td><td>回 <code>List&lt;PostResponse&gt;</code>，用 <code>Select</code> 投影，作者名從 <code>p.Author.Name</code> 拿</td></tr>
-  <tr><td><code>GetById</code></td><td>回 <code>PostResponse</code>。<code>FindAsync</code> 只能拿整個 Entity，沒辦法投影，要改成 <code>Where</code> + <code>Select</code> + <code>FirstOrDefaultAsync</code>（題 3 的單筆就是這樣寫）</td></tr>
-  <tr><td><code>Create</code></td><td>回 201 + <code>PostResponse</code>。剛存好的 <code>post</code> 沒有作者名，要另外拿到作者</td></tr>
-  <tr><td><code>Update</code>、<code>Delete</code></td><td>不用改回傳，還是 204</td></tr>
-</table>
 </div>
-<p>💡 投影寫法見 3-3。</p>
-<p>✔ 做完確認：<code>GET /api/posts</code> 每筆有 <code>authorName</code>；Run 視窗的 SQL 是 <code>INNER JOIN</code>，而且作者那邊只 SELECT 了 <code>[a].[Name]</code></p>
-
-<h4>步驟 4：作者不存在要擋下來（改 <code>Create</code>、<code>Update</code>）</h4>
-<p>步驟 1 只擋得住「沒帶」和「0」。帶一個資料庫裡沒有的 Id（例如 <code>999</code>），格式上沒問題，會一路跑到 <code>SaveChangesAsync()</code>，被外鍵擋下來變成 500。要在存之前自己檢查，回 400，格式和 <code>[ApiController]</code> 自動擋下的 400 一樣：</p>
-<pre><code class="language-json">{
-  "title": "One or more validation errors occurred.",
-  "status": 400,
-  "errors": { "AuthorId": ["作者不存在"] }
-}</code></pre>
-<p>💡 <code>ModelState.AddModelError</code> + <code>ValidationProblem()</code>，見 3-5。<code>Create</code> 步驟 3 本來就要拿作者名，用 <code>FindAsync(request.AuthorId)</code> 拿到作者，順便就知道存不存在；<code>Update</code> 只需要知道存不存在。</p>
-<p>✔ 做完確認：<code>POST</code>、<code>PUT</code> 帶 <code>"authorId": 999</code> → 400，<code>errors.AuthorId</code> 是「作者不存在」</p>
-
-<p class="accept">✅ 驗收：步驟 1、3、4 的「做完確認」全部通過</p>
+<p>💡 <code>int</code> 沒帶的時候是 <code>0</code>，<code>[Required]</code> 擋不住，見 3-4。</p>
+<p>測試用的請求：<code>BlogApi.http</code> 裡 01 留下的文章請求，現在沒帶 <code>authorId</code> 都會變成 400，要跟著改：</p>
+<ul>
+  <li>新增文章、修改文章、over-posting 試驗的 body 都補上 <code>"authorId"</code>，值填「作者列表」裡實際存在的作者 Id</li>
+  <li>多加一個「沒帶 <code>authorId</code> → 400」的請求</li>
+  <li>單篇、修改、刪除文章網址裡的 id，換成「文章列表」裡實際存在的文章 Id：題 2 清過 Posts 表，原本的 <code>1</code>、<code>2</code> 已經不在了</li>
+</ul>
+<p>✔ 做完確認：<code>POST /api/posts</code> 不帶 <code>authorId</code> → 400；帶題 3 建的作者 Id → 201</p>
 <details class="answer">
-<summary>參考答案（寫完再打開）</summary>
+<summary>步驟 1 參考答案（做完再打開）</summary>
 <div class="answer-body">
-<p><strong>🧪 故意做錯的結果</strong>（實測）：<code>GET /api/posts</code> 回 500，Run 視窗：</p>
-<pre><code class="nohighlight">System.Text.Json.JsonException: A possible object cycle was detected. This can either be due to a cycle
-or if the object depth is larger than the maximum allowed depth of 32. Consider using ReferenceHandler.Preserve
-on JsonSerializerOptions to support cycles.
-Path: $.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Id.</code></pre>
-<p>看 <code>Path</code>：<code>Author.Posts.Author.Posts…</code> 一直繞，就是 2-4 的圖。而且這句 SQL 把作者的<strong>所有欄位</strong>都撈了（<code>[a].[Id], [a].[Bio], [a].[Name]</code>），前端只需要名字。</p>
 <p class="file-label">BlogApi/Models/PostRequest.cs</p>
 <pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
 
@@ -1113,6 +1126,147 @@ public record PostRequest(
     [Required, MaxLength(200)] string Title,
     [Required] string Content,
     [Range(1, int.MaxValue)] int AuthorId);</code></pre>
+<p class="file-label">BlogApi/Controllers/PostsController.cs（只列改的地方）</p>
+<pre><code class="language-csharp">// Create
+var post = new Post
+{
+    Title = request.Title,
+    Content = request.Content,
+    CreatedAt = DateTime.UtcNow,
+    AuthorId = request.AuthorId
+};
+
+// Update
+post.Title = request.Title;
+post.Content = request.Content;
+post.AuthorId = request.AuthorId;
+post.UpdatedAt = DateTime.UtcNow;</code></pre>
+<p>沒帶 <code>authorId</code> 的 400 是 <code>[Range]</code> 擋的：<code>"AuthorId": ["The field AuthorId must be between 1 and 2147483647."]</code>。</p>
+<p class="file-label">BlogApi/BlogApi.http（改的文章請求，節錄）</p>
+<pre><code class="language-plaintext"># 文章的 id 會一直往後跳（刪過、失敗過都會用掉編號）。
+# 「單篇／修改／刪除」要填實際存在的 id：先送「文章列表」看，再改下面網址的數字。
+# authorId 也一樣，先送「作者列表」確認作者的 id。
+
+### 新增文章 1 → 201
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "authorId": 1,
+  "title": "Docker 入門",
+  "content": "用 Docker 跑 MSSQL"
+}
+
+### 沒帶 authorId → 400
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "title": "沒有作者的文章",
+  "content": "AuthorId 是 0，被 [Range] 擋下"
+}
+
+### 修改文章 → 204（id 換成文章列表裡實際的）
+PUT {{BlogApi_HostAddress}}/api/posts/1003
+Content-Type: application/json
+
+{
+  "authorId": 1,
+  "title": "EF Core 入門（修訂）",
+  "content": "更新內容"
+}
+
+### over-posting 試驗 → 201，但 id 和 createdAt 不會是你傳的
+POST {{BlogApi_HostAddress}}/api/posts
+Content-Type: application/json
+
+{
+  "id": 999,
+  "authorId": 1,
+  "title": "我想自己指定 id 和時間",
+  "content": "看看會不會被接受",
+  "createdAt": "1999-01-01T00:00:00"
+}</code></pre>
+<p>JSON 的欄位名不分大小寫，寫 <code>"AuthorId"</code> 也收得到；統一寫成 <code>"authorId"</code>，跟 API 回應的命名一致。</p>
+</div>
+</details>
+
+<h4>步驟 2：作者不存在要擋下來（改 <code>Create</code>、<code>Update</code>）</h4>
+<p>步驟 1 只擋得住「沒帶」和「0」。帶一個資料庫裡沒有的 Id（例如 <code>999</code>），格式上沒問題，會一路跑到 <code>SaveChangesAsync()</code>，被外鍵擋下來變成 500。要在存之前自己檢查，回 400，格式和 <code>[ApiController]</code> 自動擋下的 400 一樣：</p>
+<pre><code class="language-json">{
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": { "AuthorId": ["作者不存在"] }
+}</code></pre>
+<p>💡 <code>ModelState.AddModelError</code> + <code>ValidationProblem()</code>，見 3-5。查作者存不存在有兩種寫法：<code>_db.Authors.FindAsync(id)</code> 拿整個作者物件（找不到是 <code>null</code>），或 <code>_db.Authors.AnyAsync(a =&gt; a.Id == id)</code> 只問有沒有（回 <code>bool</code>）。</p>
+<p>✔ 做完確認：<code>POST</code>、<code>PUT</code> 帶 <code>"authorId": 999</code> → 400，<code>errors.AuthorId</code> 是「作者不存在」</p>
+<details class="answer">
+<summary>步驟 2 參考答案（做完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">BlogApi/Controllers/PostsController.cs（只列改的地方）</p>
+<pre><code class="language-csharp">// Create：方法一開始先查作者
+var author = await _db.Authors.FindAsync(request.AuthorId);
+if (author is null)
+{
+    ModelState.AddModelError(nameof(request.AuthorId), "作者不存在");
+    return ValidationProblem();
+}
+
+// Update：找到文章之後、改欄位之前
+bool authorExists = await _db.Authors.AnyAsync(a =&gt; a.Id == request.AuthorId);
+if (!authorExists)
+{
+    ModelState.AddModelError(nameof(request.AuthorId), "作者不存在");
+    return ValidationProblem();
+}</code></pre>
+<p>作者不存在的 400（實測），格式和 <code>[ApiController]</code> 自動產生的一樣：</p>
+<pre><code class="language-json">{ "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1", "title": "One or more validation errors occurred.",
+  "status": 400, "errors": { "AuthorId": ["作者不存在"] }, "traceId": "…" }</code></pre>
+<ul>
+  <li><code>Create</code> 用 <code>FindAsync</code>，把整個作者物件放進 <code>author</code> 變數：步驟 4 的回應要放作者名，可以直接用 <code>author.Name</code>，不用再查一次</li>
+  <li><code>Update</code> 只回 204，不需要作者的任何欄位，用 <code>AnyAsync</code>，SQL 是 <code>EXISTS</code>，只問有沒有、不把資料拿回來</li>
+</ul>
+</div>
+</details>
+
+<h4>步驟 3：🧪 故意做錯一次：直接回傳帶作者的 Entity</h4>
+<ul>
+  <li>先用步驟 1 的 <code>POST</code> 建至少一篇文章</li>
+  <li><code>GetAll</code> 的回傳型別<strong>維持</strong> <code>List&lt;Post&gt;</code>，只在查詢裡加 <code>.Include(p =&gt; p.Author)</code></li>
+  <li>啟動後打 <code>GET /api/posts</code></li>
+</ul>
+<p>打之前先猜：回應會是什麼？</p>
+<details class="answer">
+<summary>步驟 3 實際結果（打完再打開）</summary>
+<div class="answer-body">
+<p><code>GET /api/posts</code> 回 500，Run 視窗（實測）：</p>
+<pre><code class="nohighlight">System.Text.Json.JsonException: A possible object cycle was detected. This can either be due to a cycle
+or if the object depth is larger than the maximum allowed depth of 32. Consider using ReferenceHandler.Preserve
+on JsonSerializerOptions to support cycles.
+Path: $.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Author.Posts.Id.</code></pre>
+<p>看 <code>Path</code>：<code>Author.Posts.Author.Posts…</code> 一直繞，就是 2-4 的圖。而且這句 SQL 把作者的<strong>所有欄位</strong>都撈了（<code>[a].[Id], [a].[Bio], [a].[Name]</code>），前端只需要名字。</p>
+</div>
+</details>
+
+<h4>步驟 4：回應改用 <code>PostResponse</code>，多一個 <code>authorName</code>（新增 <code>PostResponse</code>，改 <code>GetAll</code>、<code>GetById</code>、<code>Create</code>）</h4>
+<ul>
+  <li>新增 <code>Models/PostResponse.cs</code>：<code>Post</code> 原本的欄位（<code>Id</code>、<code>Title</code>、<code>Content</code>、<code>CreatedAt</code>、<code>UpdatedAt</code>、<code>AuthorId</code>），再加 <code>string AuthorName</code>，<strong>不放</strong> <code>Author</code> 導覽屬性</li>
+  <li>步驟 3 加的 <code>.Include</code> 拿掉，三個方法的回傳型別從 <code>Post</code> 改成 <code>PostResponse</code>：</li>
+</ul>
+<div class="table-wrap">
+<table>
+  <tr><th>方法</th><th>要改什麼</th></tr>
+  <tr><td><code>GetAll</code></td><td>回 <code>List&lt;PostResponse&gt;</code>，用 <code>Select</code> 投影，作者名從 <code>p.Author.Name</code> 拿</td></tr>
+  <tr><td><code>GetById</code></td><td>回 <code>PostResponse</code>。<code>FindAsync</code> 只能拿整個 Entity，沒辦法投影，要改成 <code>Where</code> + <code>Select</code> + <code>FirstOrDefaultAsync</code>（題 3 的單筆就是這樣寫）</td></tr>
+  <tr><td><code>Create</code></td><td>回 201 + <code>PostResponse</code>。剛存好的 <code>post</code> 沒有作者名，用步驟 2 查到的 <code>author</code></td></tr>
+  <tr><td><code>Update</code>、<code>Delete</code></td><td>不用改回傳，還是 204</td></tr>
+</table>
+</div>
+<p>💡 投影寫法見 3-3。</p>
+<p>✔ 做完確認：<code>GET /api/posts</code> 每筆有 <code>authorName</code>；Run 視窗的 SQL 是 <code>INNER JOIN</code>，而且作者那邊只 SELECT 了 <code>[a].[Name]</code></p>
+<details class="answer">
+<summary>步驟 4 參考答案（做完再打開）</summary>
+<div class="answer-body">
 <p class="file-label">BlogApi/Models/PostResponse.cs</p>
 <pre><code class="language-csharp">namespace BlogApi.Models;
 
@@ -1125,7 +1279,7 @@ public record PostResponse(
     DateTime? UpdatedAt,
     int AuthorId,
     string AuthorName);</code></pre>
-<p class="file-label">BlogApi/Controllers/PostsController.cs（改的方法；Delete 不變）</p>
+<p class="file-label">BlogApi/Controllers/PostsController.cs（步驟 1～4 全部改完的完整版；Delete 不變）</p>
 <pre><code class="language-csharp">// GET api/posts?keyword=docker
 [HttpGet]
 public async Task&lt;ActionResult&lt;List&lt;PostResponse&gt;&gt;&gt; GetAll(string? keyword)
@@ -1213,21 +1367,18 @@ public async Task&lt;IActionResult&gt; Update(int id, PostRequest request)
     await _db.SaveChangesAsync();
     return NoContent();
 }</code></pre>
-<p>作者不存在的 400（實測），格式和 <code>[ApiController]</code> 自動產生的一樣：</p>
-<pre><code class="language-json">{ "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1", "title": "One or more validation errors occurred.",
-  "status": 400, "errors": { "AuthorId": ["作者不存在"] }, "traceId": "…" }</code></pre>
-<p>沒帶 <code>authorId</code> 的 400 是 <code>[Range]</code> 擋的：<code>"AuthorId": ["The field AuthorId must be between 1 and 2147483647."]</code>。</p>
 <p>列表的 SQL（實測）：INNER JOIN，作者只拿 <code>[a].[Name]</code>：</p>
 <pre><code class="language-sql">SELECT [p].[Id], [p].[Title], [p].[Content], [p].[CreatedAt], [p].[UpdatedAt], [p].[AuthorId], [a].[Name]
 FROM [Posts] AS [p]
 INNER JOIN [Authors] AS [a] ON [p].[AuthorId] = [a].[Id]
 ORDER BY [p].[CreatedAt] DESC</code></pre>
 <ul>
-  <li><code>Create</code> 用 <code>FindAsync</code> 而不是 <code>AnyAsync</code>，因為回應需要 <code>author.Name</code>，順便拿；<code>Update</code> 只要知道存不存在，用 <code>AnyAsync</code>（EXISTS）</li>
   <li><code>GetById</code> 從 <code>FindAsync</code> 改成 <code>Where + Select + FirstOrDefaultAsync</code>，因為 <code>FindAsync</code> 回的是整個 Entity，沒辦法投影出 <code>AuthorName</code></li>
 </ul>
 </div>
 </details>
+
+<p class="accept">✅ 驗收：步驟 1、2、4 的「做完確認」全部通過</p>
 </div>
 
 <!-- 題 5 -->
