@@ -1043,7 +1043,12 @@ ORDER BY [a].[Id]</code></pre>
 <!-- 題 4 -->
 <div class="exercise">
 <h3>題 4：PostsController 改版（先爆一次循環參照）</h3>
-<p><strong>目標</strong>：文章現在有作者了，但 <code>PostsController</code> 還是 01 的版本：新增文章時不能指定作者，回應裡也看不到作者是誰。這題分四步改，<strong>照順序做</strong>，每一步做完都可以先跑一次。</p>
+<p><strong>目標</strong>：題 1、題 2 讓 <code>Posts</code> 表多了必填的 <code>AuthorId</code> 欄位和外鍵，但 <code>PostsController</code> 還沒跟著改，現在有兩個問題：</p>
+<ul>
+  <li><strong><code>POST /api/posts</code> 會失敗</strong>：<code>Create</code> 沒有設 <code>AuthorId</code>，存進去是 <code>int</code> 的預設值 <code>0</code>，Authors 表沒有 Id 是 0 的作者，被外鍵擋下來回 500</li>
+  <li><strong>回應看不到作者是誰</strong>：<code>GET</code> 直接回 <code>Post</code>，裡面只有 <code>authorId</code> 這個數字；沒有 <code>Include</code>，<code>author</code> 是 <code>null</code>，看不到作者名字</li>
+</ul>
+<p>這題分四步改，<strong>照順序做</strong>，每一步做完都可以先跑一次。</p>
 
 <h4>步驟 1：新增、修改文章時要帶作者（改 <code>PostRequest</code>、<code>Create</code>、<code>Update</code>）</h4>
 <ul>
