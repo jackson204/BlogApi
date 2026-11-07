@@ -20,5 +20,10 @@ public class BlogDbContext : DbContext
         {
             entity.Property(p => p.Title).HasMaxLength(200);
         });
+        
+        modelBuilder.Entity<Author>(entity =>
+        {
+            entity.Property(a => a.Name).HasMaxLength(50);
+        });
     }
 }
