@@ -821,11 +821,73 @@ public class 名稱DbContext : DbContext
 }</code></pre>
 <ul>
   <li><code>名稱DbContext(DbContextOptions&lt;名稱DbContext&gt; options) : base(options)</code>：建構子，負責<strong>收下連線設定</strong>，詳見下方「<a href="#ctor">建構子：DbContext 怎麼拿到連線設定</a>」</li>
+  <li><code>public DbSet&lt;類別名稱&gt; 表名 =&gt; Set&lt;類別名稱&gt;();</code>：屬性名稱後面直接接 <code>=&gt;</code>，是「只有 <code>get</code> 的屬性」的簡寫（expression-bodied property），每次讀 <code>表名</code> 就呼叫一次 <code>Set&lt;類別名稱&gt;()</code>。<code>Set&lt;T&gt;()</code> 是父類別 <code>DbContext</code> 提供的方法，回傳 T 那張表的 <code>DbSet&lt;T&gt;</code>；同一個 DbContext 裡呼叫幾次都拿到同一個物件，不會每次 new 一個新的。展開來等於：
+<pre><code class="language-csharp">public DbSet&lt;Post&gt; Posts
+{
+    get { return Set&lt;Post&gt;(); }
+}</code></pre></li>
   <li><code>protected override</code>：<code>OnModelCreating</code> 是父類別 <code>DbContext</code> 本來就有的方法，這裡<strong>覆寫</strong>它，加上自己的設定。EF Core 建立模型時會自動呼叫它</li>
   <li><code>modelBuilder.Entity&lt;Post&gt;(entity =&gt; { … })</code>：又是一個 <code>Action</code>（見 <a href="csharp-delegates-signature.html#delegate">C# 補充：Action 和 Func</a>），<code>entity</code> 代表「Post 的設定器」</li>
   <li><code>entity.Property(x =&gt; x.Title)</code>：用 lambda 指定要設定哪個屬性，打錯字編譯就會發現</li>
   <li>常用設定方法：<code>.HasMaxLength(200)</code>、<code>.IsRequired()</code>、<code>.HasColumnName("…")</code>、<code>.HasDefaultValueSql("…")</code></li>
 </ul>
+
+<details class="aside">
+<summary>📎 補充：另一種寫法 <code>{ get; set; }</code>，兩種差在哪</summary>
+<div class="aside-body">
+<p>官方文件也常見這樣寫：</p>
+<pre><code class="language-csharp">public DbSet&lt;Post&gt; Posts { get; set; }</code></pre>
+<p>這個屬性沒有給初始值，值是 EF Core 在 <code>new</code> DbContext 的時候，用反射找到所有 <code>DbSet</code> 屬性、一個一個 <code>set</code> 進去的。</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th><code>=&gt; Set&lt;Post&gt;()</code></th><th><code>{ get; set; }</code></th></tr>
+  <tr><td>值從哪來</td><td>每次讀的時候呼叫 <code>Set&lt;Post&gt;()</code></td><td><code>new</code> DbContext 時 EF Core 用反射 <code>set</code> 進去</td></tr>
+  <tr><td>能不能從外面改掉</td><td>不能，沒有 <code>set</code></td><td>能，<code>db.Posts = null;</code> 編譯得過</td></tr>
+  <tr><td>nullable 警告（CS8618）</td><td>沒有</td><td>沒有：EF Core 套件附的 analyzer（<code>UninitializedDbSetDiagnosticSuppressor</code>）專門把 DbContext 裡 <code>DbSet</code> 屬性的這個警告壓掉</td></tr>
+</table>
+</div>
+<p>兩種都能用。這份筆記用 <code>=&gt; Set&lt;Post&gt;()</code>，因為它是唯讀的，不能被改掉，也不靠 EF Core 用反射幫你填值。</p>
+<p>實際跑一次（file-based app，只建 DbContext 不連資料庫，SQL Server 不用開）：</p>
+<pre><code class="language-csharp">#:package Microsoft.EntityFrameworkCore.SqlServer@10.0.14
+// file-based app 預設開啟 NativeAOT，EF Core 在這個模式下不能在執行時建立 model，所以關掉
+#:property PublishAot=false
+
+using Microsoft.EntityFrameworkCore;
+
+using var a = new ArrowContext();
+Console.WriteLine($"=&gt; 寫法：連讀兩次 Posts 是同一個物件嗎？{ReferenceEquals(a.Posts, a.Posts)}");
+Console.WriteLine($"=&gt; 寫法：Posts 和 Set&lt;Post&gt;() 是同一個物件嗎？{ReferenceEquals(a.Posts, a.Set&lt;Post&gt;())}");
+
+using var b = new AutoContext();
+Console.WriteLine($"get; set; 寫法：new 完之後 Posts 是 null 嗎？{b.Posts is null}");
+Console.WriteLine($"get; set; 寫法：Posts 和 Set&lt;Post&gt;() 是同一個物件嗎？{ReferenceEquals(b.Posts, b.Set&lt;Post&gt;())}");
+
+class Post { public int Id { get; set; } }
+
+class ArrowContext : DbContext
+{
+    public DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();
+    protected override void OnConfiguring(DbContextOptionsBuilder o) =&gt; o.UseSqlServer("Server=.;Database=x");
+}
+
+class AutoContext : DbContext
+{
+    public DbSet&lt;Post&gt; Posts { get; set; }
+    protected override void OnConfiguring(DbContextOptionsBuilder o) =&gt; o.UseSqlServer("Server=.;Database=x");
+}</code></pre>
+<p>先猜：四行各印出什麼？<code>AutoContext</code> 的 <code>Posts</code> 沒給初始值，build 會有 CS8618 警告嗎？</p>
+<details class="answer">
+<summary>實際結果（跑完再打開）</summary>
+<div class="answer-body">
+<pre><code class="nohighlight">=&gt; 寫法：連讀兩次 Posts 是同一個物件嗎？True
+=&gt; 寫法：Posts 和 Set&lt;Post&gt;() 是同一個物件嗎？True
+get; set; 寫法：new 完之後 Posts 是 null 嗎？False
+get; set; 寫法：Posts 和 Set&lt;Post&gt;() 是同一個物件嗎？True</code></pre>
+<p>build 也<strong>沒有</strong> CS8618 警告。如果把 <code>AutoContext</code> 改成不繼承 <code>DbContext</code> 的普通類別，同樣的 <code>{ get; set; }</code> 就會出現 CS8618，因為 EF Core 的 analyzer 只壓 DbContext 裡的 <code>DbSet</code> 屬性。</p>
+</div>
+</details>
+</div>
+</details>
 
 <h4 id="ctor">建構子：DbContext 怎麼拿到連線設定</h4>
 <p><code>BlogDbContext</code> 要知道「連哪種資料庫、連線字串是什麼」，這包設定叫 <code>options</code>。它<strong>不是 DbContext 自己產生的</strong>，而是從外面送進來的：</p>
@@ -1814,7 +1876,7 @@ public class BlogDbContext : DbContext
 <ul>
   <li><code>Post.cs</code> 只有屬性，沒有任何資料庫設定；「最多 200 字」集中寫在 <code>BlogDbContext</code></li>
   <li><code>= string.Empty</code>：專案有開 <code>Nullable</code>，<code>string</code> 代表「不可以是 null」，所以要給預設值，不然編譯器會警告</li>
-  <li><code>DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();</code>：官方文件也常見 <code>public DbSet&lt;Post&gt; Posts { get; set; }</code>，兩種都可以。用 <code>=&gt; Set&lt;Post&gt;()</code> 的好處是不會有 nullable 警告</li>
+  <li><code>DbSet&lt;Post&gt; Posts =&gt; Set&lt;Post&gt;();</code>：官方文件也常見 <code>public DbSet&lt;Post&gt; Posts { get; set; }</code>，兩種都可以，也都不會有 nullable 警告。用 <code>=&gt; Set&lt;Post&gt;()</code> 是因為它唯讀、不能被改掉，差別見 3-3 的「另一種寫法 <code>{ get; set; }</code>」</li>
 </ul>
 </div>
 </details>
