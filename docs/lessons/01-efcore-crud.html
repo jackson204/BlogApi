@@ -913,6 +913,29 @@ info: Microsoft.Hosting.Lifetime[14]
 builder.Services.AddScoped&lt;Greeter&gt;();   // Build 之後才登記</code></pre>
 <pre><code class="nohighlight">Unhandled exception. System.InvalidOperationException: The service collection cannot be modified because it is read-only.</code></pre>
 <p>一啟動就丟例外，連 <code>Run()</code> 都走不到。所以所有 <code>builder.Services.Add…</code> 都要寫在 <code>Build()</code> 前面。</p>
+<p><strong>實測：忘了登記</strong></p>
+<p>反過來，把 <code>builder.Services.AddScoped&lt;Greeter&gt;();</code> 那行整個刪掉，其他不動：</p>
+<pre><code class="nohighlight">[1] 環境：Development
+[1] 設定檔讀到的 log 等級：Information
+[1] AddScoped&lt;Greeter&gt;() 寫完了
+[2] Build() 完成
+[3] 管線排好了
+[4] 呼叫 Run()
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5299        ← 啟動完全正常
+[3] 請求進來：GET /greet
+fail: Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware[1]
+      An unhandled exception has occurred while executing the request.
+      System.InvalidOperationException: Unable to resolve service for type 'Greeter' while attempting to activate 'GreetController'.</code></pre>
+<p><code>GET /greet</code> 回 <code>500 Internal Server Error</code>。錯誤訊息說的是：要做出 <code>GreetController</code> 時，它的建構子要一個 <code>Greeter</code>，但登記簿裡查不到 <code>Greeter</code>。「Greeter 被做出來了」「GreetController 被做出來了」都沒印，<code>Get()</code> 也沒執行。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>寫錯的方式</th><th>什麼時候爆</th><th>為什麼</th></tr>
+  <tr><td><code>Build()</code> 之後才 <code>Add…</code></td><td><strong>一啟動</strong>就丟例外</td><td><code>Build()</code> 之後登記簿是唯讀的，寫進去的那一刻就失敗</td></tr>
+  <tr><td>忘了 <code>Add…</code></td><td>啟動正常，<strong>第一個用到它的請求</strong>才回 500</td><td>登記簿要等有人需要時才查；沒有請求用到 <code>Greeter</code>，就沒人發現它沒登記</td></tr>
+</table>
+</div>
+<p>所以「忘了登記」比較難發現：程式跑起來看似沒事，要打到那支 API 才會爆。看到 <code>Unable to resolve service for type 'X'</code>，第一件事就是回 <code>Program.cs</code> 檢查 <code>X</code> 有沒有在 <code>Build()</code> 前面登記。</p>
 <p>所以 3-8 說「<code>Build</code> 和 <code>Run</code> 之後一個 DbContext 都沒有」：階段 1 只是寫登記簿，階段 4 之後有請求進來、路由表命中 Controller，才會照登記簿做出第一個 DbContext。</p>
 
 <h4 id="launchsettings">Run() 要聽哪個 port：Properties/launchSettings.json</h4>
