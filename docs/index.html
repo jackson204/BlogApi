@@ -50,71 +50,107 @@
 <h2 id="lessons">課程清單</h2>
 <input id="q" class="search" type="search" placeholder="搜尋主題，例如：Include、多對多、DI、N+1、volume…" autocomplete="off">
 
-<div id="list" class="lesson-list"></div>
+<div id="list"></div>
 <p id="empty" class="empty">找不到符合的課程，換個關鍵字試試。</p>
 
 </main>
 <script>
 // 新增課程時：把 file 填上，就會變成可點擊
-var lessons = [
-  { stage: "階段 0", title: "00｜環境準備：用 Docker 跑 MSSQL", file: "lessons/00-docker-mssql.html",
-    tags: ["Docker", "image", "container", "volume", "port", "docker compose", "MSSQL", "連線字串", "sqlcmd", "Rider Database"] },
-  { stage: "階段 1", title: "01｜文章 CRUD：EF Core 入門", file: "lessons/01-efcore-crud.html",
-    tags: ["Web API", "Controller", "EF Core", "DbContext", "Migration", "LINQ", "SQL", "ToQueryString", "User Secrets", "appsettings", "呼叫流程", "Change Tracking", ".http", "ADO.NET", "Dapper", "ORM", "DbSet", "AddDbContext", "生命週期", "Scoped", "NuGet", "Provider", "dotnet-ef", "Fluent API", "Data Annotations", "SQL Injection", "參數化查詢", "泛型", "多個 DbContext", "--context", "solution", "dotnet sln", "Code First", "Database First", "scaffold", "IQueryable", "路由", "Routing", "HTTP 動詞", "GET POST PUT DELETE", "ControllerBase", "ApiController", "Model Binding", "404", "405", "launchSettings", "applicationUrl", "ASPNETCORE_ENVIRONMENT", "CreateBuilder", "Build", "Run", "Middleware"] },
-  { stage: "深入（選修）", title: "深入｜LINQ ↔ SQL 實驗室：Console 專案（01 的延伸）", file: "lessons/01b-linq-sql-lab.html",
-    tags: ["LINQ", "SQL", "IQueryable", "Include", "ThenInclude", "JOIN", "GroupBy", "GROUP BY", "HAVING", "EXISTS", "Any", "Skip", "Take", "OFFSET FETCH", "Select 投影", "SelectMany", "延遲執行", "N+1", "AsNoTracking", "ExecuteUpdate", "OnConfiguring", "LogTo", "EnsureCreated", "Console", "could not be translated"] },
-  { stage: "補充", title: "C# 補充：類別與物件（this、建構子、static、繼承、介面）", file: "lessons/csharp-class-object.html",
-    tags: ["類別", "物件", "new", "this", "static", "建構子", "constructor", "物件初始設定式", "readonly", "record", "init", "with", "主要建構子", "primary constructor", "繼承", "base", "protected", "virtual", "override", "abstract", "介面", "interface", "file-based app"] },
-  { stage: "補充", title: "C# 補充：看懂方法簽章（方法、擴充方法、委派 Action / Func）", file: "lessons/csharp-delegates-signature.html",
-    tags: ["方法簽章", "static", "this", "擴充方法", "extension method", "泛型", "where", "選擇性參數", "委派", "delegate", "Action", "Func", "lambda", "file-based app"] },
-  { stage: "補充", title: "C# 補充：Task 與 async / await", file: "lessons/csharp-async-await.html",
-    tags: ["Task", "Task<T>", "async", "await", "非同步", "執行緒", "Task.Delay", "Task.WhenAll", "Thread.Sleep", ".Result", "async void", "CS4014", "IsCompleted", "IsFaulted", "file-based app"] },
-  { stage: "補充", title: "補充：編碼器（Encoder）、解碼（Decode）與 XSS", file: "lessons/encoding-json-html.html",
-    tags: ["Encoder", "Decode", "解碼", "白名單", "JSON", "\\u 編碼", "HtmlEncoder", "JavaScriptEncoder", "UrlEncoder", "UnicodeRanges", "AddJsonOptions", "XSS", "HtmlDecode", "UnescapeDataString", "file-based app"] },
-  { stage: "補充", title: "補充：Cookie 是什麼，還有哪些類似的東西（Session、Token、localStorage）", file: "lessons/http-cookie.html",
-    tags: ["Cookie", "Set-Cookie", "HttpOnly", "SameSite", "CSRF", "Session", "Token", "JWT", "localStorage", "HTTP 無狀態"] },
-  { stage: "補充", title: "補充：從 Web API 呼叫外部 API（Typed Client）", file: "lessons/httpclient-typed-client.html",
-    tags: ["HttpClient", "IHttpClientFactory", "Typed Client", "Named Client", "AddHttpClient", "GetFromJsonAsync", "BaseAddress", "HttpRequestException", "socket exhaustion", "Refit", "外部 API"] },
-  { stage: "補充", title: "補充：用 NLog 寫 log（ILogger、Target、Rule、Layout）", file: "lessons/nlog-logging.html",
-    tags: ["NLog", "ILogger", "Logging", "LogLevel", "Provider", "Target", "Rule", "Layout", "nlog.config", "Message Template", "結構化 log", "JsonLayout", "Database target", "aspnet-request-url", "CA2254", "finalMinLevel", "throwConfigExceptions", "autoReload", "ClearProviders", "UseNLog", "internalLogFile"] },
-  { stage: "補充", title: "補充：用 RabbitMQ 把慢工作丟出請求之外（訊息佇列）", file: "lessons/rabbitmq-queue.html",
-    tags: ["RabbitMQ", "訊息佇列", "Message Queue", "Producer", "Consumer", "Broker", "ack", "nack", "requeue", "durable", "Persistent", "prefetch", "BasicQos", "dead-letter", "x-death", "retry", "x-message-ttl", "BackgroundService", "Worker Service", "Management UI", "MassTransit", "outbox", "冪等"] },
-  { stage: "補充", title: "補充：用 SignalR 即時推播（WebSocket、Hub、群組）", file: "lessons/signalr-realtime.html",
-    tags: ["SignalR", "WebSocket", "即時推播", "Hub", "IHubContext", "Clients.All", "Groups", "negotiate", "long polling", "SSE", "withAutomaticReconnect", "CORS", "AllowCredentials", "JavaScript client", ".NET client", "wwwroot", "UseStaticFiles"] },
-  { stage: "階段 2", title: "02a｜作者與文章：一對多", file: "lessons/02a-one-to-many.html",
-    tags: ["一對多", "Foreign Key", "外鍵", "Include", "導覽屬性", "INNER JOIN", "HasOne", "WithMany", "HasForeignKey", "OnDelete", "Cascade", "Restrict", "DeleteBehavior", "循環參照", "Response DTO", "ValidationProblem", "409 Conflict", "Range", "巢狀路由"] },
-  { stage: "階段 2", title: "02b｜使用者與個人檔案：一對一", file: null,
-    tags: ["一對一", "HasOne", "WithOne"] },
-  { stage: "階段 2", title: "02c｜文章與標籤：多對多", file: null,
-    tags: ["多對多", "中介表", "Join Entity"] },
-  { stage: "階段 3", title: "03｜程式分層與 DI：沒有 DI 會怎樣？", file: null,
-    tags: ["DI", "依賴注入", "Service", "Repository", "Transient", "Scoped", "Singleton"] },
-  { stage: "階段 4", title: "04｜文章列表效能優化", file: null,
-    tags: ["N+1", "延遲載入", "Lazy Loading", "預先載入", "Select 投影", "SelectMany", "AsNoTracking", "分頁", "DTO"] },
-  { stage: "階段 5", title: "05｜選修：登入、驗證、錯誤處理、測試", file: null,
-    tags: ["JWT", "FluentValidation", "例外處理", "單元測試"] }
+// group 決定出現在哪一區；order 是組內建議閱讀順序；prereq 是「建議先讀」
+var groups = [
+  { id: "main", title: "主線課程", hint: "照 00 → 05 的順序走，每一課都建立在前一課的程式上。" },
+  { id: "cs", title: "補充｜C# 語法", hint: "主線遇到看不懂的語法時來查。三篇一起讀的話，照 ① → ③ 的順序最順。" },
+  { id: "http", title: "補充｜HTTP 觀念", hint: "沒有前置知識，隨時都能讀；兩篇互相有提到對方。" },
+  { id: "ext", title: "補充｜對外整合", hint: "會用到 DI 註冊和 async，建議走完 03 DI、讀完 C# ③ async 之後再來。照 ① → ④ 讀最順，但每篇都能單獨讀。" }
 ];
 
+var lessons = [
+  { group: "main", stage: "階段 0", title: "00｜環境準備：用 Docker 跑 MSSQL", file: "lessons/00-docker-mssql.html",
+    tags: ["Docker", "image", "container", "volume", "port", "docker compose", "MSSQL", "連線字串", "sqlcmd", "Rider Database"] },
+  { group: "main", stage: "階段 1", title: "01｜文章 CRUD：EF Core 入門", file: "lessons/01-efcore-crud.html",
+    tags: ["Web API", "Controller", "EF Core", "DbContext", "Migration", "LINQ", "SQL", "ToQueryString", "User Secrets", "appsettings", "呼叫流程", "Change Tracking", ".http", "ADO.NET", "Dapper", "ORM", "DbSet", "AddDbContext", "生命週期", "Scoped", "NuGet", "Provider", "dotnet-ef", "Fluent API", "Data Annotations", "SQL Injection", "參數化查詢", "泛型", "多個 DbContext", "--context", "solution", "dotnet sln", "Code First", "Database First", "scaffold", "IQueryable", "路由", "Routing", "HTTP 動詞", "GET POST PUT DELETE", "ControllerBase", "ApiController", "Model Binding", "404", "405", "launchSettings", "applicationUrl", "ASPNETCORE_ENVIRONMENT", "CreateBuilder", "Build", "Run", "Middleware"] },
+  { group: "main", stage: "深入（選修）", title: "深入｜LINQ ↔ SQL 實驗室：Console 專案（01 的延伸）", file: "lessons/01b-linq-sql-lab.html",
+    prereq: "01 文章 CRUD",
+    tags: ["LINQ", "SQL", "IQueryable", "Include", "ThenInclude", "JOIN", "GroupBy", "GROUP BY", "HAVING", "EXISTS", "Any", "Skip", "Take", "OFFSET FETCH", "Select 投影", "SelectMany", "延遲執行", "N+1", "AsNoTracking", "ExecuteUpdate", "OnConfiguring", "LogTo", "EnsureCreated", "Console", "could not be translated"] },
+  { group: "main", stage: "階段 2", title: "02a｜作者與文章：一對多", file: "lessons/02a-one-to-many.html",
+    tags: ["一對多", "Foreign Key", "外鍵", "Include", "導覽屬性", "INNER JOIN", "HasOne", "WithMany", "HasForeignKey", "OnDelete", "Cascade", "Restrict", "DeleteBehavior", "循環參照", "Response DTO", "ValidationProblem", "409 Conflict", "Range", "巢狀路由"] },
+  { group: "main", stage: "階段 2", title: "02b｜使用者與個人檔案：一對一", file: null,
+    tags: ["一對一", "HasOne", "WithOne"] },
+  { group: "main", stage: "階段 2", title: "02c｜文章與標籤：多對多", file: null,
+    tags: ["多對多", "中介表", "Join Entity"] },
+  { group: "main", stage: "階段 3", title: "03｜程式分層與 DI：沒有 DI 會怎樣？", file: null,
+    tags: ["DI", "依賴注入", "Service", "Repository", "Transient", "Scoped", "Singleton"] },
+  { group: "main", stage: "階段 4", title: "04｜文章列表效能優化", file: null,
+    tags: ["N+1", "延遲載入", "Lazy Loading", "預先載入", "Select 投影", "SelectMany", "AsNoTracking", "分頁", "DTO"] },
+  { group: "main", stage: "階段 5", title: "05｜選修：登入、驗證、錯誤處理、測試", file: null,
+    tags: ["JWT", "FluentValidation", "例外處理", "單元測試"] },
+
+  { group: "cs", order: 1, stage: "補充", title: "C# 補充：類別與物件（this、建構子、static、繼承、介面）", file: "lessons/csharp-class-object.html",
+    tags: ["類別", "物件", "new", "this", "static", "建構子", "constructor", "物件初始設定式", "readonly", "record", "init", "with", "主要建構子", "primary constructor", "繼承", "base", "protected", "virtual", "override", "abstract", "介面", "interface", "file-based app"] },
+  { group: "cs", order: 2, stage: "補充", title: "C# 補充：看懂方法簽章（方法、擴充方法、委派 Action / Func）", file: "lessons/csharp-delegates-signature.html",
+    prereq: "① 類別與物件",
+    tags: ["方法簽章", "static", "this", "擴充方法", "extension method", "泛型", "where", "選擇性參數", "委派", "delegate", "Action", "Func", "lambda", "file-based app"] },
+  { group: "cs", order: 3, stage: "補充", title: "C# 補充：Task 與 async / await", file: "lessons/csharp-async-await.html",
+    prereq: "② 方法簽章與委派",
+    tags: ["Task", "Task<T>", "async", "await", "非同步", "執行緒", "Task.Delay", "Task.WhenAll", "Thread.Sleep", ".Result", "async void", "CS4014", "IsCompleted", "IsFaulted", "file-based app"] },
+
+  { group: "http", stage: "補充", title: "補充：編碼器（Encoder）、解碼（Decode）與 XSS", file: "lessons/encoding-json-html.html",
+    tags: ["Encoder", "Decode", "解碼", "白名單", "JSON", "\\u 編碼", "HtmlEncoder", "JavaScriptEncoder", "UrlEncoder", "UnicodeRanges", "AddJsonOptions", "XSS", "HtmlDecode", "UnescapeDataString", "file-based app"] },
+  { group: "http", stage: "補充", title: "補充：Cookie 是什麼，還有哪些類似的東西（Session、Token、localStorage）", file: "lessons/http-cookie.html",
+    tags: ["Cookie", "Set-Cookie", "HttpOnly", "SameSite", "CSRF", "Session", "Token", "JWT", "localStorage", "HTTP 無狀態"] },
+
+  { group: "ext", order: 1, stage: "補充", title: "補充：從 Web API 呼叫外部 API（Typed Client）", file: "lessons/httpclient-typed-client.html",
+    prereq: "03 DI、C# ③ async / await",
+    tags: ["HttpClient", "DI", "IHttpClientFactory", "Typed Client", "Named Client", "AddHttpClient", "GetFromJsonAsync", "BaseAddress", "HttpRequestException", "socket exhaustion", "Refit", "外部 API"] },
+  { group: "ext", order: 2, stage: "補充", title: "補充：用 NLog 寫 log（ILogger、Target、Rule、Layout）", file: "lessons/nlog-logging.html",
+    prereq: "03 DI",
+    tags: ["NLog", "DI", "ILogger", "Logging", "LogLevel", "Provider", "Target", "Rule", "Layout", "nlog.config", "Message Template", "結構化 log", "JsonLayout", "Database target", "aspnet-request-url", "CA2254", "finalMinLevel", "throwConfigExceptions", "autoReload", "ClearProviders", "UseNLog", "internalLogFile"] },
+  { group: "ext", order: 3, stage: "補充", title: "補充：用 RabbitMQ 把慢工作丟出請求之外（訊息佇列）", file: "lessons/rabbitmq-queue.html",
+    prereq: "03 DI、C# ③ async / await",
+    tags: ["RabbitMQ", "DI", "訊息佇列", "Message Queue", "Producer", "Consumer", "Broker", "ack", "nack", "requeue", "durable", "Persistent", "prefetch", "BasicQos", "dead-letter", "x-death", "retry", "x-message-ttl", "BackgroundService", "Worker Service", "Management UI", "MassTransit", "outbox", "冪等"] },
+  { group: "ext", order: 4, stage: "補充", title: "補充：用 SignalR 即時推播（WebSocket、Hub、群組）", file: "lessons/signalr-realtime.html",
+    prereq: "03 DI、C# ③ async / await",
+    tags: ["SignalR", "DI", "WebSocket", "即時推播", "Hub", "IHubContext", "Clients.All", "Groups", "negotiate", "long polling", "SSE", "withAutomaticReconnect", "CORS", "AllowCredentials", "JavaScript client", ".NET client", "wwwroot", "UseStaticFiles"] }
+];
+
+var circled = ["", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
 var list = document.getElementById("list");
 var empty = document.getElementById("empty");
+
+function card(l) {
+  var el = document.createElement(l.file ? "a" : "div");
+  el.className = "lesson-card" + (l.file ? "" : " locked");
+  if (l.file) el.href = l.file;
+  var stage = (l.order ? circled[l.order] + " " : "") + l.stage;
+  el.innerHTML =
+    '<span class="status">' + (l.file ? "✅ 可以開始" : "⏳ 尚未產出") + "</span>" +
+    '<div class="stage">' + stage + "</div>" +
+    '<div class="title">' + l.title + "</div>" +
+    (l.prereq ? '<div class="prereq">📌 建議先讀：' + l.prereq + "</div>" : "") +
+    '<div class="tags">' + l.tags.map(function (t) { return '<span class="tag">' + t + "</span>"; }).join("") + "</div>";
+  return el;
+}
 
 function render(keyword) {
   var k = keyword.trim().toLowerCase();
   list.innerHTML = "";
   var shown = 0;
-  lessons.forEach(function (l) {
-    var hay = (l.stage + " " + l.title + " " + l.tags.join(" ")).toLowerCase();
-    if (k && hay.indexOf(k) === -1) return;
-    shown++;
-    var el = document.createElement(l.file ? "a" : "div");
-    el.className = "lesson-card" + (l.file ? "" : " locked");
-    if (l.file) el.href = l.file;
-    el.innerHTML =
-      '<span class="status">' + (l.file ? "✅ 可以開始" : "⏳ 尚未產出") + "</span>" +
-      '<div class="stage">' + l.stage + "</div>" +
-      '<div class="title">' + l.title + "</div>" +
-      '<div class="tags">' + l.tags.map(function (t) { return '<span class="tag">' + t + "</span>"; }).join("") + "</div>";
-    list.appendChild(el);
+  groups.forEach(function (g) {
+    var items = lessons.filter(function (l) {
+      if (l.group !== g.id) return false;
+      var hay = (g.title + " " + l.stage + " " + l.title + " " + l.tags.join(" ")).toLowerCase();
+      return !k || hay.indexOf(k) !== -1;
+    });
+    if (!items.length) return;
+    shown += items.length;
+    var sec = document.createElement("section");
+    sec.className = "lesson-group";
+    sec.innerHTML = "<h3>" + g.title + '</h3><p class="group-hint">' + g.hint + "</p>";
+    var box = document.createElement("div");
+    box.className = "lesson-list";
+    items.forEach(function (l) { box.appendChild(card(l)); });
+    sec.appendChild(box);
+    list.appendChild(sec);
   });
   empty.style.display = shown ? "none" : "block";
 }

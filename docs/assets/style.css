@@ -223,4 +223,7 @@ a.lesson-card:hover { border-color: var(--accent); }
 .lesson-card .stage { font-size: .8rem; color: var(--muted); }
 .lesson-card .title { font-weight: 700; font-size: 1.05rem; }
 .lesson-card .status { float: right; font-size: .8rem; color: var(--muted); }
+.lesson-card .prereq { font-size: .85rem; color: var(--warn); margin-top: 4px; }
+.lesson-group h3 { margin-bottom: 4px; }
+.lesson-group .group-hint { color: var(--muted); font-size: .9rem; margin: 0 0 12px; }
 .empty { color: var(--muted); display: none; }
