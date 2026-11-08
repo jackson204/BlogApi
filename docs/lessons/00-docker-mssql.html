@@ -34,7 +34,7 @@
   <ol>
     <li><a href="#problem">這一課要解決的問題</a></li>
     <li><a href="#concept">原理：image、container、port、volume</a></li>
-    <li><a href="#usage">用法：docker run → docker compose</a></li>
+    <li><a href="#usage">用法：啟動 Docker Desktop → docker run → docker compose</a></li>
     <li><a href="#exercise">練習題（答案摺疊）</a></li>
     <li><a href="#connstr">連線字串：給下一課用</a></li>
     <li><a href="#pitfalls">優缺點 &amp; 常見坑</a></li>
@@ -183,6 +183,55 @@ stateDiagram-v2
 <!-- ============================================================ -->
 <h2 id="usage">3. 用法</h2>
 
+<h3 id="u-setup">3-0. 開始前：安裝、啟動、確認 Docker Desktop</h3>
+<p><strong>安裝（只做一次）</strong></p>
+<ul>
+  <li>到 Docker 官方的 <a href="https://docs.docker.com/desktop/setup/install/windows-install/" target="_blank">Install Docker Desktop on Windows</a> 下載安裝檔</li>
+  <li>Windows 11 用 WSL2 後端，安裝程式會自己處理；如果問要用 WSL2 還是 Hyper-V，選 WSL2</li>
+  <li>裝完在 PowerShell 打 <code>docker --version</code>，有印出版本號就代表 CLI 裝好了。這一步只證明「指令存在」，不代表引擎在跑</li>
+</ul>
+
+<p><strong>啟動（每次開機後都要）</strong></p>
+<ol>
+  <li>從開始功能表打開 Docker Desktop</li>
+  <li>等左下角顯示 <strong>Engine running</strong>（第一次啟動 WSL2 可能要 30 秒到 1 分鐘）</li>
+  <li>打 <code>docker version</code>，要同時看到 <strong>Client</strong> 和 <strong>Server</strong> 兩個區塊才算就緒</li>
+</ol>
+<p>Docker Desktop 還沒起來時，<code>docker version</code> 只印得出 Client 區塊，下面接著 <code>error during connect</code>：</p>
+<pre><code class="language-plaintext">Client:
+ Version:           28.3.2
+ API version:       1.51
+ OS/Arch:           windows/amd64
+ Context:           desktop-linux
+error during connect: Get "http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/v1.51/version": open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.</code></pre>
+
+<div class="callout warn">
+<p>⚠️ 本課所有 docker 指令都要在 Docker Desktop 開著的情況下執行。<br>
+沒開的話，不管下什麼指令，錯誤訊息的結尾都會是 <code>open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified</code>。</p>
+</div>
+
+<p><strong>為什麼要先開 Docker Desktop？</strong></p>
+<p><code>docker</code> 這個指令本身只是 client，它不會跑 container。真正做事的是 <strong>Docker Engine</strong>，在 Windows 上它跑在 Docker Desktop 管理的 WSL2 Linux 虛擬機裡。兩邊靠一條具名管道（named pipe）<code>//./pipe/dockerDesktopLinuxEngine</code> 溝通，這條管道是 Docker Desktop 啟動時才建立的。Docker Desktop 沒開，管道就不存在，client 送不出指令，所以回報的是「找不到檔案」而不是「連線失敗」。</p>
+
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    subgraph WIN["Windows"]
+        CLI["PowerShell<br>docker run ..."]
+        PIPE(["具名管道<br>dockerDesktopLinuxEngine"])
+        subgraph DD["Docker Desktop（WSL2 Linux VM）"]
+            ENG["Docker Engine"]
+            C1["Container<br>blog-mssql"]
+            C2["Container<br>其他專案的 DB"]
+        end
+    end
+    CLI --> PIPE --> ENG
+    ENG --> C1
+    ENG --> C2
+</div>
+<div class="diagram-caption">docker 指令只是 client。Docker Desktop 沒開，中間那條管道就不存在，指令連不到引擎</div>
+</div>
+
 <h3>3-1. 簡單版：一行 <code>docker run</code></h3>
 <p><strong>正式語法</strong>（Docker 官方文件的寫法，<code>[ ]</code> 代表可以省略）：</p>
 <pre><code class="language-plaintext">docker run [OPTIONS] IMAGE[:TAG] [COMMAND]</code></pre>
@@ -264,10 +313,7 @@ sequenceDiagram
 <!-- ============================================================ -->
 <h2 id="exercise">4. 練習題</h2>
 
-<div class="callout warn">
-<p>⚠️ 開始前：先打開 <strong>Docker Desktop</strong>，等左下角顯示 Engine running。<br>
-沒開的話，任何 docker 指令都會出現 <code>open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified</code>。</p>
-</div>
+<p>⚠️ 開始前：Docker Desktop 要開著，確認方式見 <a href="#u-setup">3-0</a>。</p>
 
 <!-- 題 1 -->
 <div class="exercise">
@@ -518,7 +564,7 @@ flowchart LR
 <div class="table-wrap">
 <table>
   <tr><th>症狀</th><th>原因</th><th>解法</th></tr>
-  <tr><td><code>dockerDesktopLinuxEngine ... cannot find the file</code></td><td>Docker Desktop 沒開</td><td>打開 Docker Desktop，等 Engine running</td></tr>
+  <tr><td><code>dockerDesktopLinuxEngine ... cannot find the file</code></td><td>Docker Desktop 沒開</td><td>打開 Docker Desktop，等 Engine running（<a href="#u-setup">3-0</a>）</td></tr>
   <tr><td>container 一啟動就 Exited</td><td>密碼不符合複雜度，或沒設 <code>ACCEPT_EULA</code></td><td><code>docker logs blog-mssql</code> 看錯誤</td></tr>
   <tr><td><code>port is already allocated</code></td><td>本機已經裝了 SQL Server，佔住 1433</td><td>改成 <code>"14330:1433"</code>，連線字串也改成 <code>localhost,14330</code></td></tr>
   <tr><td>剛 up 完馬上連，連不上</td><td>SQL Server 還在初始化</td><td>等 10~30 秒，或看 logs 出現 ready</td></tr>
