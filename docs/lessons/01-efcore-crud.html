@@ -57,6 +57,7 @@
   <tr><td>刪除文章</td><td><strong>D</strong>elete</td><td>DELETE</td><td><code>/api/posts/{id}</code></td></tr>
 </table>
 </div>
+<p>網址裡 <code>?</code> 後面的 <code>keyword=xxx</code> 叫 <strong>query string</strong>，是可有可無的篩選條件；<code>{id}</code> 是路徑裡的佔位符，會被實際的編號取代。網址的完整組成見「<a href="http-url-querystring.html">補充：網址與 query string</a>」。</p>
 
 <div class="diagram">
 <img src="../images/crud.svg" alt="五個 CRUD 動作：畫面上的操作、HTTP 請求、Controller 方法、EF Core 產生的 SQL、SQL Server 裡發生的事、成功回應" style="width:100%;height:auto">
@@ -631,7 +632,7 @@ POST /weatherforecast       → 405   路徑有，但沒有方法標 [HttpPost]<
 <table>
   <tr><th>方法參數長什麼樣</th><th>從請求的哪裡拿</th><th>例子</th></tr>
   <tr><td>名稱出現在路徑樣板裡：<code>[HttpGet("{id}")]</code> + <code>int id</code></td><td><strong>路徑</strong></td><td><code>GET /api/posts/5</code> → <code>id = 5</code></td></tr>
-  <tr><td>簡單型別，但沒出現在路徑樣板：<code>string? keyword</code></td><td><strong>query string</strong>（<code>?</code> 後面）</td><td><code>GET /api/posts?keyword=Docker</code> → <code>keyword = "Docker"</code></td></tr>
+  <tr><td>簡單型別，但沒出現在路徑樣板：<code>string? keyword</code></td><td><strong><a href="http-url-querystring.html">query string</a></strong>（<code>?</code> 後面）</td><td><code>GET /api/posts?keyword=Docker</code> → <code>keyword = "Docker"</code></td></tr>
   <tr><td>物件型別：<code>PostRequest request</code></td><td><strong>body 的 JSON</strong></td><td><code>POST /api/posts</code> + <code>{"title":"…","content":"…"}</code> → 轉成一個 <code>PostRequest</code></td></tr>
 </table>
 </div>

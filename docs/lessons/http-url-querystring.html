@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>補充：網址與 query string</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>補充：網址與 query string（路徑、?、&amp;、怎麼變成方法參數）</h1>
+<p class="subtitle"><code>GET /api/posts?keyword=docker</code> 這串字怎麼讀？哪一段決定找到哪個方法、哪一段變成方法的參數、沒帶的時候參數是什麼、值裡有空白或中文怎麼辦？</p>
+<div class="tags">
+  <span class="tag">URL</span><span class="tag">網址</span><span class="tag">query string</span><span class="tag">路徑</span>
+  <span class="tag">?</span><span class="tag">&amp;</span><span class="tag">FromQuery</span><span class="tag">AsParameters</span>
+  <span class="tag">Model Binding</span><span class="tag">{id:int}</span><span class="tag">StringValues</span><span class="tag">%20</span><span class="tag">fragment</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>什麼時候會用到這頁</strong></p>
+<ul>
+  <li>看到 <code>/api/posts?keyword=xxx</code>，想知道 <code>?</code> 後面那串叫什麼、規則是什麼</li>
+  <li>Controller 方法多了一個 <code>string? keyword</code> 參數，想知道它怎麼從網址對上、沒帶的時候是什麼</li>
+  <li>想設計一支有篩選、排序、分頁的 API，不確定條件該放路徑還是 query string</li>
+</ul>
+<p>這頁以觀念為主，每一條規則旁邊都附實測結果；最後有一個小實驗，起一個會把「收到什麼」印回來的小網站，親眼看每種寫法進到程式之後長什麼樣。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#parts">一條網址拆成幾段</a></li>
+    <li><a href="#format">query string 的格式：?、名稱=值、&amp;</a></li>
+    <li><a href="#binding">以 ASP.NET Core 為例：query string 怎麼變成方法參數</a></li>
+    <li><a href="#encoding">值裡有空白、中文、&amp; 的時候</a></li>
+    <li><a href="#lab">小實驗：起一個會把「收到什麼」印回來的小網站</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="parts">1. 一條網址拆成幾段</h2>
+<p>先看一條完整的網址。瀏覽器網址列看到的是整條，但伺服器收到的只有其中兩段。</p>
+<pre><code class="nohighlight">https://example.com:5107/api/posts/5?keyword=docker&amp;page=2#top
+\___/   \_________/ \__/\__________/ \___________________/ \_/
+ [1]        [2]      [3]     [4]              [5]          [6]</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>段</th><th>名稱</th><th>這一段在說什麼</th><th>誰會用到它</th></tr>
+  <tr><td>[1]</td><td>協定（scheme）<code>https</code></td><td>用哪一套規則溝通：<code>http</code>，或加密的 <code>https</code></td><td>瀏覽器決定怎麼建立連線</td></tr>
+  <tr><td>[2]</td><td>主機（host）<code>example.com</code></td><td>要連到哪一台電腦</td><td>瀏覽器查 DNS、建立連線；伺服器從 <code>Host</code> header 看到它</td></tr>
+  <tr><td>[3]</td><td>port <code>5107</code></td><td>那台電腦上的哪一個門。省略時 https 是 443、http 是 80</td><td>瀏覽器</td></tr>
+  <tr><td>[4]</td><td>路徑（path）<code>/api/posts/5</code></td><td>對哪個資源：第 5 篇文章</td><td>伺服器用它決定交給哪個方法（路由）</td></tr>
+  <tr><td>[5]</td><td>query string <code>keyword=docker&amp;page=2</code></td><td>附加條件：怎麼篩、怎麼排、第幾頁</td><td>伺服器拿來填方法的參數</td></tr>
+  <tr><td>[6]</td><td>fragment <code>top</code></td><td>頁面裡的某個位置，例如跳到某個標題</td><td>只有瀏覽器用，<strong>不會送給伺服器</strong></td></tr>
+</table>
+</div>
+
+<h3 id="sent">真正送到伺服器的是哪幾段</h3>
+<p>瀏覽器送出請求時，會把網址拆開放進 HTTP 請求的不同位置：</p>
+<pre><code class="language-http">GET /api/posts/5?keyword=docker&amp;page=2 HTTP/1.1
+Host: example.com:5107</code></pre>
+<ul>
+  <li><strong>第一行「動詞 路徑?query string」</strong>：路徑和 query string 連在一起送</li>
+  <li><strong>主機和 port</strong> 變成 <code>Host</code> header</li>
+  <li><strong>協定</strong>決定連線要不要加密，不會出現在請求內容裡</li>
+  <li><strong>fragment 不會送出</strong>。不是伺服器丟掉的，而是瀏覽器（或 curl）在送出前就把它拿掉了</li>
+</ul>
+<p>實測。<code>curl -v</code> 會把實際送出的請求行印出來（<code>&gt;</code> 開頭的那幾行）：</p>
+<pre><code class="language-powershell">curl -v -s "http://localhost:5060/echo?x=1#top"
+# > GET /echo?x=1 HTTP/1.1
+# > Host: localhost:5060
+#
+# 伺服器印回來的：
+# Path        : /echo
+# QueryString : ?x=1</code></pre>
+<p>以 ASP.NET Core 為例，這幾段分別放在 <code>Request.Host</code>、<code>Request.Path</code>、<code>Request.QueryString</code>。注意 <code>QueryString.Value</code> 是<strong>含開頭 <code>?</code> 的整串</strong>，沒有 query string 時是空字串。</p>
+
+<!-- ============================================================ -->
+<h2 id="format">2. query string 的格式：?、名稱=值、&amp;</h2>
+<p>query string 從路徑後面的<strong>第一個 <code>?</code></strong> 開始，到網址結尾（或 <code>#</code> 之前）。裡面是一組或多組「<strong>名稱=值</strong>」，組和組之間用 <code>&amp;</code> 連接。下表每一列的右欄，是伺服器把 query string 拆開後實際得到的東西（.NET 10）：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>規則</th><th>寫法</th><th>伺服器拆出來的（實測）</th></tr>
+  <tr><td>一組就是「名稱=值」，多組用 <code>&amp;</code> 連接</td><td><code>?keyword=docker&amp;page=2</code></td><td><code>keyword → ["docker"]</code><br><code>page → ["2"]</code></td></tr>
+  <tr><td>名稱和值都是<strong>文字</strong>。<code>2</code> 拆出來是字串 <code>"2"</code>，變成 <code>int</code> 是後面綁定的事</td><td><code>?page=2</code></td><td><code>page → ["2"]</code></td></tr>
+  <tr><td>同一個名稱可以出現很多次，會變成多個值</td><td><code>?tag=a&amp;tag=b</code></td><td><code>tag → ["a", "b"]</code>，count=2</td></tr>
+  <tr><td>值可以是空的，名稱還是會被拆出來</td><td><code>?keyword=</code></td><td><code>keyword → [""]</code>，count=1</td></tr>
+  <tr><td>名稱的大小寫原樣保留。要不要分大小寫，是框架比對時的事</td><td><code>?Keyword=docker</code></td><td><code>Keyword → ["docker"]</code></td></tr>
+  <tr><td>「沒有 query string」和「只有問號」是兩回事</td><td><code>/echo</code><br><code>/echo?</code></td><td><code>QueryString</code> 是空字串<br><code>QueryString</code> 是 <code>?</code>，但一組都拆不出來</td></tr>
+</table>
+</div>
+
+<h3 id="path-vs-query">路徑和 query string 的分工</h3>
+<p>兩段都在同一行裡送出，但回答的問題不同：</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>路徑</th><th>query string</th></tr>
+  <tr><td>回答的問題</td><td><strong>對哪個資源</strong></td><td><strong>用什麼條件</strong>：篩選、排序、分頁</td></tr>
+  <tr><td>能不能省略</td><td>不行。少一段就是另一條路徑，沒有方法認領就是 404</td><td>可以。沒帶就是「不篩」，參數拿到 <code>null</code> 或預設值</td></tr>
+  <tr><td>誰決定它長什麼樣</td><td>伺服器端的路由樣板，例如 <code>api/posts/{id}</code></td><td>方法參數的名稱</td></tr>
+  <tr><td>例子</td><td><code>/api/posts/5</code>：第 5 篇</td><td><code>?keyword=docker</code>：標題含 docker<br><code>?page=2</code>：第 2 頁</td></tr>
+</table>
+</div>
+
+<p><strong>為什麼搜尋不寫成 <code>/api/posts/docker</code>？</strong>看起來也能動，但有兩個問題：</p>
+<ol>
+  <li>路徑的每一段都在<strong>指認</strong>一個東西。<code>/api/posts/5</code> 是第 5 篇；照同樣的讀法，<code>/api/posts/docker</code> 會被讀成「叫 docker 的那一篇」，而不是「標題含 docker 的那些」。</li>
+  <li>如果已經有 <code>/api/posts/{id}</code> 這條路由，<code>docker</code> 會被塞進 <code>id</code>。實測：路由樣板寫 <code>{id:int}</code> 時，<code>docker</code> 不是整數，路由直接不認領，回 404；沒寫 <code>:int</code> 時路由認領了，但 <code>docker</code> 轉不成 <code>int</code>，回 400。</li>
+</ol>
+<pre><code class="language-powershell">curl -i http://localhost:5060/api/items/docker
+# HTTP/1.1 404 Not Found              ← 路由樣板 {id:int}：不是整數就不認領
+
+curl -i http://localhost:5060/api/items/loose/docker
+# HTTP/1.1 400 Bad Request            ← 路由樣板 loose/{id}：認領了，但轉不成 int
+# {"title":"One or more validation errors occurred.","status":400,
+#  "errors":{"id":["The value 'docker' is not valid."]}}       （節錄）</code></pre>
+<p>搜尋條件可有可無，也不是某一個資源，所以放 query string：<code>/api/posts?keyword=docker</code>。</p>
+
+<!-- ============================================================ -->
+<h2 id="binding">3. 以 ASP.NET Core 為例：query string 怎麼變成方法參數</h2>
+<p>請求進來後分兩步：先用<strong>路徑</strong>找方法（路由），再把請求的各部分填進方法參數（Model Binding）。query string 只參與第二步，<strong>不影響找到哪個方法</strong>。</p>
+
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    REQ["GET /api/items/5?keyword=docker"] --> ROUTE{"路由比對<br>只看路徑 /api/items/5"}
+    ROUTE -- "沒有方法認領" --> NF["404"]
+    ROUTE -- "找到方法" --> BIND["Model Binding<br>把請求各部分填進參數"]
+    BIND --> P1["路徑佔位符 {id}<br>int id = 5"]
+    BIND --> P2["query string<br>string? keyword = docker"]
+    BIND --> P3["body 的 JSON<br>物件型別的參數"]
+    P1 --> CALL["呼叫方法"]
+    P2 --> CALL
+    P3 --> CALL
+</div>
+<div class="diagram-caption">路由不看 ? 後面的東西：/api/items/5 和 /api/items/5?keyword=x 找到的是同一個方法（實測兩個都回 id = 5）</div>
+</div>
+
+<h3 id="syntax">正式語法：Minimal API 和 Controller 對照</h3>
+<p>ASP.NET Core 有兩種寫 API 的方式：<strong>Minimal API</strong>（參數寫在 lambda 上）和 <strong>Controller</strong>（參數寫在方法上）。從 query string 拿參數的規則大部分一樣，少數地方不同，不同的地方用 ⚠️ 標出來。表裡的結果全部是實測（.NET SDK 10.0.303）：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>情況</th><th>Minimal API</th><th>Controller（<code>[ApiController]</code>）</th></tr>
+  <tr><td>名稱一樣就對上，<strong>不分大小寫</strong></td><td><code>?Keyword=docker</code> → <code>keyword = "docker"</code></td><td>同左</td></tr>
+  <tr><td><code>string? keyword</code>，沒帶</td><td><code>null</code></td><td><code>null</code></td></tr>
+  <tr><td><code>?keyword=</code>：名稱有、值是空的</td><td>⚠️ <code>""</code>（空字串）</td><td>⚠️ <code>null</code>（MVC 預設把空字串轉成 <code>null</code>）</td></tr>
+  <tr><td><code>int page = 1</code>，沒帶</td><td><code>1</code>，用預設值</td><td><code>1</code></td></tr>
+  <tr><td><code>int page</code>：沒預設值、不可為 null，沒帶</td><td>⚠️ <strong>400</strong>，沒有內容。視為必填</td><td>⚠️ <strong>200</strong>，<code>page = 0</code>。沒帶就用 <code>int</code> 的預設值 0</td></tr>
+  <tr><td><code>?page=abc</code>：轉不成 <code>int</code></td><td>400，沒有內容</td><td>400，回 problem+json 說明哪個參數錯：<code>"errors":{"page":["The value 'abc' is not valid."]}</code></td></tr>
+  <tr><td>陣列 <code>string[] tag</code> 接 <code>?tag=a&amp;tag=b</code></td><td>直接宣告就行。沒帶是<strong>空陣列</strong>（count=0），不是 <code>null</code></td><td>⚠️ 要加 <code>[FromQuery]</code>。不加會被推斷成「從 body 拿」，GET 沒有 body → <strong>415 Unsupported Media Type</strong>。沒帶是 <code>null</code></td></tr>
+  <tr><td>網址上的名稱和參數名不同</td><td><code>[FromQuery(Name = "q")] string? keyword</code>。實測 <code>?q=docker</code> 拿到 docker，<code>?keyword=docker</code> 拿到 <code>null</code></td><td>同左，寫法和結果都一樣</td></tr>
+  <tr><td>多個條件打包成一個類別</td><td><code>[AsParameters] SearchQuery query</code>。⚠️ 類別屬性的初始值（<code>public int Page { get; set; } = 1</code>）<strong>不算</strong>預設值，沒帶 <code>page</code> 會回 400。要讓它可以省略，改用 record 把預設值寫在建構子參數上：<code>record SearchQuery2(string? Keyword, int Page = 1, string[]? Tag = null)</code></td><td><code>[FromQuery] SearchQuery query</code>。屬性初始值就是沒帶時的值，沒帶 <code>page</code> 拿到 1</td></tr>
+  <tr><td>直接讀原始資料，不綁參數</td><td><code>context.Request.Query["keyword"]</code>：型別 <code>StringValues</code>，可以有多個值<br><code>context.Request.QueryString.Value</code>：含 <code>?</code> 的整串</td><td><code>Request.Query["keyword"]</code><br><code>Request.QueryString.Value</code></td></tr>
+</table>
+</div>
+<p>「多個條件打包成一個類別」的寫法：屬性名稱對應 query string 的名稱，每個屬性各自從 query string 拿，規則和單獨的參數一樣。兩種 API 對「預設值寫在哪」的要求不同：</p>
+<pre><code class="language-csharp">// Controller 的 [FromQuery] 用：屬性初始值就是沒帶時的值，?keyword=docker&amp;page=2&amp;tag=a&amp;tag=b
+public class SearchQuery
+{
+    public string? Keyword { get; set; }
+    public int Page { get; set; } = 1;
+    public string[]? Tag { get; set; }
+}
+
+// Minimal API 的 [AsParameters] 用：預設值要寫在建構子參數上，屬性初始值它不看
+// 用上面那個 class 接 /items/search 時，沒帶 page 會直接 400
+public record SearchQuery2(string? Keyword, int Page = 1, string[]? Tag = null);</code></pre>
+
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://learn.microsoft.com/aspnet/core/mvc/models/model-binding" target="_blank">Model Binding in ASP.NET Core</a>：Controller 這邊的規則，<code>[FromQuery]</code>、空字串轉 <code>null</code>、陣列怎麼綁都在這頁</li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis/parameter-binding" target="_blank">Parameter binding in Minimal API applications</a>：Minimal API 這邊的規則，<code>[AsParameters]</code>、必填參數回 400 的說明在這頁</li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/fundamentals/routing#route-constraints" target="_blank">Routing in ASP.NET Core：Route constraints</a>：<code>{id:int}</code> 這類限制的清單</li>
+  <li><a href="https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL" target="_blank">MDN：What is a URL?</a>：網址每一段的通用說明</li>
+  <li><a href="https://www.rfc-editor.org/rfc/rfc3986" target="_blank">RFC 3986：URI Generic Syntax</a>：正式規格，第 3 節定義每一段</li>
+</ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="encoding">4. 值裡有空白、中文、&amp; 的時候</h2>
+<p>空白、<code>&amp;</code>、<code>=</code>、<code>?</code>、<code>#</code> 在網址裡各有工作（分隔參數、分隔名稱和值、開始 query string、開始 fragment），中文則不在網址允許的字元範圍內。這些字要放進值裡，得先寫成 <code>%</code> 加兩位十六進位的形式（百分比編碼）。誰負責編碼、誰負責解碼的原則，在「<a href="encoding-json-html.html#browser-too">補充：編碼器</a>」已經講過；這裡只看 query string 最常遇到的幾種寫法，右欄是方法參數實際拿到的值：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>送出的寫法</th><th>參數拿到的值（實測）</th><th>說明</th></tr>
+  <tr><td><code>?keyword=hello%20world</code></td><td><code>hello world</code></td><td>空白的標準寫法</td></tr>
+  <tr><td><code>?keyword=hello+world</code></td><td><code>hello world</code></td><td>query string 裡 <code>+</code> 也會被當成空白，這是表單送出時留下的慣例。值裡真的要一個加號，要寫 <code>%2B</code></td></tr>
+  <tr><td><code>?keyword=a%26b</code></td><td><code>a&amp;b</code></td><td>值裡的 <code>&amp;</code> 要寫成 <code>%26</code></td></tr>
+  <tr><td><code>?keyword=a&amp;b</code></td><td><code>a</code>，另外多出一組名稱 <code>b</code>、值是空的</td><td>沒編碼的 <code>&amp;</code> 會被當成分隔符號</td></tr>
+  <tr><td><code>?keyword=%E5%85%A5%E9%96%80</code></td><td><code>入門</code></td><td>中文每個字變成 3 個 <code>%XX</code>（UTF-8），解碼回來還是原字</td></tr>
+</table>
+</div>
+<p>所以組 query string 的時候不要自己拼字串：前端用 <code>URLSearchParams</code> 或 <code>encodeURIComponent</code>，C# 當呼叫端時用 <code>Uri.EscapeDataString</code>，編碼會自動做好。收的那一邊（ASP.NET Core）解碼也是自動的，方法參數拿到的已經是原字。</p>
+
+<!-- ============================================================ -->
+<h2 id="lab">5. 小實驗：起一個會把「收到什麼」印回來的小網站</h2>
+<p>前面所有實測輸出都來自這個實驗。不用開專案，一個 .cs 檔就能起網站。</p>
+
+<h3 id="lab-syntax">正式語法：.NET 10 單檔程式，參數直接寫在 lambda 上</h3>
+<pre><code class="language-csharp">// 第一行：告訴 SDK 這是 Web 專案，不然沒有 WebApplication 這些型別
+#:sdk Microsoft.NET.Sdk.Web
+// 單檔程式預設以 Native AOT 的設定編譯，那組設定不支援 MVC Controller（啟動就會丟 NotSupportedException）
+// 這一行把 AOT 關掉，AddControllers / MapControllers 才能用。只寫 Minimal API 的話可以不加
+#:property PublishAot=false
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+builder.Services.AddControllers();     // 要用 Controller 才需要這兩行
+WebApplication app = builder.Build();
+app.MapControllers();
+
+// 參數直接宣告在 lambda 上：名稱和 query string 一樣就會對上，?name=amy → name = "amy"
+app.MapGet("/hello", (string? name) =&gt; "hi " + (name ?? "stranger"));
+
+// 路徑佔位符：{id:int} 只接整數
+app.MapGet("/hello/{id:int}", (int id) =&gt; "id = " + id);
+
+// 指定網址和 port 啟動；終端機按 Ctrl+C 停掉。port 被佔用就換一個數字
+app.Run("http://localhost:5060");</code></pre>
+<pre><code class="language-powershell"># 放在任何「沒有 .csproj」的資料夾
+dotnet run url-lab.cs</code></pre>
+<p>官方文件：<a href="https://learn.microsoft.com/dotnet/core/sdk/file-based-apps" target="_blank">File-based apps</a>（<code>#:sdk</code>、<code>#:property</code> 指令在這頁）、<a href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis/parameter-binding" target="_blank">Parameter binding in Minimal API applications</a>（lambda 參數怎麼對上 query string、路徑）。</p>
+<p>🧪 想看 AOT 那組設定在擋什麼：把 <code>#:property PublishAot=false</code> 拿掉再跑，<code>app.MapControllers()</code> 那行會丟出 <code>NotSupportedException: IsConvertibleType is not initialized when Microsoft.AspNetCore.Mvc.ApiExplorer.IsEnhancedModelMetadataSupported is false</code>。</p>
+
+<!-- 實驗 1 -->
+<div class="exercise">
+<h3>實驗 1：/echo，把收到的東西原樣印回來</h3>
+<p>需求：</p>
+<ul>
+  <li><code>GET /echo</code>：回傳三行 <code>Host</code>、<code>Path</code>、<code>QueryString</code>，接著把 <code>Request.Query</code> 的每一組「名稱 → 值」各印一行，值可能不只一個，順便印出數量</li>
+  <li>用 curl 打這幾條，對照第 2 節的規則表：<code>?keyword=docker&amp;page=2</code>、<code>?tag=a&amp;tag=b</code>、<code>?keyword=</code>、<code>?keyword=a&amp;b</code>、<code>?Keyword=docker</code>、<code>/echo</code>、<code>/echo?</code></li>
+  <li>再打第 4 節的編碼寫法：<code>?keyword=hello%20world</code>、<code>?keyword=hello+world</code>、<code>?keyword=a%26b</code>、<code>?keyword=%E5%85%A5%E9%96%80</code></li>
+  <li>用 <code>curl -v</code> 打 <code>/echo?x=1#top</code>，看送出去的請求行有沒有 <code>#top</code></li>
+</ul>
+<p><strong>💡 提示</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>需求</th><th>用什麼</th></tr>
+  <tr><td>拿 Host、路徑、原始 query string</td><td><code>context.Request.Host</code>、<code>context.Request.Path</code>、<code>context.Request.QueryString.Value</code></td></tr>
+  <tr><td>逐組讀 query string</td><td><code>foreach (KeyValuePair&lt;string, StringValues&gt; pair in context.Request.Query)</code>。<code>pair.Value</code> 是 <code>StringValues</code>，有 <code>Count</code>，可以直接 <code>foreach</code> 或 <code>Select</code>；<code>using Microsoft.Extensions.Primitives;</code></td></tr>
+  <tr><td>回傳多行文字</td><td>把每行放進 <code>List&lt;string&gt;</code>，最後 <code>string.Join("\n", lines)</code></td></tr>
+  <tr><td>看 curl 實際送出的請求</td><td><code>curl -v</code>，<code>&gt;</code> 開頭的行是送出去的</td></tr>
+</table>
+</div>
+<p class="accept">✅ 驗收：<code>?tag=a&amp;tag=b</code> 印出 count=2；<code>?keyword=a&amp;b</code> 多出一組名稱 <code>b</code>；<code>?keyword=hello+world</code> 拿到 <code>hello world</code>；<code>#top</code> 不會出現在 QueryString</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">url-lab.cs（實驗 1 的部分）</p>
+<pre><code class="language-csharp">#:sdk Microsoft.NET.Sdk.Web
+using Microsoft.Extensions.Primitives;
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+WebApplication app = builder.Build();
+
+// 把收到的 Host、路徑、原始 query string、拆開後的每一組名稱=值印回來
+app.MapGet("/echo", (HttpContext context) =&gt;
+{
+    HttpRequest request = context.Request;
+    List&lt;string&gt; lines = new List&lt;string&gt;();
+    lines.Add("Host        : " + request.Host);
+    lines.Add("Path        : " + request.Path);
+    lines.Add("QueryString : " + request.QueryString.Value);
+    foreach (KeyValuePair&lt;string, StringValues&gt; pair in request.Query)
+    {
+        string values = string.Join(", ", pair.Value.Select(v =&gt; "\"" + v + "\""));
+        lines.Add("  " + pair.Key + " -> [" + values + "]  count=" + pair.Value.Count);
+    }
+    return string.Join("\n", lines);
+});
+
+app.Run("http://localhost:5060");</code></pre>
+<p>curl 實際跑出來的（.NET SDK 10.0.303）：</p>
+<pre><code class="language-powershell">curl "http://localhost:5060/echo?keyword=docker&amp;page=2"
+# Host        : localhost:5060
+# Path        : /echo
+# QueryString : ?keyword=docker&amp;page=2
+#   keyword -> ["docker"]  count=1
+#   page -> ["2"]  count=1
+
+curl "http://localhost:5060/echo?tag=a&amp;tag=b"
+#   tag -> ["a", "b"]  count=2
+
+curl "http://localhost:5060/echo?keyword="
+#   keyword -> [""]  count=1
+
+curl "http://localhost:5060/echo?keyword=a&amp;b"
+#   keyword -> ["a"]  count=1
+#   b -> [""]  count=1
+
+curl "http://localhost:5060/echo?Keyword=docker"
+#   Keyword -> ["docker"]  count=1
+
+curl "http://localhost:5060/echo"
+# QueryString :                  ← 空字串
+curl "http://localhost:5060/echo?"
+# QueryString : ?                ← 只有問號，一組都拆不出來
+
+curl "http://localhost:5060/echo?keyword=hello%20world"
+#   keyword -> ["hello world"]  count=1
+curl "http://localhost:5060/echo?keyword=hello+world"
+#   keyword -> ["hello world"]  count=1
+curl "http://localhost:5060/echo?keyword=a%26b"
+#   keyword -> ["a&amp;b"]  count=1
+curl "http://localhost:5060/echo?keyword=%E5%85%A5%E9%96%80"
+#   keyword -> ["入門"]  count=1
+
+curl -v -s "http://localhost:5060/echo?x=1#top"
+# > GET /echo?x=1 HTTP/1.1          ← curl 送出去的時候 #top 已經不在了
+# > Host: localhost:5060
+# QueryString : ?x=1
+#   x -> ["1"]  count=1</code></pre>
+</div>
+</details>
+</div>
+
+<!-- 實驗 2 -->
+<div class="exercise">
+<h3>實驗 2：/items，參數怎麼對上、沒帶的時候是什麼</h3>
+<p>需求：</p>
+<ul>
+  <li>Minimal API <code>GET /items</code>：參數 <code>string? keyword</code>、<code>int page = 1</code>、<code>string[]? tag</code>，把三個值印出來，<code>null</code>、空字串、空陣列要看得出差別</li>
+  <li>Minimal API <code>GET /items/strict</code>：參數 <code>int page</code>，沒有預設值</li>
+  <li>Minimal API <code>GET /items/search</code>：把三個條件打包成 <code>SearchQuery</code> 類別，用 <code>[AsParameters]</code> 接；再寫一支 <code>GET /items/search2</code>，改接 record 版的 <code>SearchQuery2</code>；還有 <code>GET /items/q</code>，參數 <code>[FromQuery(Name = "q")] string? keyword</code></li>
+  <li>Controller <code>ItemsController</code>，路由 <code>api/[controller]</code>：<code>GET /api/items</code>、<code>GET /api/items/strict</code>、<code>GET /api/items/search</code>（<code>[FromQuery] SearchQuery</code>）三支和上面對應；再加 <code>GET /api/items/tags</code>（<code>string[] tag</code> 先<strong>不加</strong> <code>[FromQuery]</code>）和 <code>GET /api/items/q</code>（<code>[FromQuery(Name = "q")] string? keyword</code>）</li>
+  <li>對 <code>/items</code> 和 <code>/api/items</code> 各打：不帶參數、<code>?keyword=docker&amp;page=2</code>、<code>?Keyword=docker</code>、<code>?keyword=</code>、<code>?tag=a&amp;tag=b</code>、<code>?page=abc</code>；對兩個 <code>strict</code>、<code>/items/search</code>、<code>/items/search2</code> 各打一次不帶參數</li>
+</ul>
+<p><strong>💡 提示</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>需求</th><th>用什麼</th></tr>
+  <tr><td>要用 Controller</td><td><code>builder.Services.AddControllers()</code>、<code>app.MapControllers()</code>，檔案最上面加 <code>#:property PublishAot=false</code></td></tr>
+  <tr><td>Controller 類別寫在哪</td><td>同一個檔案，放在頂層語句（<code>app.Run</code>）後面；<code>using Microsoft.AspNetCore.Mvc;</code></td></tr>
+  <tr><td>看 400 / 415 回應的內容</td><td><code>curl -i</code></td></tr>
+  <tr><td>打包成類別</td><td>Minimal API 用 <code>[AsParameters]</code>，Controller 用 <code>[FromQuery]</code>；類別的屬性要有 <code>set</code>。record 版把預設值寫在建構子參數上</td></tr>
+  <tr><td>兩邊印同一種格式</td><td>寫一個 <code>static</code> 方法把 <code>keyword</code>、<code>page</code>、<code>tag</code> 印成文字，lambda 和 Controller 都呼叫它</td></tr>
+</table>
+</div>
+<p>🧪 <strong>先故意少做一件事</strong>：Controller 的 <code>string[] tag</code> 先不加 <code>[FromQuery]</code>，打 <code>/api/items/tags?tag=a&amp;tag=b</code> 看狀態碼和回應內容，再加上去比較。</p>
+<p class="accept">✅ 驗收：第 3 節表格裡標 ⚠️ 的四列差異（空字串、沒帶的 int、陣列要加 FromQuery 否則 415、類別的預設值），兩邊都親眼看到</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">url-lab.cs（實驗 2 的部分，接在實驗 1 的 /echo 後面）</p>
+<pre><code class="language-csharp">#:sdk Microsoft.NET.Sdk.Web
+// 單檔程式預設以 Native AOT 的設定編譯，那組設定不支援 MVC Controller（啟動就會丟 NotSupportedException）
+// 這一行把 AOT 關掉，AddControllers / MapControllers 才能用
+#:property PublishAot=false
+
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+builder.Services.AddControllers();
+WebApplication app = builder.Build();
+app.MapControllers();
+
+// （/echo 同實驗 1）
+
+// Minimal API：參數直接宣告在 lambda 上，名稱和 query string 一樣就會對上
+app.MapGet("/items", (string? keyword, int page = 1, string[]? tag = null) =&gt; Format.Describe(keyword, page, tag));
+
+// 沒有預設值、也不可為 null 的 int：沒帶會怎樣？
+app.MapGet("/items/strict", (int page) =&gt; "page = " + page);
+
+// 多個條件打包成一個類別：[AsParameters] 讓每個屬性各自從 query string 拿
+app.MapGet("/items/search", ([AsParameters] SearchQuery query) =&gt; Format.Describe(query.Keyword, query.Page, query.Tag));
+
+// 網址上的名稱和參數名不同：用 Name 指定（Minimal API 版）
+app.MapGet("/items/q", ([FromQuery(Name = "q")] string? keyword) =&gt; "keyword = " + (keyword ?? "null"));
+
+// 打包成 record：建構子參數的預設值會被當成「沒帶時的值」
+app.MapGet("/items/search2", ([AsParameters] SearchQuery2 query) =&gt; Format.Describe(query.Keyword, query.Page, query.Tag));
+
+app.Run("http://localhost:5060");
+
+// Controller：同樣的參數寫在方法上
+[ApiController]
+[Route("api/[controller]")]
+public class ItemsController : ControllerBase
+{
+    [HttpGet]
+    public string GetAll(string? keyword, int page = 1, [FromQuery] string[]? tag = null)
+        =&gt; Format.Describe(keyword, page, tag);
+
+    // 沒有預設值、也不可為 null 的 int
+    [HttpGet("strict")]
+    public string Strict(int page) =&gt; "page = " + page;
+
+    // 陣列參數「不加」[FromQuery]，看框架自己會從哪裡拿
+    [HttpGet("tags")]
+    public string Tags(string[] tag) =&gt; "tag = [" + string.Join(", ", tag) + "]  count=" + tag.Length;
+
+    // 網址上的名稱和參數名不同：用 Name 指定
+    [HttpGet("q")]
+    public string Renamed([FromQuery(Name = "q")] string? keyword) =&gt; "keyword = " + (keyword ?? "null");
+
+    // 多個條件打包成一個類別：[FromQuery] 讓每個屬性各自從 query string 拿
+    [HttpGet("search")]
+    public string Search([FromQuery] SearchQuery query) =&gt; Format.Describe(query.Keyword, query.Page, query.Tag);
+}
+
+// 把篩選條件打包成一個類別：屬性名稱對應 query string 的名稱
+public class SearchQuery
+{
+    public string? Keyword { get; set; }
+    public int Page { get; set; } = 1;
+    public string[]? Tag { get; set; }
+}
+
+// 同樣的條件改用 record 寫：Page 的預設值寫在建構子參數上
+public record SearchQuery2(string? Keyword, int Page = 1, string[]? Tag = null);
+
+// 把參數的值印成文字，null、空字串、空陣列都看得出差別
+public static class Format
+{
+    public static string Describe(string? keyword, int page, string[]? tag)
+    {
+        string keywordText = keyword is null ? "null" : "\"" + keyword + "\"";
+        string tagText = tag is null
+            ? "null"
+            : "[" + string.Join(", ", tag.Select(t =&gt; "\"" + t + "\"")) + "]  count=" + tag.Length;
+        return "keyword = " + keywordText + "\npage = " + page + "\ntag = " + tagText;
+    }
+}</code></pre>
+<p>curl 實際跑出來的（.NET SDK 10.0.303）。先看 Minimal API：</p>
+<pre><code class="language-powershell">curl "http://localhost:5060/items"
+# keyword = null
+# page = 1
+# tag = []  count=0                  ← 沒帶的陣列是空陣列，不是 null
+
+curl "http://localhost:5060/items?keyword=docker&amp;page=2"
+# keyword = "docker"
+# page = 2
+# tag = []  count=0
+
+curl "http://localhost:5060/items?Keyword=docker"
+# keyword = "docker"                 ← 大小寫不同也對得上
+
+curl "http://localhost:5060/items?keyword="
+# keyword = ""                       ← 空字串
+
+curl "http://localhost:5060/items?tag=a&amp;tag=b"
+# tag = ["a", "b"]  count=2
+
+curl -i "http://localhost:5060/items?page=abc"
+# HTTP/1.1 400 Bad Request
+# Content-Length: 0
+
+curl -i "http://localhost:5060/items/strict"
+# HTTP/1.1 400 Bad Request           ← 沒預設值的 int 視為必填
+# Content-Length: 0
+
+curl "http://localhost:5060/items/search?keyword=docker&amp;page=2&amp;tag=a&amp;tag=b"
+# keyword = "docker"
+# page = 2
+# tag = ["a", "b"]  count=2
+
+curl -i "http://localhost:5060/items/search"
+# HTTP/1.1 400 Bad Request           ← class 的 Page 屬性初始值不算預設值，沒帶 page 視為必填
+# Content-Length: 0
+curl -i "http://localhost:5060/items/search?keyword=x&amp;tag=a"
+# HTTP/1.1 400 Bad Request           ← 有帶別的條件也一樣，少 page 就是 400
+
+curl "http://localhost:5060/items/search2"
+# keyword = null                     ← record 建構子參數的預設值有效
+# page = 1
+# tag = []  count=0
+
+curl "http://localhost:5060/items/q?q=docker"
+# keyword = docker
+curl "http://localhost:5060/items/q?keyword=docker"
+# keyword = null</code></pre>
+<p>再看 Controller，另外四個 ⚠️ 在這裡：</p>
+<pre><code class="language-powershell">curl "http://localhost:5060/api/items"
+# keyword = null
+# page = 1
+# tag = null                         ← 沒帶的陣列是 null
+
+curl "http://localhost:5060/api/items?Keyword=docker"
+# keyword = "docker"
+
+curl "http://localhost:5060/api/items?keyword="
+# keyword = null                     ← 空字串被轉成 null
+
+curl "http://localhost:5060/api/items?tag=a&amp;tag=b"
+# tag = ["a", "b"]  count=2          ← 有加 [FromQuery]
+
+curl -i "http://localhost:5060/api/items?page=abc"
+# HTTP/1.1 400 Bad Request
+# Content-Type: application/problem+json; charset=utf-8
+# {"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or more validation errors occurred.",
+#  "status":400,"errors":{"page":["The value 'abc' is not valid."]},"traceId":"00-…"}
+
+curl -i "http://localhost:5060/api/items/strict"
+# HTTP/1.1 200 OK                    ← 沒帶也能進方法
+# page = 0
+
+curl -i "http://localhost:5060/api/items/tags?tag=a&amp;tag=b"
+# HTTP/1.1 415 Unsupported Media Type   ← 沒加 [FromQuery] 的陣列被當成要從 body 拿
+# {"type":"https://tools.ietf.org/html/rfc9110#section-15.5.16","title":"Unsupported Media Type","status":415,"traceId":"00-…"}
+
+curl "http://localhost:5060/api/items/q?q=docker"
+# keyword = docker
+curl "http://localhost:5060/api/items/q?keyword=docker"
+# keyword = null                     ← 指定了 Name = "q"，keyword 這個名稱就不認
+
+curl "http://localhost:5060/api/items/search"
+# keyword = null                     ← class 的屬性初始值就是沒帶時的值
+# page = 1
+# tag = null
+
+curl "http://localhost:5060/api/items/search?keyword=docker&amp;page=2&amp;tag=a&amp;tag=b"
+# keyword = "docker"
+# page = 2
+# tag = ["a", "b"]  count=2</code></pre>
+</div>
+</details>
+</div>
+
+<!-- 實驗 3 -->
+<div class="exercise">
+<h3>實驗 3：/items/{id:int}，路徑佔位符和 :int 限制</h3>
+<p>需求：</p>
+<ul>
+  <li>Minimal API：<code>GET /items/{id:int}</code> 和 <code>GET /loose/{id}</code>（沒有 <code>:int</code>），兩個都接 <code>int id</code></li>
+  <li>Controller：<code>[HttpGet("{id:int}")]</code> 和 <code>[HttpGet("loose/{id}")]</code></li>
+  <li>打 <code>/items/5</code>、<code>/items/docker</code>、<code>/loose/docker</code>、<code>/items/5?keyword=x</code>，Controller 版也各打一次</li>
+</ul>
+<p><strong>💡 提示</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>需求</th><th>用什麼</th></tr>
+  <tr><td>路徑佔位符只接整數</td><td>路由樣板寫 <code>{id:int}</code>，<code>:int</code> 是路由約束（route constraint）</td></tr>
+  <tr><td><code>/items/strict</code> 和 <code>/items/{id:int}</code> 會不會打架</td><td>不會：<code>strict</code> 不是整數，<code>{id:int}</code> 不認領</td></tr>
+</table>
+</div>
+<p class="accept">✅ 驗收：<code>/items/docker</code> 是 404、<code>/loose/docker</code> 是 400、<code>/items/5?keyword=x</code> 和 <code>/items/5</code> 結果一樣</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">url-lab.cs（實驗 3 的部分）</p>
+<pre><code class="language-csharp">// Minimal API：{id:int} 限制只接整數；/loose/{id} 不限制
+app.MapGet("/items/{id:int}", (int id) =&gt; "id = " + id);
+app.MapGet("/loose/{id}", (int id) =&gt; "id = " + id);
+
+// Controller：加在 ItemsController 裡
+[HttpGet("{id:int}")]
+public string GetById(int id) =&gt; "id = " + id;
+
+[HttpGet("loose/{id}")]
+public string Loose(int id) =&gt; "id = " + id;</code></pre>
+<p>curl 實際跑出來的（.NET SDK 10.0.303）：</p>
+<pre><code class="language-powershell">curl "http://localhost:5060/items/5"
+# id = 5
+curl "http://localhost:5060/items/5?keyword=x"
+# id = 5                             ← query string 不影響找到哪個方法
+
+curl -i "http://localhost:5060/items/docker"
+# HTTP/1.1 404 Not Found             ← {id:int}：docker 不是整數，路由不認領
+
+curl -i "http://localhost:5060/loose/docker"
+# HTTP/1.1 400 Bad Request           ← 沒有 :int：路由認領了，但 docker 轉不成 int
+# Content-Length: 0
+
+curl -i "http://localhost:5060/api/items/docker"
+# HTTP/1.1 404 Not Found
+
+curl -i "http://localhost:5060/api/items/loose/docker"
+# HTTP/1.1 400 Bad Request
+# Content-Type: application/problem+json; charset=utf-8
+# {"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or more validation errors occurred.",
+#  "status":400,"errors":{"id":["The value 'docker' is not valid."]},"traceId":"00-…"}</code></pre>
+<p>三個實驗的程式合在一起就是一個 <code>url-lab.cs</code>，一次 <code>dotnet run url-lab.cs</code> 全部都能打。</p>
+</div>
+</details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="next">延伸問題</h2>
+<ol>
+  <li>篩選條件很多的時候（例如一次送 50 個 <code>tag</code>），網址會非常長。有些 API 因此改成 <code>POST /search</code>，把條件放在 body 的 JSON 裡。這樣做違反了「GET 拿資料、POST 新增」的習慣嗎？從「能不能存成書籤、分享連結」和「能不能被快取」兩個角度各想一次。</li>
+  <li>分頁有兩種寫法：<code>?page=3&amp;pageSize=20</code>，或 <code>?after=第 40 筆的編號&amp;limit=20</code>。使用者翻到第 3 頁的途中，有人新增或刪除了一筆資料，兩種寫法各會發生什麼事？</li>
+  <li>fragment 不會送到伺服器。早期的單頁應用（SPA）用 <code>/#/posts/5</code> 這種網址切換畫面，為什麼這樣設計能避免「重新整理時伺服器回 404」？現在的 History API（<code>pushState</code>）又是怎麼解決同一個問題的？</li>
+</ol>
+
+<div class="callout">
+<p>📖 <strong>官方文件與規格</strong></p>
+<ul>
+  <li><a href="https://learn.microsoft.com/aspnet/core/mvc/models/model-binding" target="_blank">Model Binding in ASP.NET Core</a>（Controller）、<a href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis/parameter-binding" target="_blank">Parameter binding in Minimal API applications</a>（Minimal API）</li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/fundamentals/routing" target="_blank">Routing in ASP.NET Core</a>：路由比對、<code>{id:int}</code> 等約束</li>
+  <li><a href="https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.httprequest.query" target="_blank">HttpRequest.Query</a>、<a href="https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.querystring" target="_blank">QueryString</a>、<a href="https://learn.microsoft.com/dotnet/api/microsoft.extensions.primitives.stringvalues" target="_blank">StringValues</a></li>
+  <li><a href="https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL" target="_blank">MDN：What is a URL?</a>、<a href="https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams" target="_blank">MDN：URLSearchParams</a>（前端組 query string 用）</li>
+  <li><a href="https://www.rfc-editor.org/rfc/rfc3986" target="_blank">RFC 3986：Uniform Resource Identifier (URI): Generic Syntax</a></li>
+  <li><a href="https://learn.microsoft.com/dotnet/core/sdk/file-based-apps" target="_blank">File-based apps</a>（<code>#:sdk</code>、<code>#:property</code>）</li>
+</ul>
+</div>
+
+<nav class="footer-nav">
+  <a href="encoding-json-html.html#browser-too">← 編碼器補充頁：瀏覽器也會編碼</a>
+  <a href="../index.html">回目錄</a>
+  <a href="http-cookie.html">Cookie 補充頁 →</a>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/http.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>
