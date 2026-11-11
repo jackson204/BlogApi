@@ -61,7 +61,7 @@ var groups = [
   { id: "main", title: "主線課程", hint: "照 00 → 06 的順序走，每一課都建立在前一課的程式上。" },
   { id: "shop", title: "進階｜購物網站（主線走完之後）", hint: "把部落格學到的全部搬到購物網站，再補上訂單才會遇到的交易、庫存、上傳、部署。照 ① → ④ 的順序做。" },
   { id: "cs", title: "補充｜C# 語法", hint: "主線遇到看不懂的語法時來查。三篇一起讀的話，照 ① → ③ 的順序最順。" },
-  { id: "http", title: "補充｜HTTP 觀念", hint: "沒有前置知識，隨時都能讀。網址那篇最基礎，先讀它最順；編碼器和 Cookie 兩篇互相有提到對方。" },
+  { id: "http", title: "補充｜HTTP 觀念", hint: "沒有前置知識，隨時都能讀。網址那篇最基礎，先讀它最順；編碼器和 Cookie 兩篇互相有提到對方；快取那篇的小實驗沿用 Cookie 那篇的單檔程式寫法。" },
   { id: "ext", title: "補充｜對外整合", hint: "會用到 DI 註冊和 async，建議走完 03 DI、讀完 C# ③ async 之後再來。照 ① → ④ 讀最順，但每篇都能單獨讀。" }
 ];
 
@@ -118,8 +118,8 @@ var lessons = [
     tags: ["Encoder", "Decode", "解碼", "白名單", "JSON", "\\u 編碼", "HtmlEncoder", "JavaScriptEncoder", "UrlEncoder", "UnicodeRanges", "AddJsonOptions", "XSS", "HtmlDecode", "UnescapeDataString", "file-based app"] },
   { group: "http", stage: "補充", title: "補充：Cookie 是什麼，還有哪些類似的東西（Session、Token、localStorage）", file: "lessons/http-cookie.html",
     tags: ["Cookie", "Set-Cookie", "HttpOnly", "SameSite", "CSRF", "Session", "Token", "JWT", "localStorage", "HTTP 無狀態"] },
-  { group: "http", stage: "補充", title: "補充：HTTP 快取（瀏覽器與 CDN 怎麼決定要不要重新要資料）", file: null,
-    tags: ["快取", "Cache", "HTTP 快取", "Cache-Control", "max-age", "no-cache", "no-store", "ETag", "If-None-Match", "304", "瀏覽器快取", "CDN", "反向代理", "purge", "前端快取", "Service Worker", "TanStack Query"] },
+  { group: "http", stage: "補充", title: "補充：HTTP 快取（瀏覽器與 CDN 怎麼決定要不要重新要資料）", file: "lessons/http-caching.html",
+    tags: ["快取", "Cache", "HTTP 快取", "Cache-Control", "max-age", "no-cache", "no-store", "private", "public", "s-maxage", "ETag", "If-None-Match", "304", "GET 與 POST", "ResponseCache", "NoCache", "瀏覽器快取", "CDN", "反向代理", "purge", "ERR_UNSAFE_PORT", "前端快取", "Service Worker", "TanStack Query", "file-based app"] },
 
   { group: "ext", order: 1, stage: "補充", title: "補充：從 Web API 呼叫外部 API（Typed Client）", file: "lessons/httpclient-typed-client.html",
     prereq: "03 DI、C# ③ async / await",

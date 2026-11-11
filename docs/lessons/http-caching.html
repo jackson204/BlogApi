@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>補充：HTTP 快取</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>補充：HTTP 快取（瀏覽器與 CDN 怎麼決定要不要重新要資料）</h1>
+<p class="subtitle">code review 時被問：「這支是 POST，為什麼還掛 <code>[NoCache]</code>？」要答得出來，得先知道快取發生在哪幾層、誰說了算、POST 和 GET 差在哪。</p>
+<div class="tags">
+  <span class="tag">Cache-Control</span><span class="tag">max-age</span><span class="tag">no-cache</span><span class="tag">no-store</span>
+  <span class="tag">private</span><span class="tag">ETag</span><span class="tag">304</span><span class="tag">GET 與 POST</span><span class="tag">ResponseCache</span><span class="tag">CDN</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>什麼時候會用到這頁</strong></p>
+<ul>
+  <li>看到 <code>[ResponseCache]</code>、<code>[NoCache]</code> 這類屬性，不確定它到底擋了什麼</li>
+  <li>改了資料，畫面卻還是舊的，不知道是哪一層留著舊的那一份</li>
+  <li>分不清 <code>no-cache</code> 和 <code>no-store</code></li>
+</ul>
+<p>這頁講的是 <strong>HTTP 規則本身</strong>：回應的 header 怎麼告訴瀏覽器和中間的機器「可不可以存」。伺服器自己把結果存起來重用（OutputCache、IMemoryCache、Redis）是另一件事，留給主線的「深入｜伺服器端快取」。最後有一個小實驗，親眼看哪些請求真的進到伺服器。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#question">一個真實的問題：POST 掛 NoCache 有用嗎</a></li>
+    <li><a href="#layers">快取發生在哪幾層</a></li>
+    <li><a href="#cache-control">誰說了算：Cache-Control</a></li>
+    <li><a href="#etag">存了但要先問：ETag 與 304</a></li>
+    <li><a href="#methods">GET 和 POST 差在哪</a></li>
+    <li><a href="#aspnet">ASP.NET Core 的 [ResponseCache] 做了什麼</a></li>
+    <li><a href="#answer">回到問題</a></li>
+    <li><a href="#lab">小實驗：數伺服器被打了幾次</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="question">1. 一個真實的問題：POST 掛 NoCache 有用嗎</h2>
+<p>部落格有一支「搜尋我的草稿」的 API。因為搜尋條件多，用 POST 把條件放在 body 裡。寫的人想到「這是登入後才看得到的個人資料，不能被快取」，就照旁邊的 endpoint 加了一行：</p>
+<pre><code class="language-csharp">[Authorize]
+[HttpPost("drafts/search")]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]   // ← 這一行有必要嗎？
+public async Task&lt;List&lt;DraftResponse&gt;&gt; SearchDrafts(DraftSearchRequest request)
+{
+    // …
+}</code></pre>
+<p>很多專案會把那一行包成自己的 <code>[NoCache]</code> 屬性，看起來像一個「關掉快取」的開關。它是不是真的關掉了什麼，要拆成三個小問題：</p>
+<ol>
+  <li>這一行<strong>實際做了什麼</strong>？（第 6 節）</li>
+  <li>它是寫給<strong>誰</strong>看的？那個「誰」原本會不會快取這個回應？（第 2、3 節）</li>
+  <li>請求是 <strong>POST</strong>，有沒有差？（第 5 節）</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="layers">2. 快取發生在哪幾層</h2>
+<p>「快取」就是把回應存一份，下次同樣的請求來，直接拿存的那份，不再往後問。一個請求從瀏覽器到資料庫，路上有好幾個地方都可以存：</p>
+
+<div class="diagram">
+<div class="mermaid">
+flowchart LR
+    B["① 瀏覽器<br/>只服務這一個人"] --> C["② 中間的機器<br/>CDN、反向代理<br/>很多人共用"]
+    C --> A["③ 你的 API<br/>自己存結果重用"]
+    A --> D[("資料庫")]
+</div>
+<div class="diagram-caption">越靠左擋下來，後面的機器越省事；但越靠左，你越難叫它把舊的那一份丟掉</div>
+</div>
+
+<div class="table-wrap">
+<table>
+  <tr><th>哪一層</th><th>存的東西給誰用</th><th>誰決定存不存</th><th>想清掉怎麼辦</th></tr>
+  <tr><td>① 瀏覽器快取</td><td>只有這台瀏覽器的這個人。規格裡叫 private cache</td><td>回應的 header（<code>Cache-Control</code>）</td><td>你清不到，只能等它過期，或改網址</td></tr>
+  <tr><td>② CDN、反向代理</td><td>所有經過它的人。規格裡叫 shared cache</td><td>回應的 header，加上那台機器自己的設定</td><td>到 CDN 後台清（purge），或等過期</td></tr>
+  <tr><td>③ 你的 API 自己存</td><td>所有打到這台 API 的人</td><td>你的程式（OutputCache、IMemoryCache、Redis），<strong>不看 header</strong></td><td>你的程式自己清</td></tr>
+</table>
+</div>
+
+<p>這頁只講 ① 和 ②。它們有一個共同點：<strong>不是你的程式在存</strong>，你只能透過回應的 header 告訴它們規則。分不清是哪一層在存，是多數混淆的來源。</p>
+
+<div class="callout warn">
+<p>💡 <strong>共用的那一層最危險</strong>。瀏覽器存錯，頂多是這個人看到舊資料；CDN 存錯，可能把 A 的個人資料回給 B。所以規則裡有一個專門的詞 <code>private</code>，意思是「只有瀏覽器可以存，中間共用的機器不行」。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="cache-control">3. 誰說了算：Cache-Control</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>詞</th><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td><strong>Cache-Control</strong></td><td>回應裡的一個 header，用幾個關鍵字告訴瀏覽器和中間的機器：這份回應能不能存、誰能存、存多久、用之前要不要先問</td><td>讓「不是你的程式」的那幾層照你的規則做事</td></tr>
+</table>
+</div>
+
+<pre><code class="language-http">Cache-Control: private, max-age=60
+               ───┬───  ─────┬────
+          只有瀏覽器可以存   60 秒內直接用存的那份</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>關鍵字</th><th>意思</th><th>常見誤會</th></tr>
+  <tr><td><code>max-age=60</code></td><td>60 秒內是「新鮮的」，可以直接用存的那份，不必問伺服器</td><td>這 60 秒內你改了資料，對方看到的還是舊的，而且你叫不動它</td></tr>
+  <tr><td><code>no-store</code></td><td><strong>完全不准存</strong>。每次都要重新向伺服器要</td><td>這才是一般人說的「不要快取」</td></tr>
+  <tr><td><code>no-cache</code></td><td><strong>可以存</strong>，但每次用之前要先問伺服器「我手上這版還能用嗎」（第 4 節）</td><td>名字像「不快取」，其實不是。<span class="hl c">最常被搞混的一個</span></td></tr>
+  <tr><td><code>private</code></td><td>只有瀏覽器可以存，CDN 這種共用的機器不行</td><td>不是「加密」或「需要登入」的意思</td></tr>
+  <tr><td><code>public</code></td><td>共用的機器也可以存</td><td>個人資料掛上這個會出事</td></tr>
+  <tr><td><code>s-maxage=60</code></td><td>只給共用的機器看的 <code>max-age</code>，可以和瀏覽器的時間分開設</td><td></td></tr>
+</table>
+</div>
+
+<h3 id="no-header">沒有 Cache-Control 會怎樣</h3>
+<p>不是「就不快取」。規格允許瀏覽器在沒有明確指示時<strong>自己估一個時間</strong>，前提是回應帶了 <code>Last-Modified</code> 這類線索。靜態檔案通常有這個 header，所以圖片、CSS 常常沒設也被存起來。API 回的 JSON 多半沒有這些線索，實務上每次都會重新要，第 8 節的實驗裡 <code>/plain</code> 就是這種情況。</p>
+
+<details class="aside">
+<summary>📎 補充：帶 Authorization 的請求，共用的機器本來就不該存</summary>
+<div class="aside-body">
+<p>規格對共用快取多了一條保護：請求如果帶 <code>Authorization</code> header，回應預設不可以被共用的機器存下來，除非回應明確說可以（<code>public</code>、<code>s-maxage</code>、<code>must-revalidate</code>）。所以用 Bearer token 的 API，就算什麼 header 都沒加，守規矩的 CDN 也不會把 A 的回應拿去給 B。</p>
+<p>這條規則只管 <code>Authorization</code> header。用 cookie 登入的網站沒有這層保護，個人資料的回應要自己加 <code>private</code> 或 <code>no-store</code>。cookie 是什麼見 <a href="http-cookie.html#what">Cookie 那頁第 2 節</a>。</p>
+</div>
+</details>
+
+<!-- ============================================================ -->
+<h2 id="etag">4. 存了但要先問：ETag 與 304</h2>
+<p><code>no-cache</code> 說「用之前要先問」，問的方法是：伺服器給每一版內容一個版本編號，瀏覽器下次帶著編號來問。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>詞</th><th>做什麼</th><th>目的是什麼</th></tr>
+  <tr><td><strong>ETag</strong></td><td>回應的 header，值是這版內容的編號，例如 <code>ETag: "v1"</code>。內容變了，編號就要跟著變</td><td>讓瀏覽器能問「我手上是 v1，還能用嗎」</td></tr>
+  <tr><td><strong>If-None-Match</strong></td><td>請求的 header，瀏覽器把手上的編號放在這裡帶回去</td><td>同上，這是「問」的那一半</td></tr>
+  <tr><td><strong>304 Not Modified</strong></td><td>伺服器的回答：「沒變，用你手上那份」。這個回應<strong>沒有 body</strong></td><td>省下傳輸內容的流量。注意伺服器還是被打到了</td></tr>
+</table>
+</div>
+
+<div class="diagram">
+<div class="mermaid">
+sequenceDiagram
+    participant B as 瀏覽器
+    participant S as 你的 API
+    B->>S: GET /etag
+    S-->>B: 200 + 內容 + ETag "v1" + Cache-Control no-cache
+    Note over B: 把內容和編號 v1 一起存起來
+    B->>S: GET /etag + If-None-Match "v1"
+    S-->>B: 304 Not Modified，沒有內容
+    Note over B: 拿出存著的那份當作這次的回應
+</div>
+<div class="diagram-caption">第二次請求伺服器還是有收到，只是不用再把內容傳一次</div>
+</div>
+
+<p><strong>🔍 實測</strong>：第一次拿到內容和編號；第二次帶著編號問，回來的是沒有內容的 304：</p>
+<pre><code class="language-http">GET /etag
+HTTP/1.1 200 OK
+Content-Length: 61
+Content-Type: text/plain; charset=utf-8
+Cache-Control: no-cache
+ETag: "v1"
+
+etag：伺服器第 1 次處理，這次有把內容送出去
+
+GET /etag　　（這次 header 裡有 If-None-Match: "v1"）
+HTTP/1.1 304 Not Modified
+Cache-Control: no-cache
+ETag: "v1"
+</code></pre>
+
+<p>所以「快取」省的東西有兩種，別混在一起：</p>
+<ul>
+  <li><code>max-age</code> 省的是<strong>整個請求</strong>：新鮮期內瀏覽器根本不發請求，伺服器完全不知道。</li>
+  <li><code>ETag</code> + 304 省的是<strong>傳輸內容</strong>：請求照發，伺服器照樣要判斷有沒有變，只是不用回傳 body。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="methods">5. GET 和 POST 差在哪</h2>
+<p>快取的前提是「同樣的請求，可以拿同一份回應」。這個前提對不同的 HTTP 動詞成立的程度不一樣：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>動詞</th><th>意思</th><th>瀏覽器和 CDN 會不會快取回應</th></tr>
+  <tr><td><code>GET</code>、<code>HEAD</code></td><td>只是「讀」，打幾次結果都該一樣，不會改到伺服器的東西</td><td><strong>會</strong>，照 <code>Cache-Control</code> 的規則</td></tr>
+  <tr><td><code>POST</code></td><td>「請伺服器做一件事」，每一次都可能改到東西（發文、下單）</td><td><strong>實務上不會</strong>。就算回應寫了 <code>max-age</code> 也一樣（第 8 節實測）</td></tr>
+  <tr><td><code>PUT</code>、<code>DELETE</code></td><td>修改、刪除</td><td>不會。而且成功之後，同一個網址原本存著的 GET 回應會被作廢</td></tr>
+</table>
+</div>
+<p>POST 不快取的道理很直接：使用者按了兩次「送出」，第二次如果被快取擋掉、沒進伺服器，那這次操作就憑空消失了。就算這支 POST 其實只是在「查詢」，瀏覽器和 CDN 也不知道，它們只看動詞。</p>
+
+<details class="aside">
+<summary>📎 補充：規格其實留了一個很窄的例外</summary>
+<div class="aside-body">
+<p>HTTP 的快取規格（RFC 9111）沒有把話說死：POST 的回應如果帶了明確的新鮮期，理論上可以拿來回答後續對同一個網址的 <strong>GET</strong>。但主流瀏覽器和 CDN 都沒有這樣做，所以寫 API 時可以直接當成「POST 不會被瀏覽器和 CDN 快取」。</p>
+<p>反過來的副作用倒是要注意：用 POST 做查詢，等於放棄了 ① ② 兩層的快取。資料很少變、很多人查同一份的 API（例如文章列表），用 GET 才吃得到這個好處。</p>
+</div>
+</details>
+
+<!-- ============================================================ -->
+<h2 id="aspnet">6. ASP.NET Core 的 [ResponseCache] 做了什麼</h2>
+<p>名字裡有 Cache，但這個屬性<strong>本身不存任何東西</strong>。它只做一件事：在回應上寫 <code>Cache-Control</code> header。</p>
+
+<h3 id="aspnet-syntax">正式語法</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>寫法</th><th>實際寫出的 header</th><th>意思</th></tr>
+  <tr><td><code>[ResponseCache(Duration = 60)]</code></td><td><code>Cache-Control: public,max-age=60</code></td><td>瀏覽器和共用的機器都可以存 60 秒。<span class="hl c">預設是 public</span></td></tr>
+  <tr><td><code>[ResponseCache(Duration = 60, Location = ResponseCacheLocation.Client)]</code></td><td><code>Cache-Control: private,max-age=60</code></td><td>只有瀏覽器可以存</td></tr>
+  <tr><td><code>[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]</code></td><td><code>Cache-Control: no-store,no-cache</code><br><code>Pragma: no-cache</code></td><td>完全不准存。很多專案的 <code>[NoCache]</code> 就是把這一行包起來</td></tr>
+</table>
+</div>
+<p>第一列和第三列的 header 是第 8 節的程式實際跑出來的（.NET SDK 10.0.303）；第二列是照官方文件寫的，這頁沒有實測。官方文件：<a href="https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.mvc.responsecacheattribute" target="_blank">ResponseCacheAttribute</a>、<a href="https://learn.microsoft.com/aspnet/core/performance/caching/response" target="_blank">Response caching in ASP.NET Core</a>。</p>
+
+<pre><code class="language-http">GET /attr-nostore
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Cache-Control: no-store,no-cache
+Pragma: no-cache
+
+GET /attr-60
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Cache-Control: public,max-age=60</code></pre>
+
+<div class="callout warn">
+<p>💡 <strong>三個名字很像的東西，做的事不同</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>東西</th><th>存在哪一層</th><th>做什麼</th></tr>
+  <tr><td><code>[ResponseCache]</code> 屬性</td><td>不存，只影響 ① ②</td><td>寫 <code>Cache-Control</code> header</td></tr>
+  <tr><td><code>UseResponseCaching()</code> middleware</td><td>③ 你的 API</td><td>照 header 的規則，在伺服器存一份。只處理 GET 和 HEAD</td></tr>
+  <tr><td><code>UseOutputCache()</code> middleware</td><td>③ 你的 API</td><td>照你程式裡的設定存，<strong>不看</strong> header。預設也只處理 GET 和 HEAD</td></tr>
+</table>
+</div>
+<p>後兩個怎麼用，留給主線的「深入｜伺服器端快取」。這裡只要記得：屬性是寫字條給別人看，middleware 才是自己動手存。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="answer">7. 回到問題</h2>
+<p>把第 1 節的三個小問題走一遍：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>問題</th><th>答案</th><th>依據</th></tr>
+  <tr><td>那一行實際做了什麼？</td><td>在回應加上 <code>Cache-Control: no-store,no-cache</code> 和 <code>Pragma: no-cache</code>，沒有別的</td><td>第 6 節</td></tr>
+  <tr><td>寫給誰看？對方原本會快取嗎？</td><td>寫給 ① 瀏覽器和 ② 中間的機器。至於 ③，就算專案開了 OutputCache 或 ResponseCaching，它們也只處理 GET 和 HEAD</td><td>第 2、6 節</td></tr>
+  <tr><td>請求是 POST，有差嗎？</td><td>有。瀏覽器和 CDN 本來就不快取 POST 的回應，有沒有那個 header 結果都一樣</td><td>第 5 節、第 8 節實測</td></tr>
+</table>
+</div>
+
+<div class="callout ok">
+<p>📌 <strong>結論</strong>：掛在 POST 上，那一行不會改變任何行為，只是回應多了兩個 header。拿掉它程式比較誠實；留著當作「這是個人資料」的保險也沒有壞處，但別以為是它在保護你。</p>
+<p>換成 <strong>GET</strong> 就不一樣了。回個人資料的 GET，如果登入是靠 cookie，或回應可能經過 CDN，那一行（或 <code>private</code>）就是真的在擋事情。</p>
+</div>
+
+<p>下次看到這類屬性，可以照同一個順序問：<strong>它寫了什麼 header → 哪一層會讀 → 那一層對這個動詞本來怎麼做</strong>。</p>
+
+<!-- ============================================================ -->
+<h2 id="lab">8. 小實驗：數伺服器被打了幾次</h2>
+<p>快取有沒有生效，看回應內容看不出來，要看<strong>伺服器有沒有真的被打到</strong>。這個實驗讓每個 endpoint 各自數「我處理了第幾次」：被快取擋掉的請求不會進來，數字就不會加。</p>
+<p>一樣用 .NET 10 的單檔程式，寫法見 <a href="http-cookie.html#lab-syntax">Cookie 那頁第 6 節</a>。</p>
+
+<div class="callout danger">
+<p>⚠️ <strong>port 別選 5060</strong>。瀏覽器有一份「不安全連接埠」清單，5060、5061、6000、6666 等都在裡面，打開會直接顯示 <code>ERR_UNSAFE_PORT</code>，但 curl 打得到，很容易以為是程式壞了。這頁用 5070。</p>
+</div>
+
+<div class="exercise">
+<h3>實驗：五個 endpoint，各打兩次</h3>
+<p>需求：</p>
+<ul>
+  <li><code>GET /plain</code>：不加任何 header</li>
+  <li><code>GET /cached</code>：加 <code>Cache-Control: max-age=10</code></li>
+  <li><code>GET /no-store</code>：加 <code>Cache-Control: no-store</code></li>
+  <li><code>GET /etag</code>：加 <code>ETag: "v1"</code> 和 <code>Cache-Control: no-cache</code>；請求帶的 <code>If-None-Match</code> 等於 <code>"v1"</code> 時回 304</li>
+  <li><code>POST /post</code>：加 <code>Cache-Control: max-age=10</code></li>
+  <li>每個 endpoint 回傳「伺服器第 N 次處理」</li>
+  <li><code>GET /</code>：回一個網頁，上面有按鈕，按了就用 <code>fetch</code> 打對應的 endpoint，把結果印在頁面上</li>
+</ul>
+<p>🧪 <strong>先猜再跑</strong>：每個 endpoint 連打兩次，第二次的數字會是 1 還是 2？把五個答案寫下來，再用瀏覽器打開 <code>http://localhost:5070/</code> 驗證。F12 → Network 分頁同時開著，看每個請求的 Size 欄。</p>
+<p><strong>💡 提示</strong></p>
+<div class="table-wrap">
+<table>
+  <tr><th>需求</th><th>用什麼</th></tr>
+  <tr><td>加回應 header</td><td><code>context.Response.Headers.CacheControl = "max-age=10";</code>、<code>context.Response.Headers.ETag = "\"v1\"";</code></td></tr>
+  <tr><td>讀請求 header</td><td><code>context.Request.Headers.IfNoneMatch</code></td></tr>
+  <tr><td>回 304</td><td><code>Results.StatusCode(StatusCodes.Status304NotModified)</code></td></tr>
+  <tr><td>計數</td><td>在 <code>app.MapGet</code> 外面宣告 <code>int</code> 變數，lambda 裡 <code>++</code>。只有自己一個人測，不用管多執行緒</td></tr>
+  <tr><td>回網頁</td><td><code>Results.Content(html, "text/html; charset=utf-8")</code></td></tr>
+  <tr><td>curl 看 header</td><td><code>curl -i http://localhost:5070/cached</code>；帶編號問：<code>curl -i -H 'If-None-Match: "v1"' http://localhost:5070/etag</code></td></tr>
+</table>
+</div>
+<p class="accept">✅ 驗收：瀏覽器裡 <code>/cached</code> 第二次還是「第 1 次處理」，其餘三個會進伺服器的（<code>/plain</code>、<code>/no-store</code>、<code>/post</code>）第二次是「第 2 次處理」；<code>/etag</code> 第二次在 Network 分頁看到 304</p>
+<details class="answer">
+<summary>參考答案（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">cache-lab.cs</p>
+<pre><code class="language-csharp">#:sdk Microsoft.NET.Sdk.Web
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+WebApplication app = builder.Build();
+
+// 每個 endpoint 各自數「伺服器真的處理了幾次」。被快取擋掉的請求不會進來，數字就不會加
+int plain = 0, cached = 0, noStore = 0, etag = 0, post = 0;
+
+// 什麼 header 都不加
+app.MapGet("/plain", () =&gt; $"plain：伺服器第 {++plain} 次處理");
+
+// 10 秒內可以直接用存起來的那一份
+app.MapGet("/cached", (HttpContext context) =&gt;
+{
+    context.Response.Headers.CacheControl = "max-age=10";
+    return $"cached：伺服器第 {++cached} 次處理";
+});
+
+// 完全不准存
+app.MapGet("/no-store", (HttpContext context) =&gt;
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return $"no-store：伺服器第 {++noStore} 次處理";
+});
+
+// 可以存，但每次用之前要先問伺服器「我手上這版還能用嗎」
+app.MapGet("/etag", (HttpContext context) =&gt;
+{
+    etag++;
+    const string version = "\"v1\"";
+    context.Response.Headers.ETag = version;
+    context.Response.Headers.CacheControl = "no-cache";
+    if (context.Request.Headers.IfNoneMatch == version)
+    {
+        return Results.StatusCode(StatusCodes.Status304NotModified);
+    }
+
+    return Results.Text($"etag：伺服器第 {etag} 次處理，這次有把內容送出去");
+});
+
+// POST：就算回應說「可以存 10 秒」
+app.MapPost("/post", (HttpContext context) =&gt;
+{
+    context.Response.Headers.CacheControl = "max-age=10";
+    return $"post：伺服器第 {++post} 次處理";
+});
+
+app.MapGet("/", () =&gt; Results.Content(Page.Html, "text/html; charset=utf-8"));
+
+app.Run("http://localhost:5070");
+
+public static class Page
+{
+    public const string Html = """
+        &lt;!doctype html&gt;
+        &lt;meta charset="utf-8"&gt;
+        &lt;title&gt;cache lab&lt;/title&gt;
+        &lt;button onclick="hit('GET', '/plain')"&gt;GET /plain&lt;/button&gt;
+        &lt;button onclick="hit('GET', '/cached')"&gt;GET /cached&lt;/button&gt;
+        &lt;button onclick="hit('GET', '/no-store')"&gt;GET /no-store&lt;/button&gt;
+        &lt;button onclick="hit('GET', '/etag')"&gt;GET /etag&lt;/button&gt;
+        &lt;button onclick="hit('POST', '/post')"&gt;POST /post&lt;/button&gt;
+        &lt;button onclick="twice()"&gt;每個各打兩次&lt;/button&gt;
+        &lt;pre id="out"&gt;&lt;/pre&gt;
+        &lt;script&gt;
+        async function hit(method, url) {
+          const response = await fetch(url, { method });
+          const text = await response.text();
+          document.getElementById('out').textContent += method + ' ' + url + ' → ' + response.status + ' ' + text + '\n';
+        }
+        async function twice() {
+          for (const [method, url] of [['GET', '/plain'], ['GET', '/cached'], ['GET', '/no-store'], ['GET', '/etag'], ['POST', '/post']]) {
+            await hit(method, url);
+            await hit(method, url);
+          }
+        }
+        &lt;/script&gt;
+        """;
+}</code></pre>
+<pre><code class="language-powershell"># 放在任何「沒有 .csproj」的資料夾
+dotnet run cache-lab.cs</code></pre>
+
+<p>瀏覽器（Edge）按「每個各打兩次」，頁面上印出來的：</p>
+<pre><code class="language-plaintext">GET /plain → 200 plain：伺服器第 1 次處理
+GET /plain → 200 plain：伺服器第 2 次處理
+GET /cached → 200 cached：伺服器第 1 次處理
+GET /cached → 200 cached：伺服器第 1 次處理
+GET /no-store → 200 no-store：伺服器第 1 次處理
+GET /no-store → 200 no-store：伺服器第 2 次處理
+GET /etag → 200 etag：伺服器第 1 次處理，這次有把內容送出去
+GET /etag → 200 etag：伺服器第 1 次處理，這次有把內容送出去
+POST /post → 200 post：伺服器第 1 次處理
+POST /post → 200 post：伺服器第 2 次處理</code></pre>
+
+<p>同一時間，伺服器的 log 實際收到的請求（<code>/</code> 和 <code>/favicon</code> 是打開頁面本身）：</p>
+<pre><code class="language-plaintext">GET  /plain
+GET  /plain
+GET  /cached          ← 只有一次，第二次被瀏覽器擋下來了
+GET  /no-store
+GET  /no-store
+GET  /etag
+GET  /etag            ← 第二次有來，伺服器回的是 304
+POST /post
+POST /post            ← 回應明明寫了 max-age=10，兩次都進來了</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>endpoint</th><th>第二次有進伺服器嗎</th><th>為什麼</th></tr>
+  <tr><td><code>/plain</code></td><td>有</td><td>沒有 <code>Cache-Control</code>，回應也沒有能讓瀏覽器自己估時間的線索</td></tr>
+  <tr><td><code>/cached</code></td><td><strong>沒有</strong></td><td><code>max-age=10</code>，10 秒內瀏覽器直接用存的那份。等超過 10 秒再按，數字就會變 2</td></tr>
+  <tr><td><code>/no-store</code></td><td>有</td><td>不准存</td></tr>
+  <tr><td><code>/etag</code></td><td>有，但回 304</td><td><code>no-cache</code> 要求先問。頁面上兩次都顯示 200 和「第 1 次」的文字，是因為瀏覽器收到 304 後，把存著的那份內容當成這次的回應交給 <code>fetch</code>。真正的 304 要在 F12 → Network 才看得到</td></tr>
+  <tr><td><code>/post</code></td><td>有</td><td>POST 的回應不被瀏覽器快取，header 寫什麼都一樣。這就是第 7 節的答案</td></tr>
+</table>
+</div>
+
+<p>curl 不會快取任何東西，所以用 curl 連打 <code>/cached</code> 數字每次都會加。它適合用來<strong>看 header</strong>，不適合用來看快取有沒有生效：</p>
+<pre><code class="language-powershell">curl -i http://localhost:5070/cached
+# HTTP/1.1 200 OK
+# Content-Type: text/plain; charset=utf-8
+# Server: Kestrel
+# Cache-Control: max-age=10
+#
+# cached：伺服器第 1 次處理
+
+curl -i -X POST http://localhost:5070/post
+# HTTP/1.1 200 OK
+# Content-Type: text/plain; charset=utf-8
+# Server: Kestrel
+# Cache-Control: max-age=10
+#
+# post：伺服器第 1 次處理</code></pre>
+<p>以上輸出是 .NET SDK 10.0.303 加 Edge 實際跑出來的。第 6 節那兩個 <code>[ResponseCache]</code> 的 header，是在同一個程式裡另外加一個 Controller 量到的；想自己看的話，加上 <code>builder.Services.AddControllers()</code>、<code>app.MapControllers()</code>，再寫一個掛著該屬性的 action。</p>
+</div>
+</details>
+</div>
+
+<details class="aside">
+<summary>📎 補充：前端自己也有一層快取</summary>
+<div class="aside-body">
+<p>這頁講的是瀏覽器照 HTTP 規則做的快取。前端程式自己還可能再疊一層，跟 <code>Cache-Control</code> 無關：</p>
+<ul>
+  <li><strong>資料抓取套件</strong>（TanStack Query、SWR 之類）會把 API 的結果存在記憶體裡，照自己的設定決定多久後重抓。畫面是舊的、Network 分頁卻沒有請求，有可能是它。</li>
+  <li><strong>Service Worker</strong> 可以攔下頁面發出的請求，自己決定回什麼，連 POST 都攔得到。它是前端寫的程式，不受這頁的規則限制。</li>
+</ul>
+<p>排查「為什麼還是舊的」時，順序是：前端套件 → Service Worker → 瀏覽器 HTTP 快取 → CDN → 你的 API。這兩樣這頁沒有實測。</p>
+</div>
+</details>
+
+<!-- ============================================================ -->
+<h2 id="next">延伸問題</h2>
+<ol>
+  <li>文章列表 <code>GET /api/posts</code> 回應加了 <code>Cache-Control: max-age=300</code>。作者發了新文章，自己重新整理列表卻看不到。是哪一層留著舊的？你有辦法叫它丟掉嗎？改用 <code>no-cache</code> 加 <code>ETag</code> 會變成怎樣？</li>
+  <li>「我的草稿」是個人資料。如果它是 <code>GET /api/me/drafts</code>，而且登入是靠 cookie，回應應該帶什麼 <code>Cache-Control</code>？<code>private</code> 和 <code>no-store</code> 各自擋掉了什麼？</li>
+  <li>有人為了「反正不會被快取」把所有查詢都寫成 POST。這樣做放棄了什麼？哪種查詢適合 GET、哪種不得不用 POST？</li>
+</ol>
+
+<div class="callout">
+<p>📖 <strong>官方文件</strong></p>
+<ul>
+  <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Caching" target="_blank">MDN：HTTP caching</a>（整體說明，private 與 shared cache、新鮮期、重新驗證都在這頁）</li>
+  <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control" target="_blank">MDN：Cache-Control header</a>、<a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/ETag" target="_blank">MDN：ETag header</a></li>
+  <li><a href="https://www.rfc-editor.org/rfc/rfc9111" target="_blank">RFC 9111：HTTP Caching</a>（規格本身；哪些回應可以存、帶 Authorization 的請求怎麼處理）</li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/performance/caching/response" target="_blank">Response caching in ASP.NET Core</a>、<a href="https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.mvc.responsecacheattribute" target="_blank">ResponseCacheAttribute</a></li>
+  <li><a href="https://learn.microsoft.com/aspnet/core/performance/caching/output" target="_blank">Output caching middleware in ASP.NET Core</a>（伺服器自己存的那一層，深入課再回來）</li>
+</ul>
+</div>
+
+<nav class="footer-nav">
+  <a href="http-cookie.html">← Cookie 補充頁</a>
+  <a href="../index.html">回目錄</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/http.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>
