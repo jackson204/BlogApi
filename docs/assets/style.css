@@ -131,6 +131,33 @@ th { background: var(--surface-2); }
 .callout.ok { border-color: var(--ok); background: var(--ok-soft); }
 .callout p { margin: 4px 0; }
 
+/* 重點卡：放在小節標題正下方，固定四欄（是什麼／解決什麼／怎麼運作／好處），每欄一兩句 */
+.keycard {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 18px;
+  margin: 12px 0 20px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.keycard dt { font-weight: 700; color: var(--accent); white-space: nowrap; }
+.keycard dd { margin: 0; }
+@media (max-width: 520px) {
+  .keycard { grid-template-columns: 1fr; gap: 0; }
+  .keycard dd { margin-bottom: 10px; }
+  .keycard dd:last-child { margin-bottom: 0; }
+}
+/* 練習題標題下面的一行目的 */
+.exercise .aim {
+  margin: 4px 0 12px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+
 .diagram {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -208,22 +235,121 @@ details.aside details.aside { margin: 8px 0 12px; }
   color: var(--text);
   margin: 16px 0;
 }
+.zone-hint { color: var(--muted); margin: 0 0 8px; }
 .lesson-list { display: grid; gap: 12px; }
+/* 觀念庫沒有順序，寬螢幕排兩欄 */
+.lesson-list.concepts { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .lesson-card {
-  display: block;
-  text-decoration: none;
-  color: inherit;
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 18px;
 }
-a.lesson-card:hover { border-color: var(--accent); }
+.lesson-card:has(.title a):hover { border-color: var(--accent); }
 .lesson-card.locked { opacity: .55; }
 .lesson-card .stage { font-size: .8rem; color: var(--muted); }
 .lesson-card .title { font-weight: 700; font-size: 1.05rem; }
-.lesson-card .status { float: right; font-size: .8rem; color: var(--muted); }
-.lesson-card .prereq { font-size: .85rem; color: var(--warn); margin-top: 4px; }
+.lesson-card .title a { color: inherit; text-decoration: none; }
+/* 標題連結撐滿整張卡片，點卡片任何空白處都會進課程 */
+.lesson-card .title a::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
+.lesson-card .status { float: right; font-size: .8rem; color: var(--muted); margin-left: 8px; }
+.lesson-card .meta { font-size: .85rem; color: var(--muted); margin-top: 6px; }
+.lesson-card .meta.prereq { color: var(--warn); }
+.lesson-card .meta-note { margin-left: 2px; }
+/* 卡片裡引用其他課的小連結，要蓋在撐滿卡片的標題連結上面才點得到 */
+.lesson-card .ref {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  margin: 2px 6px 2px 0;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent);
+  text-decoration: none;
+}
+.lesson-card a.ref:hover { border-color: var(--accent); background: var(--accent-soft); }
+.lesson-card .ref.locked { color: var(--muted); }
+.lesson-card.is-next { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.lesson-card.is-next .stage { color: var(--accent); font-weight: 700; }
+.done-toggle {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  margin-top: 10px;
+  padding: 2px 12px;
+  font: inherit;
+  font-size: .8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+.done-toggle:hover { border-color: var(--ok); color: var(--ok); }
+.lesson-card.is-done .done-toggle { border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
+
+/* 學習路線圖 */
+.next-step {
+  margin: 12px 0;
+  padding: 10px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-weight: 700;
+}
+.next-step .next-label { margin-right: 12px; color: var(--accent); }
+.next-step .next-note { margin-left: 10px; font-weight: 400; font-size: .9rem; color: var(--muted); }
+.roadmap {
+  padding: 4px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.lane { padding: 12px 0 14px; }
+.lane + .lane { border-top: 1px dashed var(--border); }
+.lane-title { margin-bottom: 10px; font-size: .9rem; font-weight: 700; }
+.lane + .lane .lane-title::before { content: "↓ 接著做　"; font-weight: 400; color: var(--muted); }
+.lane-steps { display: flex; flex-wrap: wrap; gap: 14px 0; margin: 0; padding: 0; list-style: none; }
+.node { display: flex; align-items: flex-start; }
+.node + .node::before { content: "→"; margin: 5px 2px 0; color: var(--muted); }
+.node a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 82px;
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+}
+.node .dot, .legend-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 700;
+}
+.node a:hover .dot { box-shadow: 0 0 0 4px var(--accent-soft); }
+.node .node-code { margin-top: 4px; font-size: .8rem; font-weight: 700; line-height: 1.3; }
+.node .node-name { font-size: .75rem; line-height: 1.3; color: var(--muted); }
+.node.locked .dot, .legend-dot.locked { border-style: dashed; border-color: var(--muted); color: var(--muted); }
+.node.locked .node-code { color: var(--muted); }
+.node.done .dot, .legend-dot.done { border-color: var(--ok); background: var(--ok); color: var(--surface); }
+.node.next .dot, .legend-dot.next { border-style: solid; border-color: var(--accent); background: var(--accent); color: var(--surface); box-shadow: 0 0 0 4px var(--accent-soft); }
+.roadmap-legend { margin: 10px 0 0; font-size: .85rem; color: var(--muted); }
+.legend-dot { width: 22px; height: 22px; margin: 0 4px 0 12px; font-size: .7rem; border-width: 2px; }
+.legend-dot:first-child { margin-left: 0; }
+.legend-dot.next { box-shadow: none; }
+.legend-note { display: block; margin-top: 6px; }
+
 .lesson-group h3 { margin-bottom: 4px; }
+.lesson-group .group-count { margin-left: 10px; font-size: .8rem; font-weight: 400; color: var(--muted); }
 .lesson-group .group-hint { color: var(--muted); font-size: .9rem; margin: 0 0 12px; }
 .empty { color: var(--muted); display: none; }

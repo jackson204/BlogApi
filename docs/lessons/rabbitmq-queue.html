@@ -11,7 +11,7 @@
 <body>
 <main class="page">
 
-<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / <a href="../index.html#concepts">觀念庫</a> / 工具與整合</div>
 <h1>補充：用 RabbitMQ 把慢工作丟出請求之外（訊息佇列、ack、durable、重試與 dead-letter）</h1>
 <p class="subtitle">發文之後要寄通知給訂閱者，這種慢工作不該卡在 HTTP 請求裡。API 只把「文章 5 建立了」丟進佇列，另一個 Worker 程式慢慢做。這頁從「為什麼要佇列」講到「失敗的訊息去哪裡」。</p>
 <div class="tags">
@@ -771,9 +771,9 @@ Worker 2：收到：文章 25    收到：文章 27</code></pre>
 </div>
 
 <nav class="footer-nav">
-  <a href="nlog-logging.html">← 補充：NLog</a>
-  <a href="../index.html">回目錄</a>
-  <a href="signalr-realtime.html">補充：SignalR →</a>
+  <span></span>
+  <a href="../index.html#concepts">回目錄（觀念庫）</a>
+  <span></span>
 </nav>
 
 </main>

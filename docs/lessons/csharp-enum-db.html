@@ -11,7 +11,7 @@
 <body>
 <main class="page">
 
-<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / <a href="../index.html#concepts">觀念庫</a> / C# 語法</div>
 <h1>C# 補充：enum（程式裡是名字，資料庫裡是數字）</h1>
 <p class="subtitle">enum 在 C# 裡是有名字的選項，存進資料庫、轉成 JSON 時卻要換成數字或文字。這頁講它背後的數字、在 C# 裡怎麼轉換、EF Core 怎麼存、查詢時翻成什麼 SQL、進出 API 時的約定、幾個不會報錯的坑，最後是「顯示用的狀態」與「資料庫的狀態」怎麼用對應表互換。</p>
 <div class="tags">
@@ -283,8 +283,8 @@ foreach (var order in orders)
 <p>完整的實驗（含 SQL 與使用者選了不存在的進度時會怎樣）在 <a href="01b-linq-sql-lab.html#l4-12">LINQ 實驗室 L4-12</a>。有好幾張表、每張表的狀態 enum 不同時，反查的那三行可以寫成一個泛型方法共用，見 <a href="csharp-default-nullable.html#generic">default 那一頁第 5 節</a>。</p>
 
 <nav class="footer-nav">
-  <a href="csharp-json.html">← C# 補充：JSON</a>
-  <a href="../index.html">回目錄</a>
+  <span></span>
+  <a href="../index.html#concepts">回目錄（觀念庫）</a>
   <span></span>
 </nav>
 
