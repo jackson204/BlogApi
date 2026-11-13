@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C# 補充：Dictionary</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>C# 補充：Dictionary（key 與 value）</h1>
+<p class="subtitle"><code>Dictionary</code> 是「用 key 找 value」的對照表。這頁講怎麼建立與讀取、key 不存在時怎麼辦、<code>pair.Key</code> 與 <code>pair.Value</code> 是什麼、怎麼用 value 反過來找 key，以及怎麼從清單做出 Dictionary。</p>
+<div class="tags">
+  <span class="tag">Dictionary</span><span class="tag">key</span><span class="tag">value</span><span class="tag">KeyValuePair</span><span class="tag">TryGetValue</span><span class="tag">GetValueOrDefault</span><span class="tag">ContainsKey</span><span class="tag">ToDictionary</span><span class="tag">GroupBy</span><span class="tag">對應表</span><span class="tag">反查</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>這頁是 C# 語法</strong>，和專案無關。程式裡看到 <code>Dictionary&lt;…, …&gt;</code>、<code>pair.Key</code>、<code>pair.Value</code>、<code>TryGetValue</code> 看不懂時回來查。頁面上的輸出都是單檔程式實際執行的結果（.NET 10）。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#what">Dictionary 是什麼：用 key 找 value</a></li>
+    <li><a href="#missing">key 不存在時：三種讀法</a></li>
+    <li><a href="#write">新增、修改、移除</a></li>
+    <li><a href="#loop">逐筆走過：pair.Key 與 pair.Value</a></li>
+    <li><a href="#linq">用 LINQ 查：用 value 反過來找 key</a></li>
+    <li><a href="#build">從清單做出 Dictionary</a></li>
+    <li><a href="#key">key 怎麼算「相同」</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="what">1. Dictionary 是什麼：用 key 找 value</h2>
+<p><code>List</code> 是「第幾個」找東西，<code>Dictionary</code> 是「用名字」找東西。每一筆是一對：<strong>key</strong>（用來找的）與 <strong>value</strong>（找到的內容）。</p>
+<pre><code class="language-csharp">var price = new Dictionary&lt;string, int&gt;      // key 是 string，value 是 int
+{
+    ["可樂"] = 30,
+    ["綠茶"] = 25,
+    ["咖啡"] = 60,
+};
+
+Console.WriteLine(price["可樂"]);               // 30
+Console.WriteLine(price.Count);                 // 3
+Console.WriteLine(price.ContainsKey("咖啡"));   // True
+Console.WriteLine(price.ContainsKey("牛奶"));   // False</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th><code>List&lt;T&gt;</code></th><th><code>Dictionary&lt;TKey, TValue&gt;</code></th></tr>
+  <tr><td>怎麼找</td><td>位置：<code>list[0]</code></td><td>key：<code>price["可樂"]</code></td></tr>
+  <tr><td>找的速度</td><td>要找特定內容得一個一個看</td><td>直接跳到那個 key，資料再多也一樣快</td></tr>
+  <tr><td>能不能重複</td><td>內容可以重複</td><td><strong>key 不能重複</strong>，value 可以</td></tr>
+  <tr><td>適合</td><td>一串有順序的東西</td><td>對照表、用編號或名稱查資料</td></tr>
+</table>
+</div>
+<p><code>Dictionary&lt;string, int&gt;</code> 尖括號裡第一個是 key 的型別，第二個是 value 的型別。key 常見的是 <code>string</code>、<code>int</code>、enum。</p>
+
+<!-- ============================================================ -->
+<h2 id="missing">2. key 不存在時：三種讀法</h2>
+<pre><code class="language-csharp">Console.WriteLine(price["牛奶"]);
+// KeyNotFoundException: The given key '牛奶' was not present in the dictionary.
+
+if (price.TryGetValue("牛奶", out var p))     // 回傳 False，p 是 0
+{
+    Console.WriteLine(p);
+}
+
+Console.WriteLine(price.GetValueOrDefault("牛奶"));       // 0
+Console.WriteLine(price.GetValueOrDefault("牛奶", -1));   // -1</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>寫法</th><th>key 不存在時</th><th>什麼時候用</th></tr>
+  <tr><td><code>price[key]</code></td><td>丟 <code>KeyNotFoundException</code></td><td>確定一定有；沒有就代表程式有錯</td></tr>
+  <tr><td><code>price.TryGetValue(key, out var p)</code></td><td>回傳 <code>false</code>，<code>p</code> 是 value 型別的 <code>default</code></td><td>不確定有沒有，而且兩種情況要分開處理</td></tr>
+  <tr><td><code>price.GetValueOrDefault(key, 預設值)</code></td><td>回傳預設值</td><td>沒有就用預設值，不用分開處理</td></tr>
+</table>
+</div>
+<p><code>out var p</code>：這個方法有兩個結果要給你，「有沒有找到」用回傳值，「找到的內容」放進 <code>p</code>。找不到時 <code>p</code> 是 <code>default</code>（<a href="csharp-default-nullable.html">上一頁</a>），所以要先看回傳值再用 <code>p</code>。</p>
+<p>不要寫成先 <code>ContainsKey</code> 再 <code>price[key]</code>：那樣會找兩次，<code>TryGetValue</code> 一次就完成。</p>
+
+<!-- ============================================================ -->
+<h2 id="write">3. 新增、修改、移除</h2>
+<pre><code class="language-csharp">price["牛奶"] = 40;            // 沒有這個 key → 新增。Count 變成 4
+price["可樂"] = 35;            // 已經有這個 key → 改掉 value。Count 還是 4
+
+price.Add("可樂", 99);
+// ArgumentException: An item with the same key has already been added. Key: 可樂
+
+Console.WriteLine(price.TryAdd("可樂", 99));   // False，可樂還是 35
+Console.WriteLine(price.Remove("牛奶"));       // True，Count 變回 3</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>寫法</th><th>key 已經存在時</th><th>key 不存在時</th></tr>
+  <tr><td><code>price[key] = 值</code></td><td>覆蓋</td><td>新增</td></tr>
+  <tr><td><code>price.Add(key, 值)</code></td><td>丟 <code>ArgumentException</code></td><td>新增</td></tr>
+  <tr><td><code>price.TryAdd(key, 值)</code></td><td>不動，回傳 <code>false</code></td><td>新增，回傳 <code>true</code></td></tr>
+</table>
+</div>
+<p>想要「有就改、沒有就加」用 <code>[key] = 值</code>；想要「重複就是錯誤，要立刻知道」用 <code>Add</code>。</p>
+
+<!-- ============================================================ -->
+<h2 id="loop">4. 逐筆走過：pair.Key 與 pair.Value</h2>
+<pre><code class="language-csharp">foreach (var pair in price)
+{
+    Console.WriteLine($"pair.Key = {pair.Key}, pair.Value = {pair.Value}");
+}
+
+foreach (var (name, amount) in price)      // 直接拆成兩個變數
+{
+    Console.WriteLine($"{name}：{amount}");
+}
+
+Console.WriteLine(string.Join(", ", price.Keys));     // 可樂, 綠茶, 咖啡
+Console.WriteLine(string.Join(", ", price.Values));   // 35, 25, 60</code></pre>
+<pre><code class="nohighlight">pair.Key = 可樂, pair.Value = 35
+pair.Key = 綠茶, pair.Value = 25
+pair.Key = 咖啡, pair.Value = 60
+可樂：35
+綠茶：25
+咖啡：60</code></pre>
+<ul>
+  <li><code>foreach</code> 每一圈拿到的是「一對」，型別是 <code>KeyValuePair&lt;string, int&gt;</code>。<code>pair</code> 這個名字是自己取的，<code>.Key</code> 是左邊、<code>.Value</code> 是右邊</li>
+  <li>之後在 LINQ 裡看到 <code>pair =&gt; pair.Value</code>，<code>pair</code> 就是這個東西</li>
+  <li><strong>不要依賴順序</strong>。這次印出來剛好是加入的順序，但 <code>Dictionary</code> 不保證。需要固定順序就自己排序：<code>price.OrderBy(pair =&gt; pair.Key)</code></li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="linq">5. 用 LINQ 查：用 value 反過來找 key</h2>
+<p><code>Dictionary</code> 天生只能「用 key 找 value」。想反過來「哪些 key 的 value 符合條件」，把它當成一串 pair 用 LINQ 過濾：</p>
+<pre><code class="language-csharp">// 哪些商品超過 30 元
+var expensive = price.Where(pair =&gt; pair.Value &gt; 30).Select(pair =&gt; pair.Key);
+Console.WriteLine(string.Join(", ", expensive));   // 可樂, 咖啡
+
+// 對應表：左邊是資料庫裡的狀態，右邊是顯示給使用者的文字
+var progress = new Dictionary&lt;string, string&gt;
+{
+    ["Pending"] = "進行中",
+    ["Paid"] = "進行中",
+    ["Shipped"] = "已完成",
+    ["Cancelled"] = "已取消",
+};
+
+Console.WriteLine(progress["Paid"]);     // 進行中          ← 正方向：用 key 找 value
+
+var keys = progress
+    .Where(pair =&gt; pair.Value == "進行中")   // ① 只留下 value 是「進行中」的那幾對
+    .Select(pair =&gt; pair.Key)                // ② 取出它們的 key
+    .ToList();                               // ③ 收成清單
+Console.WriteLine(string.Join(", ", keys));  // Pending, Paid   ← 反方向：用 value 找 key</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>方向</th><th>寫法</th><th>結果有幾個</th></tr>
+  <tr><td>key → value</td><td><code>progress["Paid"]</code></td><td>剛好一個（key 不重複）</td></tr>
+  <tr><td>value → key</td><td><code>.Where(pair =&gt; pair.Value == …).Select(pair =&gt; pair.Key)</code></td><td>零個、一個或多個（value 可以重複）</td></tr>
+</table>
+</div>
+<ul>
+  <li>反方向可能找到多個，所以結果是清單。找不到時是空清單，不會丟例外</li>
+  <li>這裡的 <code>.ToList()</code> 只在記憶體裡跑，不連資料庫：它的主體是 <code>progress</code>（<a href="01b-linq-sql-lab.html#l4-07">LINQ 實驗室 L4-07</a>）</li>
+  <li>這個「反查」的實際用途：使用者選的是顯示用的狀態，要先換成資料庫裡的狀態才能查。見 <a href="csharp-enum-db.html#mapping">enum 那一頁第 7 節</a>與 <a href="01b-linq-sql-lab.html#l4-12">L4-12</a></li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="build">6. 從清單做出 Dictionary</h2>
+<pre><code class="language-csharp">var products = new[] { new Product(1, "可樂", 30), new Product(2, "綠茶", 25), new Product(3, "咖啡", 60) };
+
+var byId = products.ToDictionary(p =&gt; p.Id);                      // key 是 Id，value 是整個 Product
+Console.WriteLine(byId[2].Name);                                  // 綠茶
+
+var nameToPrice = products.ToDictionary(p =&gt; p.Name, p =&gt; p.Price);   // key 是名稱，value 只取價格
+Console.WriteLine(nameToPrice["咖啡"]);                           // 60
+
+record Product(int Id, string Name, int Price);</code></pre>
+<p>用途：要在迴圈裡反覆「用 Id 找商品」時，先轉成 <code>Dictionary</code>，之後每次查都是直接跳到那一筆，不用每次從頭找。</p>
+<p>key 重複時 <code>ToDictionary</code> 會丟例外：</p>
+<pre><code class="nohighlight">ArgumentException: An item with the same key has already been added. Key: 1</code></pre>
+<p>一個 key 要對應到<strong>多個</strong>東西時，先分組再轉，value 放清單：</p>
+<pre><code class="language-csharp">var items = new[] { ("飲料", "可樂"), ("飲料", "綠茶"), ("零食", "餅乾") };
+
+var groups = items
+    .GroupBy(x =&gt; x.Item1)
+    .ToDictionary(g =&gt; g.Key, g =&gt; g.Select(x =&gt; x.Item2).ToList());
+// 飲料 → [可樂, 綠茶]
+// 零食 → [餅乾]</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="key">7. key 怎麼算「相同」</h2>
+<pre><code class="language-csharp">var a = new Dictionary&lt;string, int&gt; { ["Cola"] = 1 };
+Console.WriteLine(a.ContainsKey("cola"));    // False  ← 字串預設區分大小寫
+
+var b = new Dictionary&lt;string, int&gt;(StringComparer.OrdinalIgnoreCase) { ["Cola"] = 1 };
+Console.WriteLine(b.ContainsKey("cola"));    // True</code></pre>
+<ul>
+  <li>字串當 key 時預設區分大小寫。要不分大小寫，建立時傳 <code>StringComparer.OrdinalIgnoreCase</code></li>
+  <li><code>int</code>、enum 當 key 最單純，值一樣就是同一個 key</li>
+  <li>key 不能是 <code>null</code>；value 可以</li>
+  <li><code>Dictionary</code> 和 JSON 的物件長得很像（都是「名字：值」），兩者可以互轉，見 <a href="csharp-json.html#dictionary">JSON 那一頁第 6 節</a></li>
+</ul>
+
+<nav class="footer-nav">
+  <a href="csharp-default-nullable.html">← C# 補充：default、可空型別與 ?.</a>
+  <a href="../index.html">回目錄</a>
+  <a href="csharp-json.html">C# 補充：JSON →</a>
+</nav>
+
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

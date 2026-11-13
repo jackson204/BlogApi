@@ -13,7 +13,7 @@
 
 <div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 深入（選修）</div>
 <h1>深入｜LINQ ↔ SQL 實驗室：一個 Console 專案，看懂每一句 LINQ 變成什麼 SQL</h1>
-<p class="subtitle">第 1 課只在<a href="01-efcore-crud.html#sql">第 5 節「觀察 SQL」</a>看過部落格 API 自己跑出來的六句 SQL。這一課另開一個 Console 專案和一個小商店資料庫，31 個實驗：單表、JOIN、GROUP BY、還有最常踩的坑。每個實驗你先寫 LINQ、先猜 SQL，再打開答案對。這是<strong>深入課</strong>，不在主線上：先把 Web API 主線走完，之後想加強 LINQ 時再回來做，完全可以。</p>
+<p class="subtitle">第 1 課只在<a href="01-efcore-crud.html#sql">第 5 節「觀察 SQL」</a>看過部落格 API 自己跑出來的六句 SQL。這一課另開一個 Console 專案和一個小商店資料庫，37 個實驗：單表、JOIN、GROUP BY、還有最常踩的坑。每個實驗你先寫 LINQ、先猜 SQL，再打開答案對。這是<strong>深入課</strong>，不在主線上：先把 Web API 主線走完，之後想加強 LINQ 時再回來做，完全可以。</p>
 
 <div class="callout">
 <p>📌 <strong>什麼時候回來做這一課</strong></p>
@@ -24,11 +24,11 @@
   <li>遇到 <code>could not be translated</code> 這個例外</li>
   <li>單純想把 01 第 5 節那張對照表補完整</li>
 </ul>
-<p>31 個實驗可以分好幾次做，做到哪就 commit 到哪。</p>
+<p>37 個實驗可以分好幾次做，做到哪就 commit 到哪。</p>
 </div>
 <div class="tags">
   <span class="tag">LINQ</span><span class="tag">IQueryable</span><span class="tag">Include</span><span class="tag">JOIN</span><span class="tag">GroupBy</span>
-  <span class="tag">EXISTS</span><span class="tag">OFFSET FETCH</span><span class="tag">延遲執行</span><span class="tag">N+1</span><span class="tag">ExecuteUpdate</span>
+  <span class="tag">EXISTS</span><span class="tag">OFFSET FETCH</span><span class="tag">延遲執行</span><span class="tag">Concat</span><span class="tag">Union</span><span class="tag">Aggregate</span><span class="tag">Contains → IN</span><span class="tag">enum</span><span class="tag">對應表</span><span class="tag">N+1</span><span class="tag">ExecuteUpdate</span>
   <span class="tag">OnConfiguring</span><span class="tag">LogTo</span><span class="tag">EnsureCreated</span><span class="tag">Console 專案</span>
 </div>
 
@@ -42,7 +42,7 @@
     <li><a href="#level1">Level 1：單表（12 個實驗）</a></li>
     <li><a href="#level2">Level 2：關聯（8 個實驗）</a></li>
     <li><a href="#level3">Level 3：彙總（5 個實驗）</a></li>
-    <li><a href="#level4">Level 4：陷阱與觀察（6 個實驗）</a></li>
+    <li><a href="#level4">Level 4：陷阱與觀察（12 個實驗）</a></li>
     <li><a href="#cheatsheet">LINQ ↔ SQL 對照總表</a></li>
     <li><a href="#next">延伸問題</a></li>
   </ol>
@@ -56,7 +56,7 @@
   <tr><td>想看一句 SQL</td><td>加 endpoint → 啟動 → 用 <code>.http</code> 打 → 看 Run 視窗</td><td>改一行 LINQ → 按 ▶ → 直接印在主控台</td></tr>
   <tr><td>噪音</td><td>路由、Controller、狀態碼、JSON 全混在一起</td><td>只有 LINQ 和 SQL</td></tr>
   <tr><td>Debug</td><td>要等請求進來</td><td>Rider 直接下中斷點，單步看 <code>IQueryable</code> 什麼時候執行</td></tr>
-  <tr><td>順便學到</td><td>—</td><td><strong>自己 <code>new</code> DbContext</strong>：沒有 DI 的世界長什麼樣，對照 01 的 <a href="01-efcore-crud.html#wiring">3-8</a>，也是第 3 課「沒有 DI 會怎樣」的伏筆</td></tr>
+  <tr><td>順便學到</td><td>—</td><td><strong>自己 <code>new</code> DbContext</strong>：沒有 DI 的世界長什麼樣，對照 <a href="03a-di-how-it-works.html">03a</a>（框架怎麼幫你 <code>new</code>），也是 03b「沒有 DI 會怎樣」的伏筆</td></tr>
 </table>
 </div>
 <p>資料庫也是獨立的：不用部落格的 <code>BlogDb</code>，另外建一個有五張表的小商店，JOIN、GROUP BY 今天就能練，不用等第 2 課。這套商店的結構之後做購物網站可以直接延用。</p>
@@ -1231,7 +1231,7 @@ ORDER BY COALESCE(SUM([o].[Quantity]), 0) DESC</code></pre>
 </div>
 
 <!-- ============================================================ -->
-<h2 id="level4">8. Level 4：陷阱與觀察（6 個實驗）</h2>
+<h2 id="level4">8. Level 4：陷阱與觀察（12 個實驗）</h2>
 <p>前三層看「翻成什麼」，這一層看「什麼時候翻、翻不過去怎麼辦、怎麼寫會多送 SQL」。寫在 <code>Level4.cs</code>。</p>
 
 <div class="exercise">
@@ -1436,9 +1436,516 @@ WHERE [p].[CategoryId] = 1</code></pre>
 </details>
 </div>
 
+<div class="exercise">
+<h3 id="l4-07">L4-07：這個 ToList 連不連資料庫（看主體）</h3>
+<p>任務：有一個城市陣列 <code>{ "台北", "台中" }</code>。用 <code>Select</code> 把每個城市換成「查那個城市客戶名稱的 <code>IQueryable</code>」，再 <code>.ToList()</code> 收成清單，印出清單有幾個。然後才用 <code>foreach</code> 對清單裡的每個查詢呼叫 <code>ToListAsync()</code>。</p>
+<p>先猜：第一個 <code>.ToList()</code> 會送出幾句 SQL？0 句、1 句還是 2 句？</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task ToListOnWhat(ShopDbContext db)
+{
+    var cities = new[] { "台北", "台中" };
+
+    // 主體是 cities：記憶體裡的陣列
+    var queries = cities
+        .Select(city =&gt; db.Customers.Where(c =&gt; c.City == city).Select(c =&gt; c.Name))
+        .ToList();
+    Lab.Note($"queries 建好了，裡面有 {queries.Count} 個查詢，上面沒有印出任何 SQL");
+
+    foreach (var query in queries)
+    {
+        // 主體是 query：從 db.Customers 出發的 IQueryable
+        var names = await query.ToListAsync();
+        Lab.Show(string.Join("、", names));
+    }
+}</code></pre>
+<pre><code class="nohighlight">  (queries 建好了，裡面有 2 個查詢，上面沒有印出任何 SQL)
+-- Parameters=[@city='台北']
+SELECT [c].[Name]
+FROM [Customers] AS [c]
+WHERE [c].[City] = @city
+  → 小明、小華
+-- Parameters=[@city='台中']
+SELECT [c].[Name]
+FROM [Customers] AS [c]
+WHERE [c].[City] = @city
+  → 小美、小芳</code></pre>
+<p>第一個 <code>.ToList()</code> 送出 <strong>0 句</strong>。<code>.ToList()</code> 本身只是「把前面那串真的跑一遍，結果裝成清單」，它連不連資料庫，要看它的<strong>主體</strong>：從 <code>.ToList()</code> 往前看到最開頭，看這一串是從哪裡出發的。</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>第一個 <code>.ToList()</code></th><th>迴圈裡的 <code>.ToListAsync()</code></th></tr>
+  <tr><td>主體（最開頭）</td><td><code>cities</code>，記憶體裡的陣列</td><td><code>db.Customers</code>，資料庫的表</td></tr>
+  <tr><td>主體的型別</td><td><code>IEnumerable&lt;…&gt;</code></td><td><code>IQueryable&lt;string&gt;</code></td></tr>
+  <tr><td>跑完之後清單裡裝什麼</td><td>2 個還沒送出的查詢</td><td>客戶名稱</td></tr>
+  <tr><td>連資料庫嗎</td><td>不連</td><td>連，每個查詢各一句</td></tr>
+</table>
+</div>
+<ul>
+  <li>容易誤會的地方：第一個清單裡面裝的<strong>剛好是資料庫查詢</strong>，看起來像已經查了。但 <code>.ToList()</code> 作用的對象是外層那個城市陣列，它只負責把兩個查詢收集起來，不會打開每一個去執行。要看的是「它作用在誰身上」，不是「清單裡面裝了什麼」</li>
+  <li><code>queries.Count</code> 數的是<strong>查詢有幾個</strong>，不是客戶有幾位。數手上有幾張單子不需要問資料庫</li>
+  <li>用型別判斷最準：主體是 <code>IQueryable&lt;…&gt;</code> 才會連資料庫；<code>IEnumerable</code>、<code>List</code>、陣列都只在記憶體裡跑。Rider 把游標移到 <code>.ToList()</code> 前面那個方法上就看得到型別</li>
+  <li>這和 L4-02 是同一個規則的兩面：L4-02 是「<code>List</code> 的 <code>Where</code> 在記憶體跑」，這題是「陣列的 <code>ToList</code> 在記憶體跑」。同名的方法，主體不同，行為就不同</li>
+  <li>會觸發執行的不只 <code>ToList</code>：<code>First</code>、<code>Count</code>、<code>Any</code>、<code>foreach</code> 都一樣，判斷方式相同。<code>Where</code>、<code>Select</code>、<code>OrderBy</code>、<code>Concat</code>、<code>Skip</code>、<code>Take</code> 只是加條件，不會觸發（L4-03）</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l4-08">L4-08：Concat vs Union</h3>
+<p>任務：準備兩個查詢，都只拿商品名稱：(a) 價格低於 40 的商品；(b) 類別 1（飲料）的商品。先用 <code>Concat</code> 把 (b) 接在 (a) 後面，再用 <code>Union</code> 做一次，各印出有幾筆。</p>
+<p>先猜：可樂和綠茶同時符合兩個條件，兩種寫法各會出現幾次？SQL 的關鍵字差在哪？</p>
+<p class="accept">✅ 驗收：<code>Concat</code> 7 筆，<code>Union</code> 5 筆</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task ConcatVsUnion(ShopDbContext db)
+{
+    var cheap = db.Products.Where(p =&gt; p.Price &lt; 40).Select(p =&gt; p.Name);        // 可樂、綠茶、餅乾、原子筆
+    var drinks = db.Products.Where(p =&gt; p.CategoryId == 1).Select(p =&gt; p.Name);  // 可樂、綠茶、咖啡
+
+    var concat = await cheap.Concat(drinks).ToListAsync();
+    Lab.Show($"Concat：{concat.Count} 筆");
+
+    var union = await cheap.Union(drinks).ToListAsync();
+    Lab.Show($"Union：{union.Count} 筆");
+}</code></pre>
+<pre><code class="language-sql">-- Concat
+SELECT [p].[Name]
+FROM [Products] AS [p]
+WHERE [p].[Price] &lt; 40.0
+UNION ALL
+SELECT [p0].[Name]
+FROM [Products] AS [p0]
+WHERE [p0].[CategoryId] = 1
+
+-- Union
+SELECT [p].[Name]
+FROM [Products] AS [p]
+WHERE [p].[Price] &lt; 40.0
+UNION
+SELECT [p0].[Name]
+FROM [Products] AS [p0]
+WHERE [p0].[CategoryId] = 1</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>LINQ</th><th>SQL</th><th>重複的列</th><th>這題的結果</th></tr>
+  <tr><td><code>a.Concat(b)</code></td><td><code>UNION ALL</code></td><td>留著</td><td>7 筆，可樂、綠茶各出現兩次</td></tr>
+  <tr><td><code>a.Union(b)</code></td><td><code>UNION</code></td><td>去掉</td><td>5 筆：可樂、綠茶、餅乾、原子筆、咖啡</td></tr>
+</table>
+</div>
+<ul>
+  <li>寫法是「前面那份 <code>.Concat(</code> 後面那份 <code>)</code>」。兩個都是 <code>IQueryable</code> 時不會真的去接資料，只是在查詢上記一筆「這兩段要接起來」，所以兩段變成<strong>一句</strong> SQL，不是兩句</li>
+  <li>兩段的欄位要一樣（這裡都是一個 <code>Name</code>），不然接不起來。這就是為什麼兩邊都先 <code>Select</code> 成同樣的形狀</li>
+  <li><code>UNION</code> 要去重複，資料庫得多做一次比對；確定不會重複、或重複也沒關係時用 <code>Concat</code> 比較省</li>
+  <li>沒有 <code>OrderBy</code> 時，接起來的順序資料庫不保證，所以這題只比筆數。要固定順序就在 <code>Concat</code> <strong>後面</strong>加 <code>OrderBy</code>（下一題）</li>
+  <li>對記憶體裡的陣列或 <code>List</code> 也可以用 <code>Concat</code>／<code>Union</code>，意思相同，只是在 C# 裡做：<code>new[] { 1, 2, 3 }.Concat(new[] { 3, 4 })</code> 是 1、2、3、3、4，<code>Union</code> 是 1、2、3、4</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l4-09">L4-09：Aggregate + Concat，把段數不固定的查詢接成一句</h3>
+<p>情境：做一個「跨表搜尋」，使用者可以勾選要找哪幾種東西（商品、客戶、類別），勾幾種就查幾張表，結果合在一起依 <code>Id</code> 排序取前 5 筆。</p>
+<p>任務：</p>
+<ol>
+  <li>建一個 <code>SearchHit</code> 類別，三個屬性 <code>Kind</code>、<code>Id</code>、<code>Name</code>。</li>
+  <li>寫一個方法 <code>Source(db, kind)</code>，依 <code>kind</code> 回傳那張表投影成 <code>SearchHit</code> 的 <code>IQueryable</code>。</li>
+  <li>把勾選的種類用 <code>Select</code> 換成查詢、<code>ToList()</code> 收成清單 <code>sources</code>。</li>
+  <li>用 <code>sources.Aggregate((merged, source) =&gt; merged.Concat(source))</code> 接成一個查詢，再排序、取 5 筆。</li>
+  <li>分別用「三種都勾」、「只勾客戶」、「一種都沒勾」跑一次。</li>
+</ol>
+<p>先猜：三種都勾時會送幾句 SQL？只勾一種時 SQL 裡有沒有 <code>UNION ALL</code>？一種都沒勾會怎樣？</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<p class="file-label">LinqLab/Experiments/SearchHit.cs</p>
+<pre><code class="language-csharp">namespace LinqLab.Experiments;
+
+// 三張表合併時共用的形狀：欄位名稱與順序都一樣才接得起來
+public class SearchHit
+{
+    public string Kind { get; init; } = string.Empty;
+    public int Id { get; init; }
+    public string Name { get; init; } = string.Empty;
+
+    public override string ToString() =&gt; $"{Kind} #{Id} {Name}";
+}</code></pre>
+<p class="file-label">LinqLab/Experiments/Level4.cs</p>
+<pre><code class="language-csharp">public static async Task AggregateConcat(ShopDbContext db)
+{
+    await Search(db, new[] { "Product", "Customer", "Category" });
+    await Search(db, new[] { "Customer" });
+    await Search(db, Array.Empty&lt;string&gt;());
+}
+
+private static async Task Search(ShopDbContext db, string[] kinds)
+{
+    Lab.Note($"勾選：{(kinds.Length == 0 ? "（沒有）" : string.Join("、", kinds))}");
+
+    // 主體是 kinds（記憶體裡的陣列），這個 ToList 不連資料庫（L4-07）
+    var sources = kinds
+        .Select(kind =&gt; Source(db, kind))
+        .ToList();
+
+    // Aggregate 遇到空清單會丟例外，一定要先擋
+    if (sources.Count == 0)
+    {
+        Lab.Show("沒有勾選任何種類，直接回空清單，沒有送 SQL");
+        return;
+    }
+
+    var hits = await sources
+        .Aggregate((merged, source) =&gt; merged.Concat(source))   // 幾段就接幾段
+        .OrderBy(hit =&gt; hit.Id)
+        .ThenBy(hit =&gt; hit.Kind)
+        .Skip(0)
+        .Take(5)
+        .ToListAsync();                                          // 到這裡才送出，而且只有一句
+
+    Lab.Show(hits);
+}
+
+private static IQueryable&lt;SearchHit&gt; Source(ShopDbContext db, string kind) =&gt; kind switch
+{
+    "Product" =&gt; db.Products.Select(p =&gt; new SearchHit { Kind = "Product", Id = p.Id, Name = p.Name }),
+    "Customer" =&gt; db.Customers.Select(c =&gt; new SearchHit { Kind = "Customer", Id = c.Id, Name = c.Name }),
+    "Category" =&gt; db.Categories.Select(c =&gt; new SearchHit { Kind = "Category", Id = c.Id, Name = c.Name }),
+    _ =&gt; throw new ArgumentOutOfRangeException(nameof(kind), kind, "不支援的種類"),
+};</code></pre>
+<pre><code class="nohighlight">  (勾選：Product、Customer、Category)
+-- Parameters=[@p='0', @p1='5']
+SELECT [u0].[Kind], [u0].[Id], [u0].[Name]
+FROM (
+    SELECT N'Product' AS [Kind], [p].[Id], [p].[Name]
+    FROM [Products] AS [p]
+    UNION ALL
+    SELECT N'Customer' AS [Kind], [c].[Id], [c].[Name]
+    FROM [Customers] AS [c]
+    UNION ALL
+    SELECT N'Category' AS [Kind], [c0].[Id], [c0].[Name]
+    FROM [Categories] AS [c0]
+) AS [u0]
+ORDER BY [u0].[Id], [u0].[Kind]
+OFFSET @p ROWS FETCH NEXT @p1 ROWS ONLY
+  → Category #1 飲料
+  → Customer #1 小明
+  → Product #1 可樂
+  → Category #2 零食
+  → Customer #2 小華
+  (勾選：Customer)
+-- Parameters=[@p='0', @p1='5']
+SELECT N'Customer' AS [Kind], [c].[Id], [c].[Name]
+FROM [Customers] AS [c]
+ORDER BY [c].[Id], (SELECT 1)
+OFFSET @p ROWS FETCH NEXT @p1 ROWS ONLY
+  → Customer #1 小明
+  → Customer #2 小華
+  → Customer #3 小美
+  → Customer #4 阿強
+  → Customer #5 小芳
+  (勾選：（沒有）)
+  → 沒有勾選任何種類，直接回空清單，沒有送 SQL</code></pre>
+
+<h4><code>Aggregate</code> 是什麼：把一份清單「滾」成一個結果</h4>
+<p>它需要一個規則：「目前累積的結果」加上「下一個」要變成什麼，然後從左到右一個一個套。先用數字看：</p>
+<pre><code class="language-csharp">var numbers = new[] { 1, 2, 3, 4 };
+var sum = numbers.Aggregate((total, next) =&gt; total + next);   // 10</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>第幾次</th><th><code>total</code>（目前累積）</th><th><code>next</code>（下一個）</th><th>新的累積</th></tr>
+  <tr><td>開始</td><td>1（清單的第一個直接當起點）</td><td></td><td></td></tr>
+  <tr><td>1</td><td>1</td><td>2</td><td>3</td></tr>
+  <tr><td>2</td><td>3</td><td>3</td><td>6</td></tr>
+  <tr><td>3</td><td>6</td><td>4</td><td>10</td></tr>
+</table>
+</div>
+<p>括號裡的兩個名字是自己取的，第一個永遠是「目前累積的結果」，第二個永遠是「下一個」。</p>
+
+<h4>套回這題：規則換成「接起來」</h4>
+<p><code>sources.Aggregate((merged, source) =&gt; merged.Concat(source))</code> 的規則是「目前已經接好的，再接上下一段」。三種都勾時：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>第幾次</th><th><code>merged</code>（目前已接好的）</th><th><code>source</code>（下一段）</th><th>新的 <code>merged</code></th></tr>
+  <tr><td>開始</td><td>Products 的查詢</td><td></td><td></td></tr>
+  <tr><td>1</td><td>Products</td><td>Customers</td><td>Products <code>UNION ALL</code> Customers</td></tr>
+  <tr><td>2</td><td>Products <code>UNION ALL</code> Customers</td><td>Categories</td><td>三段用兩個 <code>UNION ALL</code> 接起來</td></tr>
+</table>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th>勾幾種</th><th><code>sources</code> 幾段</th><th>規則執行幾次</th><th>結果</th></tr>
+  <tr><td>3 種</td><td>3</td><td>2 次</td><td><strong>一句</strong> SQL，兩個 <code>UNION ALL</code></td></tr>
+  <tr><td>1 種</td><td>1</td><td>0 次</td><td>原樣回傳那一段，SQL 裡沒有 <code>UNION ALL</code>，也沒有外層的 <code>FROM ( … )</code></td></tr>
+  <tr><td>0 種</td><td>0</td><td>—</td><td>沒擋的話 <code>Aggregate</code> 會丟 <code>InvalidOperationException: Sequence contains no elements</code>，因為連起點都沒有</td></tr>
+</table>
+</div>
+<ul>
+  <li>三種都勾也只送<strong>一句</strong>。<code>Source()</code> 回傳的是 <code>IQueryable</code>，<code>Concat</code>、<code>OrderBy</code>、<code>Skip</code>、<code>Take</code> 都只是在查詢上加東西，直到 <code>ToListAsync()</code> 才整包翻成 SQL（L4-03、L4-07）</li>
+  <li><code>ORDER BY</code> 和 <code>OFFSET … FETCH</code> 在最外層，作用在<strong>合併之後</strong>的結果上。所以三張表的資料是混在一起排序、再取 5 筆，資料庫只回這 5 筆。如果改成每張表各自 <code>ToListAsync()</code> 再用 C# 合併，就會把三張表全部搬回來（L4-02 的坑）</li>
+  <li><code>N'Product' AS [Kind]</code> 是程式裡寫死的 <code>Kind = "Product"</code>。資料表本身沒有「種類」欄位，所以每一段自己標上是哪一種，合併後才分得出來</li>
+  <li>只勾一種時 <code>ORDER BY</code> 第二個鍵變成 <code>(SELECT 1)</code>：這時每一列的 <code>Kind</code> 都是同一個固定值，排不排都一樣（和 L1-09 沒有 OrderBy 時看到的是同一個寫法）</li>
+  <li>為什麼排序要加第二個鍵 <code>ThenBy(Kind)</code>：三張表的 <code>Id</code> 各自編號，會有三筆 <code>Id</code> 都是 1。只依 <code>Id</code> 排的話，這三筆誰先誰後資料庫不保證，分頁時可能同一筆出現兩次、另一筆漏掉。排序鍵要能分出每一筆的先後，分頁才穩定</li>
+</ul>
+
+<h4>不用 <code>Aggregate</code> 的話怎麼寫</h4>
+<pre><code class="language-csharp">// 寫法一：迴圈，一段一段接上去。和 Aggregate 做的事完全一樣
+var merged = sources[0];
+for (var i = 1; i &lt; sources.Count; i++)
+{
+    merged = merged.Concat(sources[i]);
+}
+
+// 寫法二：寫死三段。只勾一種時 sources[1] 不存在，會出錯
+var merged = sources[0].Concat(sources[1]).Concat(sources[2]);</code></pre>
+<p>段數固定時寫法二最直白；段數不固定就用迴圈或 <code>Aggregate</code>。<code>Aggregate</code> 是把那個迴圈濃縮成一行。</p>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l4-10">L4-10：清單.Contains(欄位) 變成 IN</h3>
+<p>任務：準備一個城市清單，查出住在這些城市的客戶名稱，依 <code>Id</code> 排序。分別用三種清單跑一次：<code>{ "台北", "台中" }</code>、<code>{ "高雄" }</code>、空的清單。</p>
+<p>先猜：<code>cities.Contains(c.City)</code> 是在 C# 裡一筆一筆比，還是變成 SQL？清單是空的時候 SQL 長什麼樣？</p>
+<p class="accept">✅ 驗收：依序是 4 位、1 位、0 位</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task ContainsToIn(ShopDbContext db)
+{
+    await ByCities(db, new[] { "台北", "台中" });
+    await ByCities(db, new[] { "高雄" });
+    await ByCities(db, Array.Empty&lt;string&gt;());
+}
+
+private static async Task ByCities(ShopDbContext db, string[] cities)
+{
+    var names = await db.Customers
+        .Where(c =&gt; cities.Contains(c.City))
+        .OrderBy(c =&gt; c.Id)
+        .Select(c =&gt; c.Name)
+        .ToListAsync();
+
+    Lab.Show($"[{string.Join("、", cities)}] → {names.Count} 位：{string.Join("、", names)}");
+}</code></pre>
+<pre><code class="language-sql">-- 兩個城市。Parameters=[@cities1='台北', @cities2='台中']
+SELECT [c].[Name]
+FROM [Customers] AS [c]
+WHERE [c].[City] IN (@cities1, @cities2)
+ORDER BY [c].[Id]
+
+-- 一個城市。Parameters=[@cities1='高雄']
+SELECT [c].[Name]
+FROM [Customers] AS [c]
+WHERE [c].[City] = @cities1
+ORDER BY [c].[Id]
+
+-- 空的清單
+SELECT [c].[Name]
+FROM [Customers] AS [c]
+WHERE 0 = 1
+ORDER BY [c].[Id]</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>清單裡有幾個</th><th>SQL 的條件</th><th>結果</th></tr>
+  <tr><td>兩個以上</td><td><code>[City] IN (…)</code></td><td>小明、小華、小美、小芳</td></tr>
+  <tr><td>一個</td><td><code>[City] = …</code></td><td>阿強</td></tr>
+  <tr><td>零個</td><td><code>0 = 1</code>（永遠不成立）</td><td>沒有人</td></tr>
+</table>
+</div>
+<ul>
+  <li><strong>這個 <code>Contains</code> 不是在 C# 裡執行</strong>。它寫在 <code>db.Customers.Where(…)</code> 裡，主體是資料庫的表（L4-07），所以 EF Core 不會真的呼叫 <code>Contains</code>，而是把整行翻成 SQL 的 <code>IN</code></li>
+  <li>對照關係：<code>cities</code> 清單裡的值變成括號裡的值，<code>c.City</code> 變成 <code>[c].[City]</code> 欄位</li>
+  <li>兩邊的型別要相同才能比：<code>cities</code> 是字串的清單，<code>c.City</code> 是字串。型別不同編譯就不會過</li>
+  <li>空清單時還是會送一句 SQL，只是條件變成 <code>0 = 1</code>，資料庫很快就回 0 筆。想省掉這一趟，自己在前面寫 <code>if (cities.Length == 0) return;</code></li>
+  <li>方向不要寫反：<code>cities.Contains(c.City)</code> 是「城市在不在清單裡」→ <code>IN</code>。<code>c.City.Contains("北")</code> 是「城市名稱裡有沒有這個字」→ <code>LIKE '%北%'</code>（L1-06）。兩個都叫 <code>Contains</code>，意思完全不同</li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l4-11">L4-11：用 enum 篩選訂單</h3>
+<p>任務：<code>Order.Status</code> 是 enum <code>OrderStatus</code>（Pending 0、Paid 1、Shipped 2、Cancelled 3）。(a) 查狀態是 <code>Paid</code> 的訂單；(b) 查狀態是 <code>Paid</code> 或 <code>Shipped</code> 的訂單，用清單加 <code>Contains</code>；(c) 所有訂單依狀態排序。都只拿 <code>Id</code> 與 <code>Status</code>。</p>
+<p>先猜：SQL 裡出現的是 <code>Paid</code> 這個字，還是數字？排序是依名字的字母還是依數字？</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">public static async Task EnumFilter(ShopDbContext db)
+{
+    var paid = await db.Orders
+        .Where(o =&gt; o.Status == OrderStatus.Paid)
+        .OrderBy(o =&gt; o.Id)
+        .Select(o =&gt; new { o.Id, o.Status })
+        .ToListAsync();
+    Lab.Show(paid);
+
+    var wanted = new List&lt;OrderStatus&gt; { OrderStatus.Paid, OrderStatus.Shipped };
+    var some = await db.Orders
+        .Where(o =&gt; wanted.Contains(o.Status))
+        .OrderBy(o =&gt; o.Id)
+        .Select(o =&gt; new { o.Id, o.Status })
+        .ToListAsync();
+    Lab.Show(some);
+
+    var sorted = await db.Orders
+        .OrderBy(o =&gt; o.Status)
+        .ThenBy(o =&gt; o.Id)
+        .Select(o =&gt; new { o.Id, o.Status })
+        .ToListAsync();
+    Lab.Show(sorted);
+}</code></pre>
+<pre><code class="nohighlight">SELECT [o].[Id], [o].[Status]
+FROM [Orders] AS [o]
+WHERE [o].[Status] = 1
+ORDER BY [o].[Id]
+  → { Id = 1, Status = Paid }
+  → { Id = 5, Status = Paid }
+  → { Id = 6, Status = Paid }
+  → { Id = 8, Status = Paid }
+-- Parameters=[@wanted1='1', @wanted2='2']
+SELECT [o].[Id], [o].[Status]
+FROM [Orders] AS [o]
+WHERE [o].[Status] IN (@wanted1, @wanted2)
+ORDER BY [o].[Id]
+  → { Id = 1, Status = Paid }
+  → { Id = 2, Status = Shipped }
+  → { Id = 5, Status = Paid }
+  → { Id = 6, Status = Paid }
+  → { Id = 7, Status = Shipped }
+  → { Id = 8, Status = Paid }
+SELECT [o].[Id], [o].[Status]
+FROM [Orders] AS [o]
+ORDER BY [o].[Status], [o].[Id]
+  → { Id = 3, Status = Pending }
+  → { Id = 1, Status = Paid }
+  → { Id = 5, Status = Paid }
+  → { Id = 6, Status = Paid }
+  → { Id = 8, Status = Paid }
+  → { Id = 2, Status = Shipped }
+  → { Id = 7, Status = Shipped }
+  → { Id = 4, Status = Cancelled }</code></pre>
+<ul>
+  <li>SQL 裡是<strong>數字</strong>：<code>OrderStatus.Paid</code> 變成 <code>1</code>。資料庫的 <code>Status</code> 欄位是 <code>int</code>，存的本來就是數字</li>
+  <li>讀回來時反過來：資料庫回 <code>1</code>，C# 拿到的是 <code>OrderStatus.Paid</code>，所以印出來是名字</li>
+  <li>(a) 的 <code>1</code> 直接寫在 SQL 裡，(b) 變成參數。規則和 L1-12 一樣：寫死的常數直接進 SQL，外面的變數（<code>wanted</code>）變參數</li>
+  <li>(b) 的 <code>wanted.Contains(o.Status)</code> 和 L4-10 是同一件事，只是清單裡放的是 enum</li>
+  <li>排序依數字：Pending (0)、Paid (1)、Shipped (2)、Cancelled (3)，不是字母順序。如果依字母，Cancelled 會排第一個</li>
+  <li>enum 也可以設定成存文字（<code>HasConversion&lt;string&gt;()</code>），那樣 SQL 會變成 <code>WHERE [o].[Status] = N'Paid'</code>，排序也變成字母順序。兩種存法的比較見 <a href="csharp-enum-db.html#store">enum 與資料庫</a></li>
+</ul>
+</div>
+</details>
+</div>
+
+<div class="exercise">
+<h3 id="l4-12">L4-12：用對應表把「顯示狀態」反查成資料庫狀態再查詢</h3>
+<p>情境：訂單在資料庫有四種狀態，畫面上只想讓使用者選三種進度。使用者選的是進度，資料庫認得的是狀態，查詢前要先換過來。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>資料庫的狀態</th><th>給使用者看的進度</th></tr>
+  <tr><td>Pending (0)</td><td>進行中</td></tr>
+  <tr><td>Paid (1)</td><td>進行中</td></tr>
+  <tr><td>Shipped (2)</td><td>已完成</td></tr>
+  <tr><td>Cancelled (3)</td><td>已取消</td></tr>
+</table>
+</div>
+<p>任務：</p>
+<ol>
+  <li>用 <code>Dictionary&lt;OrderStatus, string&gt;</code> 寫出這張對應表，key 是資料庫的狀態，value 是進度。</li>
+  <li>給一個進度，從對應表找出所有對應的狀態（清單）。</li>
+  <li>用這個清單查訂單，印出每筆訂單的 <code>Id</code>、狀態與進度。</li>
+  <li>分別用「進行中」、「已完成」、「不存在」跑一次。</li>
+</ol>
+<p>先猜：第 2 步會不會送 SQL？使用者選了一個不存在的進度會怎樣？</p>
+<details class="answer">
+<summary>LINQ 與實測 SQL（寫完再打開）</summary>
+<div class="answer-body">
+<pre><code class="language-csharp">private static readonly Dictionary&lt;OrderStatus, string&gt; ProgressMapping = new()
+{
+    [OrderStatus.Pending] = "進行中",
+    [OrderStatus.Paid] = "進行中",
+    [OrderStatus.Shipped] = "已完成",
+    [OrderStatus.Cancelled] = "已取消",
+};
+
+public static async Task MappingLookup(ShopDbContext db)
+{
+    await ByProgress(db, "進行中");
+    await ByProgress(db, "已完成");
+    await ByProgress(db, "不存在");
+}
+
+private static async Task ByProgress(ShopDbContext db, string progress)
+{
+    // 查詢前：進度（value）→ 資料庫的狀態（key）。主體是記憶體裡的對應表，不連資料庫
+    var statuses = ProgressMapping
+        .Where(pair =&gt; pair.Value == progress)
+        .Select(pair =&gt; pair.Key)
+        .ToList();
+    Lab.Note($"{progress} → [{string.Join(", ", statuses)}]");
+
+    var orders = await db.Orders
+        .Where(o =&gt; statuses.Contains(o.Status))
+        .OrderBy(o =&gt; o.Id)
+        .Select(o =&gt; new { o.Id, o.Status })
+        .ToListAsync();
+
+    // 查詢後：資料庫的狀態（key）→ 進度（value）
+    foreach (var order in orders)
+    {
+        Lab.Show($"訂單 {order.Id}：{order.Status} → {ProgressMapping[order.Status]}");
+    }
+}</code></pre>
+<pre><code class="nohighlight">  (進行中 → [Pending, Paid])
+-- Parameters=[@statuses1='0', @statuses2='1']
+SELECT [o].[Id], [o].[Status]
+FROM [Orders] AS [o]
+WHERE [o].[Status] IN (@statuses1, @statuses2)
+ORDER BY [o].[Id]
+  → 訂單 1：Paid → 進行中
+  → 訂單 3：Pending → 進行中
+  → 訂單 5：Paid → 進行中
+  → 訂單 6：Paid → 進行中
+  → 訂單 8：Paid → 進行中
+  (已完成 → [Shipped])
+-- Parameters=[@statuses1='2']
+SELECT [o].[Id], [o].[Status]
+FROM [Orders] AS [o]
+WHERE [o].[Status] = @statuses1
+ORDER BY [o].[Id]
+  → 訂單 2：Shipped → 已完成
+  → 訂單 7：Shipped → 已完成
+  (不存在 → [])
+SELECT [o].[Id], [o].[Status]
+FROM [Orders] AS [o]
+WHERE 0 = 1
+ORDER BY [o].[Id]</code></pre>
+<p>這張對應表被用了兩次，方向相反：</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>查詢前</th><th>查詢後</th></tr>
+  <tr><td>手上有的</td><td>使用者選的進度（value）</td><td>資料庫回來的狀態（key）</td></tr>
+  <tr><td>要換成</td><td>資料庫的狀態（key），可能好幾個</td><td>進度（value），剛好一個</td></tr>
+  <tr><td>寫法</td><td><code>.Where(pair =&gt; pair.Value == progress).Select(pair =&gt; pair.Key)</code></td><td><code>ProgressMapping[order.Status]</code></td></tr>
+</table>
+</div>
+<ul>
+  <li>第 2 步<strong>不會</strong>送 SQL。<code>ProgressMapping</code> 是記憶體裡的 <code>Dictionary</code>，對它用 <code>Where</code>、<code>Select</code>、<code>ToList</code> 都只在 C# 裡跑（L4-07）</li>
+  <li><strong>反查要取 key，不是 value</strong>。<code>statuses.Contains(o.Status)</code> 兩邊要是同一種東西：<code>o.Status</code> 是 <code>OrderStatus</code>，所以清單裡也要是 <code>OrderStatus</code>，也就是對應表的 key。value 是給使用者看的文字，資料庫不認得</li>
+  <li>「進行中」對應兩個狀態，SQL 是 <code>IN</code>；「已完成」只對應一個，SQL 是 <code>=</code>（L4-10）</li>
+  <li>選了不存在的進度：反查得到空清單，SQL 變成 <code>WHERE 0 = 1</code>，回 0 筆，不會出錯。<strong>要小心的是另一種寫法</strong>：如果寫成「清單不是空的才加這個條件」，不存在的進度就會變成沒有篩選、回傳全部訂單</li>
+  <li>查詢後用 <code>ProgressMapping[order.Status]</code>。如果資料庫裡出現對應表沒列到的狀態，這裡會丟 <code>KeyNotFoundException</code>。新增狀態時要記得一起更新對應表</li>
+  <li><code>pair.Key</code>、<code>pair.Value</code> 與其他讀法見 <a href="csharp-dictionary.html">Dictionary</a>；這個做法的完整說明見 <a href="csharp-enum-db.html#mapping">enum 與資料庫第 7 節</a></li>
+</ul>
+</div>
+</details>
+</div>
+
 <!-- ============================================================ -->
 <h2 id="cheatsheet">9. LINQ ↔ SQL 對照總表</h2>
-<p>31 個實驗的結論整理成一張表，之後每課學到新的就往這裡加。</p>
+<p>37 個實驗的結論整理成一張表，之後每課學到新的就往這裡加。</p>
 <div class="table-wrap">
 <table>
   <tr><th>LINQ</th><th>SQL</th><th>實驗</th></tr>
@@ -1468,6 +1975,13 @@ WHERE [p].[CategoryId] = 1</code></pre>
   <tr><td><code>ExecuteUpdateAsync</code>／<code>ExecuteDeleteAsync</code></td><td>一句 <code>UPDATE … FROM</code>／<code>DELETE</code></td><td>L4-06</td></tr>
   <tr><td><code>AsNoTracking()</code></td><td>SQL 不變，只是不登記到 ChangeTracker</td><td>L4-05</td></tr>
   <tr><td>lambda 裡呼叫自己的方法</td><td>❌ <code>could not be translated</code></td><td>L4-01</td></tr>
+  <tr><td><code>a.Concat(b)</code>／<code>a.Union(b)</code></td><td><code>UNION ALL</code>／<code>UNION</code>，兩段變一句</td><td>L4-08</td></tr>
+  <tr><td><code>清單.Aggregate((merged, source) =&gt; merged.Concat(source))</code></td><td>清單有幾段就接幾段；只有一段時沒有 <code>UNION ALL</code></td><td>L4-09</td></tr>
+  <tr><td>Concat 後面的 <code>OrderBy</code>／<code>Skip</code>／<code>Take</code></td><td>包一層 <code>FROM ( … )</code>，排序與分頁作用在合併後的結果</td><td>L4-09</td></tr>
+  <tr><td>記憶體清單 <code>.Select(x =&gt; IQueryable).ToList()</code></td><td>沒有 SQL，只是把還沒送出的查詢收成清單</td><td>L4-07</td></tr>
+  <tr><td><code>清單.Contains(p.欄位)</code></td><td><code>IN (…)</code>；清單只有一個值是 <code>=</code>；空清單是 <code>WHERE 0 = 1</code></td><td>L4-10</td></tr>
+  <tr><td><code>o.Status == OrderStatus.Paid</code>（enum）</td><td><code>[Status] = 1</code>，比的是數字；排序也依數字</td><td>L4-11</td></tr>
+  <tr><td>對應表反查後 <code>statuses.Contains(o.Status)</code></td><td>反查在記憶體做，查詢只有一句 <code>IN</code></td><td>L4-12</td></tr>
   <tr><td><code>ToList()</code> 之後的 Where</td><td>❌ SQL 沒有 WHERE，在記憶體過濾</td><td>L4-02</td></tr>
   <tr><td><code>foreach</code> 裡 <code>await db.…Async()</code></td><td>❌ N+1 句</td><td>L4-04</td></tr>
 </table>

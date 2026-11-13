@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C# 補充：default、可空型別與 ?.</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>C# 補充：default、可空型別、?. 與會加工的屬性</h1>
+<p class="subtitle">讀別人的程式時常卡住的幾個小語法：<code>== default</code> 到底在跟什麼比、加了 <code>?.</code> 之後為什麼判斷就不對了、<code>??</code> 與 <code>??=</code>、屬性的 <code>set =&gt; field = …</code>，最後用一個例子看泛型什麼時候值得用。</p>
+<div class="tags">
+  <span class="tag">default</span><span class="tag">== default</span><span class="tag">可空型別</span><span class="tag">Nullable</span><span class="tag">?.</span><span class="tag">??</span><span class="tag">??=</span><span class="tag">field</span><span class="tag">屬性 setter</span><span class="tag">泛型</span><span class="tag">where T : struct, Enum</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>這頁是 C# 語法</strong>，和專案無關。每一節都很短，可以遇到的時候再回來查。頁面上的輸出都是單檔程式實際執行的結果（.NET 10）。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#default">default 是多少：看型別</a></li>
+    <li><a href="#nullable">?. 會讓 default 的意思變掉</a></li>
+    <li><a href="#coalesce">?? 與 ??=：沒有值時補上</a></li>
+    <li><a href="#field">會加工的屬性：set =&gt; field = …</a></li>
+    <li><a href="#generic">泛型：把「型別」也變成參數</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="default">1. default 是多少：看型別</h2>
+<p><code>default</code> 的意思是「這個型別什麼都沒設定時的值」。它不是固定的一個值，而是<strong>依型別而定</strong>。</p>
+<pre><code class="language-csharp">Console.WriteLine(default(int));              // 0
+Console.WriteLine(default(decimal));          // 0
+Console.WriteLine(default(bool));             // False
+Console.WriteLine(default(DateTime));         // 0001-01-01 00:00:00
+Console.WriteLine(default(DateTimeOffset));   // 0001-01-01 00:00:00 +00:00
+Console.WriteLine(default(string) is null);   // True
+Console.WriteLine(default(int?) is null);     // True</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>型別</th><th><code>default</code></th><th>為什麼</th></tr>
+  <tr><td><code>int</code>、<code>decimal</code> 等數字</td><td><code>0</code></td><td>值型別：所有位元都是 0</td></tr>
+  <tr><td><code>bool</code></td><td><code>false</code></td><td>同上</td></tr>
+  <tr><td><code>DateTime</code></td><td>0001-01-01 00:00:00</td><td>同上，剛好等於 <code>DateTime.MinValue</code></td></tr>
+  <tr><td><code>DateTimeOffset</code></td><td>0001-01-01 00:00:00 +00:00</td><td>同上，等於 <code>DateTimeOffset.MinValue</code></td></tr>
+  <tr><td>enum</td><td>數字 0 對應的那個成員</td><td>enum 背後是數字，見<a href="csharp-enum-db.html">enum 那一頁</a></td></tr>
+  <tr><td><code>string</code>、class、<code>List&lt;T&gt;</code></td><td><code>null</code></td><td>參考型別：沒有指向任何物件</td></tr>
+  <tr><td><code>int?</code>、<code>DateTime?</code> 等可空型別</td><td><code>null</code></td><td>可空型別的「沒有值」</td></tr>
+</table>
+</div>
+<h3>== default 怎麼知道是哪個型別</h3>
+<p>只寫 <code>default</code> 沒寫型別時，編譯器看<strong>另一邊的型別</strong>來決定：</p>
+<pre><code class="language-csharp">DateTimeOffset timeBegin = ...;
+
+if (timeBegin == default)                    // 左邊是 DateTimeOffset，所以這裡的 default 是 default(DateTimeOffset)
+if (timeBegin == default(DateTimeOffset))    // 同一件事，寫明型別
+if (timeBegin == DateTimeOffset.MinValue)    // 同一個值</code></pre>
+<p>常見的用途：一個屬性「沒有被設定過」時，它的值就是 <code>default</code>。例如 API 的請求物件有一個 <code>DateTimeOffset TimeBegin</code>，JSON 裡沒送這個欄位，轉換後它就停在 0001-01-01。用 <code>== default</code> 可以判斷「對方沒送」。</p>
+<p>想自己看：Rider 把游標移到 <code>default</code> 上會顯示它被推斷成哪個型別；或在中斷點的 Evaluate 視窗輸入 <code>default(DateTimeOffset)</code>。</p>
+
+<!-- ============================================================ -->
+<h2 id="nullable">2. ?. 會讓 default 的意思變掉</h2>
+<p><code>a?.B</code> 的意思是「<code>a</code> 不是 null 才取 <code>B</code>，否則結果是 null」。所以它的結果<strong>一定是可以為 null 的型別</strong>：<code>B</code> 原本是 <code>DateTimeOffset</code>，<code>a?.B</code> 就變成 <code>DateTimeOffset?</code>。</p>
+<p>型別一變，上一節的規則就會讓 <code>default</code> 跟著變：</p>
+<pre><code class="language-csharp">var search = new SearchBox();     // 沒設定 TimeBegin，所以它是 0001-01-01
+SearchBox? maybe = search;
+
+Console.WriteLine(search.TimeBegin == default);    // True   ← default 是 default(DateTimeOffset)
+Console.WriteLine(maybe?.TimeBegin == default);    // False  ← default 變成 default(DateTimeOffset?)，也就是 null
+
+class SearchBox
+{
+    public DateTimeOffset TimeBegin { get; set; }
+}</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>寫法</th><th>左邊的型別</th><th><code>default</code> 代表</th><th>結果</th></tr>
+  <tr><td><code>search.TimeBegin == default</code></td><td><code>DateTimeOffset</code></td><td>0001-01-01</td><td>True，正確判斷出「沒設定」</td></tr>
+  <tr><td><code>maybe?.TimeBegin == default</code></td><td><code>DateTimeOffset?</code></td><td><code>null</code></td><td>False。0001-01-01 不是 null，所以沒判斷出來</td></tr>
+  <tr><td><code>nothing?.TimeBegin == default</code>（<code>nothing</code> 是 null）</td><td><code>DateTimeOffset?</code></td><td><code>null</code></td><td>True，但原因是整個物件是 null，不是時間沒設定</td></tr>
+</table>
+</div>
+<div class="callout warn">
+<p>⚠️ <strong>這個錯不會有任何警告</strong>。兩種寫法都能編譯、都不會丟例外，只是判斷的意思不同。加了 <code>?.</code> 之後「沒設定時間」的情況就悄悄漏掉了。</p>
+<p>比較穩的寫法是分兩步：先判斷物件是不是 null，再判斷欄位。</p>
+</div>
+<pre><code class="language-csharp">if (maybe is null)
+{
+    // 整個物件沒有
+}
+else if (maybe.TimeBegin == default)     // 這裡沒有 ?.，型別是 DateTimeOffset
+{
+    // 物件有，但時間沒設定
+}</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="coalesce">3. ?? 與 ??=：沒有值時補上</h2>
+<pre><code class="language-csharp">int? count = null;
+
+Console.WriteLine(count ?? 10);   // 10   ← count 是 null，所以用右邊的 10。count 本身沒變
+
+count ??= 10;                     // count 是 null 才把 10 存進去
+Console.WriteLine(count);         // 10
+
+count ??= 99;                     // count 已經有值，這行什麼都不做
+Console.WriteLine(count);         // 10</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>寫法</th><th>意思</th><th>會不會改到左邊</th></tr>
+  <tr><td><code>a ?? b</code></td><td><code>a</code> 不是 null 就用 <code>a</code>，是 null 就用 <code>b</code></td><td>不會，只是算出一個值</td></tr>
+  <tr><td><code>a ??= b</code></td><td><code>a</code> 是 null 才把 <code>b</code> 存進 <code>a</code></td><td>會</td></tr>
+</table>
+</div>
+<p>典型用法是補預設值：API 的每頁筆數是 <code>int? Count</code>，對方沒送就是 null，用 <code>Count ?? 10</code> 補成 10。</p>
+
+<!-- ============================================================ -->
+<h2 id="field">4. 會加工的屬性：set =&gt; field = …</h2>
+<p>一般的屬性 <code>{ get; set; }</code> 是設什麼就存什麼。如果想在<strong>存進去之前先修正</strong>，可以自己寫 <code>set</code>：</p>
+<pre><code class="language-csharp">class PageSetting
+{
+    private const int MaxCount = 100;
+
+    public int Count
+    {
+        get;
+        set =&gt; field = value is &lt; 0 or &gt; MaxCount ? MaxCount : value;
+    } = 10;
+}
+
+var page = new PageSetting();
+Console.WriteLine(page.Count);   // 10   ← 初始值
+page.Count = 40;
+Console.WriteLine(page.Count);   // 40
+page.Count = 500;
+Console.WriteLine(page.Count);   // 100  ← 超過上限，存成 100
+page.Count = -1;
+Console.WriteLine(page.Count);   // 100  ← 負數也存成 100</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>片段</th><th>意思</th></tr>
+  <tr><td><code>value</code></td><td>外面要設定進來的值。寫 <code>page.Count = 500</code> 時，<code>value</code> 就是 500</td></tr>
+  <tr><td><code>value is &lt; 0 or &gt; MaxCount</code></td><td>「<code>value</code> 小於 0，或大於 100」。等同 <code>value &lt; 0 || value &gt; MaxCount</code></td></tr>
+  <tr><td><code>條件 ? A : B</code></td><td>條件成立取 A，不成立取 B</td></tr>
+  <tr><td><code>field</code></td><td>這個屬性背後真正放資料的地方。編譯器自動產生，不用自己宣告</td></tr>
+  <tr><td>結尾的 <code>= 10</code></td><td>初始值：建立物件時還沒有人設定，它就是 10</td></tr>
+</table>
+</div>
+<p><code>field</code> 是比較新的寫法。以前要自己多宣告一個欄位，效果完全一樣：</p>
+<pre><code class="language-csharp">private int _count = 10;
+
+public int Count
+{
+    get =&gt; _count;
+    set =&gt; _count = value is &lt; 0 or &gt; MaxCount ? MaxCount : value;
+}</code></pre>
+<p>好處是「這個物件不管怎麼建立，值都是合理的」。使用它的程式不用再檢查一次。</p>
+
+<!-- ============================================================ -->
+<h2 id="generic">5. 泛型：把「型別」也變成參數</h2>
+<p>有時候幾個方法的內容一模一樣，只差在用的型別不同。<a href="csharp-delegates-signature.html">方法簽章那一頁</a>看過 <code>&lt;T&gt;</code>，這裡用一個實際會遇到的例子。</p>
+<p>有兩張對應表，key 是不同的 enum，value 都是顯示用的文字。想做的事相同：給一個文字，找出對應到它的所有 key。</p>
+<pre><code class="language-csharp">var progressMapping = new Dictionary&lt;OrderStatus, string&gt;
+{
+    [OrderStatus.Pending] = "進行中", [OrderStatus.Paid] = "進行中",
+    [OrderStatus.Shipped] = "已完成", [OrderStatus.Cancelled] = "已取消",
+};
+var sizeMapping = new Dictionary&lt;Priority, string&gt;
+{
+    [Priority.Low] = "不急", [Priority.Normal] = "不急", [Priority.High] = "要快",
+};
+
+Console.WriteLine(string.Join(", ", KeysOf(progressMapping, "進行中")));   // Pending, Paid
+Console.WriteLine(string.Join(", ", KeysOf(sizeMapping, "不急")));         // Low, Normal
+
+static List&lt;TKey&gt; KeysOf&lt;TKey&gt;(Dictionary&lt;TKey, string&gt; mapping, string label)
+    where TKey : struct, Enum
+{
+    return mapping
+        .Where(pair =&gt; pair.Value == label)
+        .Select(pair =&gt; pair.Key)
+        .ToList();
+}</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>片段</th><th>意思</th></tr>
+  <tr><td><code>KeysOf&lt;TKey&gt;</code></td><td><code>TKey</code> 是「之後再決定的型別」。名字是自己取的</td></tr>
+  <tr><td><code>Dictionary&lt;TKey, string&gt; mapping</code></td><td>傳進來的對應表，key 是哪種型別，<code>TKey</code> 就是那種</td></tr>
+  <tr><td><code>List&lt;TKey&gt;</code></td><td>回傳的清單也是同一種型別</td></tr>
+  <tr><td><code>where TKey : struct, Enum</code></td><td>限制：<code>TKey</code> 只能是 enum。傳別的型別進來編譯就不會過</td></tr>
+</table>
+</div>
+<p>呼叫時不用寫 <code>KeysOf&lt;OrderStatus&gt;(…)</code>，編譯器從傳進去的對應表就知道 <code>TKey</code> 是誰。</p>
+<p>不用泛型的話要寫兩個方法，內容完全相同，只有型別不同：</p>
+<pre><code class="language-csharp">static List&lt;OrderStatus&gt; ProgressKeysOf(Dictionary&lt;OrderStatus, string&gt; mapping, string label) { /* 同樣三行 */ }
+static List&lt;Priority&gt; SizeKeysOf(Dictionary&lt;Priority, string&gt; mapping, string label) { /* 同樣三行 */ }</code></pre>
+<p>什麼時候值得用泛型：發現自己在複製貼上一個方法、只改型別的時候。只有一個使用者時不用急著寫成泛型。</p>
+<p>這個例子裡 <code>pair.Key</code>、<code>pair.Value</code> 的意思見 <a href="csharp-dictionary.html">Dictionary 那一頁</a>；用它做「顯示狀態 ↔ 資料庫狀態」的對應見 <a href="csharp-enum-db.html#mapping">enum 那一頁的第 7 節</a>。</p>
+
+<nav class="footer-nav">
+  <a href="csharp-async-await.html">← C# 補充：Task 與 async / await</a>
+  <a href="../index.html">回目錄</a>
+  <a href="csharp-dictionary.html">C# 補充：Dictionary →</a>
+</nav>
+
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

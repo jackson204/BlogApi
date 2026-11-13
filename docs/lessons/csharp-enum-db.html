@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C# 補充：enum 與資料庫</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 補充</div>
+<h1>C# 補充：enum（程式裡是名字，資料庫裡是數字）</h1>
+<p class="subtitle">enum 在 C# 裡是有名字的選項，存進資料庫、轉成 JSON 時卻要換成數字或文字。這頁講它背後的數字、在 C# 裡怎麼轉換、EF Core 怎麼存、查詢時翻成什麼 SQL、進出 API 時的約定、幾個不會報錯的坑，最後是「顯示用的狀態」與「資料庫的狀態」怎麼用對應表互換。</p>
+<div class="tags">
+  <span class="tag">enum</span><span class="tag">列舉</span><span class="tag">underlying type</span><span class="tag">: byte</span><span class="tag">tinyint</span><span class="tag">Enum.GetValues</span><span class="tag">Enum.IsDefined</span><span class="tag">Enum.Parse</span><span class="tag">HasConversion</span><span class="tag">JsonStringEnumConverter</span><span class="tag">IN</span><span class="tag">對應表</span><span class="tag">Dictionary</span>
+</div>
+
+<div class="callout">
+<p>📌 <strong>這頁橫跨三個地方</strong>：C# 語法（第 1、2、6 節）、EF Core 與資料庫（第 3、4 節）、JSON（第 5 節），最後一節把它們串起來。前面幾頁沒看也讀得懂，遇到不熟的地方有連結可以跳過去。SQL 是 EF Core 的 SQL Server provider 實際產生的，C# 的輸出是實際執行的結果（.NET 10）。</p>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#what">enum 是什麼：名字與數字的對照</a></li>
+    <li><a href="#convert">在 C# 裡轉換</a></li>
+    <li><a href="#store">EF Core 怎麼存進資料庫</a></li>
+    <li><a href="#query">查詢時怎麼翻成 SQL</a></li>
+    <li><a href="#json">進出 API 時：數字還是名字</a></li>
+    <li><a href="#pitfall">常見的坑</a></li>
+    <li><a href="#mapping">顯示用的狀態與資料庫的狀態：對應表</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="what">1. enum 是什麼：名字與數字的對照</h2>
+<pre><code class="language-csharp">public enum OrderStatus
+{
+    Pending = 0,
+    Paid = 1,
+    Shipped = 2,
+    Cancelled = 3
+}</code></pre>
+<p>enum 是一組<strong>有名字的數字</strong>。程式裡寫 <code>OrderStatus.Paid</code>，電腦實際記的是 <code>1</code>。這個例子就是 <a href="01b-linq-sql-lab.html#models">LINQ 實驗室</a>裡訂單的狀態。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>為什麼不直接用</th><th>問題</th></tr>
+  <tr><td>數字 <code>if (order.Status == 1)</code></td><td>看不出 1 是什麼意思；打成 11 編譯器也不會說話</td></tr>
+  <tr><td>字串 <code>if (order.Status == "Paid")</code></td><td>打成 <code>"paid"</code> 或 <code>"Payed"</code> 編譯器也不會說話</td></tr>
+  <tr><td>enum <code>if (order.Status == OrderStatus.Paid)</code></td><td>打錯名字編譯就不會過；輸入 <code>OrderStatus.</code> 編輯器會列出所有選項</td></tr>
+</table>
+</div>
+<h3>背後的型別</h3>
+<pre><code class="language-csharp">public enum OrderStatus { … }          // 沒寫，背後是 int（4 個位元組）
+public enum Priority : byte { … }      // 冒號後面指定背後的型別，這裡是 byte（1 個位元組，0 到 255）
+
+Console.WriteLine(sizeof(OrderStatus));   // 4
+Console.WriteLine(sizeof(Priority));      // 1</code></pre>
+<p>平常不用寫。會寫 <code>: byte</code> 通常是為了配合資料庫欄位的型別（第 3 節）。</p>
+<ul>
+  <li>沒有寫 <code>= 數字</code> 時，第一個是 0，之後每個加 1。<strong>建議都明確寫出數字</strong>，原因見第 6 節</li>
+  <li><code>default(OrderStatus)</code> 是數字 0 對應的成員，這裡是 <code>Pending</code>。如果沒有任何成員是 0，<code>default</code> 會是一個沒有名字的 0</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="convert">2. 在 C# 裡轉換</h2>
+<pre><code class="language-csharp">Console.WriteLine((int)OrderStatus.Paid);                 // 1          enum → 數字
+Console.WriteLine((OrderStatus)2);                        // Shipped    數字 → enum
+Console.WriteLine(OrderStatus.Shipped.ToString());        // Shipped    enum → 名字（字串）
+Console.WriteLine(Enum.Parse&lt;OrderStatus&gt;("Cancelled"));  // Cancelled  名字 → enum
+Console.WriteLine(Enum.TryParse&lt;OrderStatus&gt;("Refunded", out _));   // False     沒有這個名字
+
+Console.WriteLine(string.Join(", ", Enum.GetValues&lt;OrderStatus&gt;()));
+// Pending, Paid, Shipped, Cancelled</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>想做的事</th><th>寫法</th><th>失敗時</th></tr>
+  <tr><td>enum → 數字</td><td><code>(int)status</code></td><td>不會失敗</td></tr>
+  <tr><td>數字 → enum</td><td><code>(OrderStatus)數字</code></td><td><strong>不會失敗</strong>，就算沒有這個數字（第 6 節）</td></tr>
+  <tr><td>enum → 名字</td><td><code>status.ToString()</code></td><td>不會失敗</td></tr>
+  <tr><td>名字 → enum</td><td><code>Enum.Parse&lt;OrderStatus&gt;("Paid")</code></td><td>沒有這個名字會丟 <code>ArgumentException</code>；不確定時用 <code>Enum.TryParse</code></td></tr>
+  <tr><td>列出所有成員</td><td><code>Enum.GetValues&lt;OrderStatus&gt;()</code></td><td>—</td></tr>
+</table>
+</div>
+<p><code>Enum.GetValues&lt;OrderStatus&gt;()</code> 回傳這個 enum <strong>定義的所有成員</strong>，依數字由小到大。常見用途是「使用者沒指定就當作全部」：</p>
+<pre><code class="language-csharp">public OrderStatus? Status { get; set; }       // 使用者可以不選
+
+public IReadOnlyList&lt;OrderStatus&gt; Statuses()
+{
+    return Status is null
+        ? Enum.GetValues&lt;OrderStatus&gt;()         // 沒選 → 四種全部
+        : [Status.Value];                       // 有選 → 只有那一種
+}</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="store">3. EF Core 怎麼存進資料庫</h2>
+<p>資料庫沒有 enum 這種型別，所以要換成資料庫有的型別來存。EF Core 預設<strong>存數字</strong>。</p>
+<pre><code class="language-csharp">public class Ticket
+{
+    public int Id { get; set; }
+    public OrderStatus StatusAsInt { get; set; }      // 背後是 int 的 enum
+    public Priority PriorityAsByte { get; set; }      // 背後是 byte 的 enum
+    public OrderStatus StatusAsText { get; set; }     // 另外設定成存文字
+}
+
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity&lt;Ticket&gt;().Property(t =&gt; t.StatusAsText).HasConversion&lt;string&gt;().HasMaxLength(20);
+}</code></pre>
+<p class="file-label">EF Core 依這個模型產生的建表語法</p>
+<pre><code class="language-sql">CREATE TABLE [Tickets] (
+    [Id] int NOT NULL IDENTITY,
+    [StatusAsInt] int NOT NULL,
+    [PriorityAsByte] tinyint NOT NULL,
+    [StatusAsText] nvarchar(20) NOT NULL,
+    CONSTRAINT [PK_Tickets] PRIMARY KEY ([Id])
+);</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>C# 的宣告</th><th>資料庫欄位</th><th>存進去的內容</th></tr>
+  <tr><td><code>enum OrderStatus</code>（背後是 <code>int</code>）</td><td><code>int</code></td><td><code>1</code></td></tr>
+  <tr><td><code>enum Priority : byte</code></td><td><code>tinyint</code></td><td><code>1</code></td></tr>
+  <tr><td>加上 <code>HasConversion&lt;string&gt;()</code></td><td><code>nvarchar</code></td><td><code>Paid</code></td></tr>
+</table>
+</div>
+<p>欄位的型別跟著 enum 背後的型別走。資料表是別人早就建好的、欄位是 <code>tinyint</code> 時，C# 這邊的 enum 就宣告成 <code>: byte</code> 來配合。</p>
+<h3>存數字還是存文字</h3>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>存數字（預設）</th><th>存文字（<code>HasConversion&lt;string&gt;()</code>）</th></tr>
+  <tr><td>直接看資料表</td><td>看到 1、2、3，要對照程式才知道意思</td><td>看到 Paid、Shipped，一眼就懂</td></tr>
+  <tr><td>空間與比較</td><td>小、快</td><td>比較大</td></tr>
+  <tr><td>改成員的名字</td><td>沒影響，資料庫裡是數字</td><td>舊資料裡還是舊名字，讀不回來</td></tr>
+  <tr><td>改成員的數字、調順序</td><td><strong>舊資料的意思整個變掉</strong></td><td>沒影響</td></tr>
+  <tr><td>排序</td><td>依數字</td><td>依字母（Cancelled、Paid、Pending、Shipped）</td></tr>
+</table>
+</div>
+<p>兩種都有人用。重點是決定之後，另一邊就不能隨便動：存數字就不要改數字，存文字就不要改名字。</p>
+
+<!-- ============================================================ -->
+<h2 id="query">4. 查詢時怎麼翻成 SQL</h2>
+<p>在 LINQ 裡用 enum 寫條件，EF Core 會把它換成資料庫裡存的那個值。完整的實驗在 <a href="01b-linq-sql-lab.html#l4-11">LINQ 實驗室 L4-11</a>。</p>
+<pre><code class="language-csharp">// 一個值
+db.Orders.Where(o =&gt; o.Status == OrderStatus.Paid)
+
+// 一組值
+var wanted = new List&lt;OrderStatus&gt; { OrderStatus.Paid, OrderStatus.Shipped };
+db.Orders.Where(o =&gt; wanted.Contains(o.Status))
+
+// 排序
+db.Orders.OrderBy(o =&gt; o.Status)</code></pre>
+<p class="file-label">存數字時</p>
+<pre><code class="language-sql">WHERE [o].[Status] = 1
+
+-- Parameters=[@wanted1='1', @wanted2='2']
+WHERE [o].[Status] IN (@wanted1, @wanted2)
+
+ORDER BY [o].[Status]</code></pre>
+<p class="file-label">同樣的 LINQ，欄位設定成存文字時</p>
+<pre><code class="language-sql">WHERE [o].[Status] = N'Paid'
+
+-- Parameters=[@wanted1='Paid', @wanted2='Shipped']
+WHERE [o].[Status] IN (@wanted1, @wanted2)</code></pre>
+<ul>
+  <li>C# 這邊的寫法完全一樣，SQL 裡出現的是資料庫存的那種值。你不用自己轉</li>
+  <li><code>wanted.Contains(o.Status)</code> 不是在 C# 裡執行，而是整行被翻成 <code>IN (…)</code>。細節見 <a href="01b-linq-sql-lab.html#l4-10">L4-10</a></li>
+  <li>排序依的是資料庫裡的值。存數字時是 Pending (0)、Paid (1)、Shipped (2)、Cancelled (3)；存文字時會變成字母順序</li>
+  <li>讀回來的時候反過來：資料庫回 <code>1</code>，C# 這邊拿到的是 <code>OrderStatus.Paid</code></li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="json">5. 進出 API 時：數字還是名字</h2>
+<p>enum 轉成 JSON 時也有同樣的選擇（JSON 的基本規則見 <a href="csharp-json.html">JSON 那一頁</a>）。預設是數字：</p>
+<pre><code class="language-csharp">var dto = new OrderDto { Id = 5, Status = OrderStatus.Paid };
+
+Console.WriteLine(JsonSerializer.Serialize(dto));
+// {"Id":5,"Status":1}
+
+var withNames = new JsonSerializerOptions { Converters = { new JsonStringEnumConverter() } };
+Console.WriteLine(JsonSerializer.Serialize(dto, withNames));
+// {"Id":5,"Status":"Paid"}</code></pre>
+<p>收進來的時候：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>JSON 送的是</th><th>預設</th><th>加了 <code>JsonStringEnumConverter</code></th></tr>
+  <tr><td>數字 <code>"Status": 2</code></td><td>成功，得到 <code>Shipped</code></td><td>成功，得到 <code>Shipped</code></td></tr>
+  <tr><td>名字 <code>"Status": "Shipped"</code></td><td><strong>丟 <code>JsonException</code></strong>：<code>The JSON value could not be converted to OrderStatus. Path: $.Status</code></td><td>成功，得到 <code>Shipped</code></td></tr>
+  <tr><td>不存在的數字 <code>"Status": 99</code></td><td>成功，得到一個沒有名字的 <code>99</code></td><td>—</td></tr>
+</table>
+</div>
+<ul>
+  <li>前端與後端要先講好 enum 用數字還是名字。後端沒有加轉換器時只收數字，前端送名字整個請求就會失敗</li>
+  <li>不同的框架預設不同。舊的 ASP.NET MVC 兩種都收，換到 ASP.NET Core 之後只收數字，搬移 API 時要特別確認</li>
+  <li>不存在的數字不會被擋下來（下一節）</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="pitfall">6. 常見的坑</h2>
+<h3>不存在的數字也能轉成 enum</h3>
+<pre><code class="language-csharp">var weird = (OrderStatus)99;
+
+Console.WriteLine(weird);                                // 99      ← 沒有丟例外，印出來是數字
+Console.WriteLine(Enum.IsDefined(weird));                // False
+Console.WriteLine(Enum.IsDefined(OrderStatus.Paid));     // True</code></pre>
+<p>enum 只是「有名字的數字」，C# 不會檢查數字有沒有對應的名字。從外面進來的值（API 的請求、資料庫裡的舊資料）都可能是沒定義的數字。在意的話用 <code>Enum.IsDefined</code> 檢查，或在 <code>switch</code> 寫 <code>default:</code> 處理沒預期到的值。</p>
+<h3>改了數字，舊資料的意思就變了</h3>
+<pre><code class="language-csharp">// 原本                          // 有人在中間插了一個
+public enum OrderStatus          public enum OrderStatus
+{                                {
+    Pending,     // 0                Pending,     // 0
+    Paid,        // 1                Confirmed,   // 1   ← 新增
+    Shipped,     // 2                Paid,        // 2
+    Cancelled    // 3                Shipped,     // 3
+}                                    Cancelled    // 4
+                                 }</code></pre>
+<p>資料庫裡原本存 <code>1</code> 的訂單是「已付款」，程式更新後讀出來變成「已確認」。資料沒動，意思卻變了，而且不會有任何錯誤。</p>
+<ul>
+  <li><strong>每個成員都明確寫 <code>= 數字</code></strong>，新成員用新的數字加在最後面</li>
+  <li>已經在用的數字不要改，也不要拿去給別的意思用</li>
+</ul>
+<h3>兩個 enum 的數字相同，意思不一定相同</h3>
+<pre><code class="language-csharp">Console.WriteLine((int)OrderStatus.Paid == (int)Priority.Normal);   // True，兩個都是 1</code></pre>
+<p><code>OrderStatus.Paid</code> 和 <code>Priority.Normal</code> 背後都是 1，但意思毫無關係。編譯器不讓你直接拿兩種不同的 enum 互相比較，就是為了擋這種錯。如果為了「讓它能比」而先轉成數字，就把這層保護拿掉了。</p>
+
+<!-- ============================================================ -->
+<h2 id="mapping">7. 顯示用的狀態與資料庫的狀態：對應表</h2>
+<p>資料庫裡的狀態通常分得很細，給使用者看的卻只需要幾種。例如訂單有四種狀態，畫面上只想分成三種進度：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>資料庫的狀態</th><th>給使用者看的進度</th></tr>
+  <tr><td>Pending (0)</td><td>進行中</td></tr>
+  <tr><td>Paid (1)</td><td>進行中</td></tr>
+  <tr><td>Shipped (2)</td><td>已完成</td></tr>
+  <tr><td>Cancelled (3)</td><td>已取消</td></tr>
+</table>
+</div>
+<p>做法是用一個 <a href="csharp-dictionary.html">Dictionary</a> 當對應表：<strong>key 是資料庫的狀態，value 是顯示用的狀態</strong>。</p>
+<pre><code class="language-csharp">var progressMapping = new Dictionary&lt;OrderStatus, string&gt;
+{
+    [OrderStatus.Pending] = "進行中",
+    [OrderStatus.Paid] = "進行中",
+    [OrderStatus.Shipped] = "已完成",
+    [OrderStatus.Cancelled] = "已取消",
+};</code></pre>
+<p>這張表會被用兩次，方向相反：</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>查詢前</th><th>查詢後</th></tr>
+  <tr><td>手上有的</td><td>使用者選的進度（value）</td><td>資料庫回來的狀態（key）</td></tr>
+  <tr><td>要換成</td><td>資料庫的狀態（key），可能有好幾個</td><td>顯示用的進度（value），剛好一個</td></tr>
+  <tr><td>寫法</td><td><code>.Where(pair =&gt; pair.Value == 進度).Select(pair =&gt; pair.Key)</code></td><td><code>progressMapping[order.Status]</code></td></tr>
+  <tr><td>用途</td><td>放進查詢條件</td><td>顯示給使用者</td></tr>
+</table>
+</div>
+<pre><code class="language-csharp">// 使用者選「進行中」
+var statuses = progressMapping
+    .Where(pair =&gt; pair.Value == "進行中")
+    .Select(pair =&gt; pair.Key)
+    .ToList();                                   // [Pending, Paid]
+
+var orders = await db.Orders
+    .Where(o =&gt; statuses.Contains(o.Status))     // 翻成 WHERE [o].[Status] IN (0, 1)
+    .ToListAsync();
+
+foreach (var order in orders)
+{
+    Console.WriteLine($"訂單 {order.Id}：{progressMapping[order.Status]}");
+}</code></pre>
+<h3>為什麼反查要取 key，不是 value</h3>
+<p><code>statuses.Contains(o.Status)</code> 兩邊要是同一種東西才能比。<code>o.Status</code> 是資料庫的狀態（<code>OrderStatus</code>），所以清單裡也必須是 <code>OrderStatus</code>，也就是對應表的 key。</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>型別</th><th>是什麼</th></tr>
+  <tr><td>對應表的 key</td><td><code>OrderStatus</code></td><td>資料庫認得的值</td></tr>
+  <tr><td>對應表的 value</td><td><code>string</code></td><td>給使用者看的文字，資料庫不認得</td></tr>
+  <tr><td><code>statuses</code></td><td><code>List&lt;OrderStatus&gt;</code></td><td>反查出來的 key</td></tr>
+  <tr><td><code>o.Status</code></td><td><code>OrderStatus</code></td><td>資料表的欄位</td></tr>
+</table>
+</div>
+<p>完整的實驗（含 SQL 與使用者選了不存在的進度時會怎樣）在 <a href="01b-linq-sql-lab.html#l4-12">LINQ 實驗室 L4-12</a>。有好幾張表、每張表的狀態 enum 不同時，反查的那三行可以寫成一個泛型方法共用，見 <a href="csharp-default-nullable.html#generic">default 那一頁第 5 節</a>。</p>
+
+<nav class="footer-nav">
+  <a href="csharp-json.html">← C# 補充：JSON</a>
+  <a href="../index.html">回目錄</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

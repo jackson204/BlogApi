@@ -38,7 +38,7 @@
     <li><a href="#parts">NLog 的三個零件：Target、Rule、Layout</a></li>
     <li><a href="#howto">寫 log 的正確姿勢</a></li>
     <li><a href="#exercise">練習：題 1～5</a></li>
-    <li><a href="#break">故意弄壞：四個實驗</a></li>
+    <li><a href="#break">動手實驗：改一個地方，先猜會怎樣（四個）</a></li>
     <li><a href="#advanced">進階（選修）：題 6～8</a></li>
     <li><a href="#pitfalls">常見坑</a></li>
     <li><a href="#next">延伸問題</a></li>
@@ -104,7 +104,7 @@ flowchart LR
   <tr><td><code>builder.Logging.ClearProviders()</code></td><td>把內建的 Provider 全部拔掉</td><td>不拔的話，同一行會被內建 Console 印一次、NLog 的 console target 再印一次</td></tr>
 </table>
 </div>
-<p><code>ILogger&lt;PostsController&gt;</code> 怎麼拿到？建構子多一個參數，跟 <code>BlogDbContext</code> 一樣，框架會自己塞進來。這套機制叫 DI，原理在第 3 課，這裡先照著用：</p>
+<p><code>ILogger&lt;PostsController&gt;</code> 怎麼拿到？建構子多一個參數，跟 <code>BlogDbContext</code> 一樣，框架會自己塞進來。這套機制叫 DI，原理在 <a href="03a-di-how-it-works.html">03a</a>，這裡先照著用：</p>
 <pre><code class="language-csharp">public PostsController(BlogDbContext db, ILogger&lt;PostsController&gt; logger)
 {
     _db = db;
@@ -499,7 +499,7 @@ VALUES (@p0, @p1, @p2, @p3);</code></pre>
 </div>
 
 <!-- ============================================================ -->
-<h2 id="break">6. 故意弄壞：四個實驗</h2>
+<h2 id="break">6. 動手實驗：改一個地方，先猜會怎樣（四個）</h2>
 <p>每個先猜結果，再動手，最後打開答案。做完記得改回來。</p>
 
 <h3>實驗 A：找不到設定檔</h3>
@@ -697,7 +697,7 @@ VALUES (@p0, @p1, @p2, @p3);</code></pre>
 1   2026-11-01 16:23:14.4041352  Warn   Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionMiddleware        Failed to determine the https port for redirect. NULL
 2   2026-11-01 16:23:15.3812741  Error  Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware  An unhandled exception has occurred while …      System.InvalidOperationException: 測試用例外 …
 3   2026-11-01 16:23:15.4719144  Warn   BlogApi.Controllers.PostsController                                找不到文章 1000                                  NULL</code></pre>
-<p><strong>🧪 弄壞一次</strong>：把 <code>Logs</code> 表 DROP 掉再打一次 1000。API 照樣回 404，<code>app-日期.log</code> 照寫，沒有任何錯誤冒出來。錯誤只在 <code>logs/nlog-internal.log</code>：</p>
+<p><strong>🧪 試一次出錯的情況</strong>：把 <code>Logs</code> 表 DROP 掉再打一次 1000。API 照樣回 404，<code>app-日期.log</code> 照寫，沒有任何錯誤冒出來。錯誤只在 <code>logs/nlog-internal.log</code>：</p>
 <pre><code class="language-plaintext">2026-11-01 16:24:10.4935 Error DatabaseTarget(Name=db): Error when writing to database. Exception: Microsoft.Data.SqlClient.SqlException (0x80131904): Invalid object name 'Logs'.</code></pre>
 <p>這是刻意的：log 寫失敗不該把你的 API 弄掛。代價是你不會馬上發現，所以 <code>internalLogFile</code> 要設、偶爾要看。</p>
 <p>兩件事先講：正式環境通常把 log 放獨立的資料庫，至少是獨立的表，不跟業務資料混；手動建的 <code>Logs</code> 表不是 Entity，EF Core 的 Migration 看不到它，之後 02a 的 <code>migrations add</code> 不會動到它。</p>
