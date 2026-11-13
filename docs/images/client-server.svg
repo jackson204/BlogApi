@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 448" width="1000" height="448" role="img" aria-label="用戶端與伺服器：左邊是用戶端（瀏覽器、Rider 的 .http 檔、手機 App），送出 HTTP 請求 GET /api/todos；右邊是伺服器，也就是你的 TodoApi 專案，收到請求、查路由表、執行 TodosController.GetAll()（資料從記憶體裡的 List 拿）、把回傳值轉成 JSON，再送回 HTTP 回應 200 OK 和 JSON 資料">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --ok: #1a7f37; --ok-s: #dcfce7;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --ok: #3fb950; --ok-s: #12261b;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .t { font-size: 14px; font-weight: 700; }
+  .h { font-size: 15px; font-weight: 700; }
+  .sm { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 11.5px; }
+  .box { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .chip { fill: var(--bg); stroke: var(--border); stroke-width: 1.5; }
+  .chip-on { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .req { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .res { fill: var(--ok-s); stroke: var(--ok); stroke-width: 1.5; }
+  .k1 { fill: var(--c1); font-weight: 700; } .k-ok { fill: var(--ok); font-weight: 700; }
+  .arr-req { fill: none; stroke: var(--c1); stroke-width: 2.5; }
+  .arr-res { fill: none; stroke: var(--ok); stroke-width: 2.5; stroke-dasharray: 7 4; }
+  .f-c1 { fill: var(--c1); } .f-ok { fill: var(--ok); }
+</style>
+<defs>
+  <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-c1" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-ok" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="448" rx="12"/>
+
+<text class="h" x="500" y="30" text-anchor="middle">Web API 就是一問一答：用戶端送出請求，伺服器回應</text>
+
+<!-- 用戶端 -->
+<rect class="box" x="20" y="56" width="230" height="320" rx="10"/>
+<text class="t" x="135" y="82" text-anchor="middle">用戶端（Client）</text>
+<text class="sm" x="135" y="102" text-anchor="middle">發出請求的那一邊</text>
+
+<rect class="chip" x="42" y="118" width="186" height="42" rx="8"/>
+<text x="135" y="144" text-anchor="middle">瀏覽器</text>
+
+<rect class="chip-on" x="42" y="170" width="186" height="52" rx="8"/>
+<text class="k1" x="135" y="192" text-anchor="middle">Rider 的 .http 檔</text>
+<text class="sm" x="135" y="210" text-anchor="middle">這一課用這個</text>
+
+<rect class="chip" x="42" y="232" width="186" height="42" rx="8"/>
+<text x="135" y="258" text-anchor="middle">前端網頁、手機 App</text>
+
+<text class="sm" x="135" y="304" text-anchor="middle">不管是哪一種，</text>
+<text class="sm" x="135" y="322" text-anchor="middle">送出來的都是同一種東西：</text>
+<text class="sm" x="135" y="340" text-anchor="middle">HTTP 請求</text>
+
+<!-- 伺服器 -->
+<rect class="box" x="690" y="56" width="290" height="320" rx="10"/>
+<text class="t" x="835" y="82" text-anchor="middle">伺服器（Server）= 你的 TodoApi 專案</text>
+<text class="sm" x="835" y="102" text-anchor="middle">dotnet run 之後一直開著，等請求進來</text>
+<text class="code" x="835" y="121" text-anchor="middle">http://localhost:5298</text>
+
+<rect class="chip" x="710" y="134" width="250" height="46" rx="8"/>
+<text x="722" y="153"><tspan class="k1">①</tspan> 收到請求</text>
+<text class="sm" x="722" y="170">Kestrel：ASP.NET Core 內建的網頁伺服器</text>
+
+<rect class="chip" x="710" y="188" width="250" height="46" rx="8"/>
+<text x="722" y="207"><tspan class="k1">②</tspan> 查路由表：動詞＋路徑對到哪個方法</text>
+<text class="code" x="722" y="224">GET /api/todos → GetAll()</text>
+
+<rect class="chip-on" x="710" y="242" width="250" height="62" rx="8"/>
+<text x="722" y="261"><tspan class="k1">③</tspan> 執行你寫的方法</text>
+<text class="code" x="722" y="278">TodosController.GetAll()</text>
+<text class="sm" x="722" y="295">資料放在記憶體裡的 List，不接資料庫</text>
+
+<rect class="chip" x="710" y="312" width="250" height="46" rx="8"/>
+<text x="722" y="331"><tspan class="k1">④</tspan> 把回傳值轉成 JSON</text>
+<text class="sm" x="722" y="348">加上狀態碼，包成回應</text>
+
+<!-- 請求 -->
+<text class="t k1" x="470" y="76" text-anchor="middle">HTTP 請求（Request）</text>
+<rect class="req" x="295" y="86" width="350" height="50" rx="8"/>
+<text class="code" x="311" y="107">GET /api/todos HTTP/1.1</text>
+<text class="code" x="311" y="125">Host: localhost:5298</text>
+<path class="arr-req" d="M252,156 H686" marker-end="url(#a1)"/>
+<text class="sm" x="470" y="178" text-anchor="middle">動詞＋路徑：我要對什麼東西、做什麼事</text>
+
+<!-- 回應 -->
+<path class="arr-res" d="M688,226 H254" marker-end="url(#a2)"/>
+<text class="t k-ok" x="470" y="252" text-anchor="middle">HTTP 回應（Response）</text>
+<rect class="res" x="295" y="262" width="350" height="68" rx="8"/>
+<text class="code" x="311" y="283">HTTP/1.1 200 OK</text>
+<text class="code" x="311" y="301">Content-Type: application/json</text>
+<text class="code" x="311" y="319">[{"id":1,"title":"買牛奶","isDone":false}, …]</text>
+<text class="sm" x="470" y="350" text-anchor="middle">狀態碼＋內容：結果如何、資料是什麼</text>
+
+<text x="500" y="408" text-anchor="middle">永遠是用戶端先問，伺服器才答。伺服器不會主動去找用戶端。</text>
+<text class="sm" x="500" y="430" text-anchor="middle">這一課用戶端和伺服器都在你的電腦上，所以網址是 localhost（意思是「這台電腦自己」）</text>
+</svg>
