@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 448" width="1000" height="448" role="img" aria-label="路由表：左邊是程式啟動時，app.MapControllers() 找出所有 Controller 類別、讀上面的 Route 和 HttpGet 標記，把每個方法寫成路由表的一列；中間是路由表，五列分別是 GET /api/todos 對 GetAll、GET /api/todos/{id} 對 GetById、POST /api/todos 對 Create、PUT /api/todos/{id} 對 Update、DELETE /api/todos/{id} 對 Delete；右邊是三個請求查表的結果：GET /api/todos/5 對到 GetById 回 200，POST /api/todos/5 路徑有但動詞對不上回 405，GET / 表裡沒有這條路徑回 404">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --ok: #1a7f37; --ok-s: #dcfce7;
+    --warn: #9a6700; --warn-s: #fff8c5; --bad: #cf222e; --bad-s: #ffebe9;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --ok: #3fb950; --ok-s: #12261b;
+      --warn: #d29922; --warn-s: #2b230a; --bad: #f85149; --bad-s: #2d1215;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .t { font-size: 14px; font-weight: 700; }
+  .h { font-size: 15px; font-weight: 700; }
+  .sm { font-size: 11.5px; fill: var(--muted); }
+  .th { font-size: 11.5px; fill: var(--muted); font-weight: 700; }
+  .code { white-space: pre; font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 11.5px; }
+  .verb { font-weight: 700; }
+  .box { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .chip { fill: var(--bg); stroke: var(--border); stroke-width: 1.5; }
+  .chip-on { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .tbl { fill: var(--bg); stroke: var(--border); stroke-width: 1.5; }
+  .thead { fill: var(--soft); }
+  .line { stroke: var(--border); stroke-width: 1; }
+  .row-hit { fill: var(--ok-s); }
+  .none { fill: none; stroke: var(--bad); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .c-ok { fill: var(--ok-s); stroke: var(--ok); stroke-width: 1.5; }
+  .c-warn { fill: var(--warn-s); stroke: var(--warn); stroke-width: 1.5; }
+  .c-bad { fill: var(--bad-s); stroke: var(--bad); stroke-width: 1.5; }
+  .n { font-weight: 700; }
+  .k-ok { fill: var(--ok); font-weight: 700; } .k-warn { fill: var(--warn); font-weight: 700; } .k-bad { fill: var(--bad); font-weight: 700; }
+  .k-bad-sm { fill: var(--bad); font-size: 11.5px; }
+  .arr-c1 { fill: none; stroke: var(--c1); stroke-width: 2.5; }
+  .arr-ok { fill: none; stroke: var(--ok); stroke-width: 2.5; }
+  .arr-warn { fill: none; stroke: var(--warn); stroke-width: 2.5; stroke-dasharray: 7 4; }
+  .arr-bad { fill: none; stroke: var(--bad); stroke-width: 2.5; stroke-dasharray: 7 4; }
+  .f-c1 { fill: var(--c1); } .f-ok { fill: var(--ok); } .f-warn { fill: var(--warn); } .f-bad { fill: var(--bad); }
+</style>
+<defs>
+  <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-c1" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-ok" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-warn" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="m4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-bad" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="448" rx="12"/>
+
+<text class="h" x="500" y="30" text-anchor="middle">路由表：程式啟動時寫好，每個請求進來時查</text>
+
+<!-- 左：程式啟動時 -->
+<rect class="box" x="20" y="56" width="230" height="320" rx="10"/>
+<text class="t" x="135" y="82" text-anchor="middle">程式啟動時（只做一次）</text>
+<text class="sm" x="135" y="102" text-anchor="middle">執行 dotnet run 之後、</text>
+<text class="sm" x="135" y="118" text-anchor="middle">開始收請求之前</text>
+
+<rect class="chip-on" x="42" y="132" width="186" height="34" rx="8"/>
+<text class="code" x="135" y="153" text-anchor="middle">app.MapControllers()</text>
+
+<rect class="chip" x="42" y="178" width="186" height="46" rx="8"/>
+<text x="54" y="197"><tspan class="n">①</tspan> 找出所有 Controller 類別</text>
+<text class="code" x="54" y="214">TodosController</text>
+
+<rect class="chip" x="42" y="232" width="186" height="56" rx="8"/>
+<text x="54" y="251"><tspan class="n">②</tspan> 讀類別和方法上的標記</text>
+<text class="code" x="54" y="267">[Route("api/[controller]")]</text>
+<text class="code" x="54" y="281">[HttpGet("{id}")]</text>
+
+<rect class="chip" x="42" y="296" width="186" height="46" rx="8"/>
+<text x="54" y="315"><tspan class="n">③</tspan> 一個方法寫成表裡的一列</text>
+<text class="sm" x="54" y="332">五個方法，表裡就有五列</text>
+
+<text class="sm" x="275" y="205" text-anchor="middle">寫入</text>
+<path class="arr-c1" d="M252,214 H296" marker-end="url(#m1)"/>
+
+<!-- 中：路由表 -->
+<text class="t" x="480" y="82" text-anchor="middle">路由表</text>
+<text class="sm" x="480" y="102" text-anchor="middle">動詞＋路徑 → 交給哪個方法</text>
+
+<rect class="tbl" x="300" y="112" width="360" height="206" rx="6"/>
+<path class="thead" d="M306,113 H654 a5,5 0 0 1 5,5 V138 H301 V118 a5,5 0 0 1 5,-5 z"/>
+<rect class="row-hit" x="301" y="174.5" width="358" height="35"/>
+<path class="line" d="M300,138 H660 M300,174 H660 M300,210 H660 M300,246 H660 M300,282 H660 M372,112 V318 M520,112 V318"/>
+
+<text class="th" x="312" y="130">動詞</text>
+<text class="th" x="384" y="130">路徑</text>
+<text class="th" x="532" y="130">TodosController 的方法</text>
+
+<text class="code verb" x="312" y="161">GET</text>
+<text class="code" x="384" y="161">/api/todos</text>
+<text class="code" x="532" y="161">GetAll()</text>
+
+<text class="code verb" x="312" y="197">GET</text>
+<text class="code" x="384" y="197">/api/todos/{id}</text>
+<text class="code" x="532" y="197">GetById()</text>
+
+<text class="code verb" x="312" y="233">POST</text>
+<text class="code" x="384" y="233">/api/todos</text>
+<text class="code" x="532" y="233">Create()</text>
+
+<text class="code verb" x="312" y="269">PUT</text>
+<text class="code" x="384" y="269">/api/todos/{id}</text>
+<text class="code" x="532" y="269">Update()</text>
+
+<text class="code verb" x="312" y="305">DELETE</text>
+<text class="code" x="384" y="305">/api/todos/{id}</text>
+<text class="code" x="532" y="305">Delete()</text>
+
+<rect class="none" x="300" y="328" width="360" height="32" rx="6"/>
+<text class="k-bad-sm" x="480" y="348" text-anchor="middle">表裡沒有「/」這條路徑</text>
+
+<!-- 右：每個請求 -->
+<text class="t" x="850" y="82" text-anchor="middle">每個請求進來時</text>
+<text class="sm" x="850" y="102" text-anchor="middle">只查表，不會重新讀一次 Controller</text>
+
+<rect class="c-ok" x="720" y="166" width="260" height="52" rx="8"/>
+<text class="code" x="732" y="186">GET /api/todos/5</text>
+<text x="732" y="206"><tspan class="k-ok">200</tspan>　對到這一列，呼叫 GetById(5)</text>
+<path class="arr-ok" d="M718,192 H664" marker-end="url(#m2)"/>
+
+<rect class="c-warn" x="720" y="256" width="260" height="52" rx="8"/>
+<text class="code" x="732" y="276">POST /api/todos/5</text>
+<text x="732" y="296"><tspan class="k-warn">405</tspan>　路徑有，但沒有一列是 POST</text>
+<path class="arr-warn" d="M718,282 H664" marker-end="url(#m3)"/>
+
+<rect class="c-bad" x="720" y="318" width="260" height="52" rx="8"/>
+<text class="code" x="732" y="338">GET /</text>
+<text x="732" y="358"><tspan class="k-bad">404</tspan>　沒有任何一列是這條路徑</text>
+<path class="arr-bad" d="M718,344 H664" marker-end="url(#m4)"/>
+
+<text x="500" y="408" text-anchor="middle">Controller 只在啟動時讀一次。之後新增或修改 API，要停掉程式重新 dotnet run，表才會更新。</text>
+<text class="sm" x="500" y="430" text-anchor="middle">{id} 是佔位符：/api/todos/5 對到 /api/todos/{id} 這一列，5 會填進方法的參數 id</text>
+</svg>

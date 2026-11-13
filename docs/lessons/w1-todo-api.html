@@ -263,10 +263,12 @@ dotnet run --project TodoApi</code></pre>
   <tr><th>階段</th><th>題 1 的 HelloWeb</th><th>這一題的 TodoApi</th></tr>
   <tr><td>準備</td><td><code>WebApplication.CreateBuilder(args)</code></td><td>一樣，另外多了 <code>builder.Services.AddControllers()</code>：告訴框架這個專案要用 Controller</td></tr>
   <tr><td>定案</td><td><code>builder.Build()</code></td><td>一樣</td></tr>
-  <tr><td>排路徑</td><td><code>app.MapGet("/", …)</code>：路徑一條一條寫在 <code>Program.cs</code></td><td><code>app.MapControllers()</code>：去掃描所有 Controller 類別，路徑寫在各個 Controller 上</td></tr>
+  <tr><td>排路徑</td><td><code>app.MapGet("/", …)</code>：路徑一條一條寫在 <code>Program.cs</code></td><td><code>app.MapControllers()</code>：<code>Program.cs</code> 裡一條路徑都不寫，路徑改標在各個 Controller 類別上，由這一行在啟動時去讀</td></tr>
   <tr><td>開門</td><td><code>app.Run()</code></td><td>一樣</td></tr>
 </table>
 </div>
+<p><code>app.MapControllers()</code> 在程式啟動時做一件事：把專案裡每個 Controller 類別找出來，讀類別和方法上面標的 <code>[Route]</code>、<code>[HttpGet]</code>，整理成一張<mark class="key">「動詞＋路徑 → 交給哪個方法」的對照表</mark>。之後每個請求進來，框架就查這張表。以範本為例：<code>WeatherForecastController</code> 上面標了 <code>[Route("[controller]")]</code>，<code>Get()</code> 方法上面標了 <code>[HttpGet]</code>，所以表裡有一筆「<code>GET /weatherforecast</code> → <code>WeatherForecastController.Get()</code>」，這就是你在瀏覽器打 <code>/weatherforecast</code> 會拿到資料的原因。</p>
+<p class="more">這張表怎麼建、請求怎麼查，第 4 節有圖：<a href="#routing">路由：請求怎麼找到你的方法</a>。</p>
 <p>題 1 那種「路徑直接寫在 <code>Program.cs</code>」的寫法叫 <strong>Minimal API</strong>。兩種寫法什麼時候用：</p>
 <div class="table-wrap">
 <table>
@@ -277,7 +279,13 @@ dotnet run --project TodoApi</code></pre>
   <tr><td>這份筆記</td><td>只有題 1</td><td>這個專案和部落格</td></tr>
 </table>
 </div>
-<p>範本裡其他幾行（<code>AddOpenApi</code>、<code>UseHttpsRedirection</code>、<code>UseAuthorization</code>）現在不用管。</p>
+<p>範本裡還有另外幾行，這一課用不到，留著不要動就好。各自做的事：</p>
+<ul>
+  <li><code>AddOpenApi()</code> 和 <code>MapOpenApi()</code>：產生一份 JSON 文件，列出這個專案有哪些 API、各自收什麼參數。程式跑起來之後開 <code>/openapi/v1.json</code> 看得到。</li>
+  <li><code>UseHttpsRedirection()</code>：收到 http 的請求時，回覆對方「改用 https 再送一次」。下面那個 <code>Failed to determine the https port</code> 警告就是它印的。</li>
+  <li><code>UseAuthorization()</code>：檢查這個請求有沒有權限呼叫這支 API。這個專案沒有替任何 API 設定權限，所以每個請求都直接通過。</li>
+</ul>
+<p class="more">這幾行不能隨便換位置：<code>Add…</code> 要在 <code>builder.Build()</code> 之前，<code>Use…</code> 和 <code>Map…</code> 要在它之後。完整的規則看第 4 節：<a href="#program-order">這幾行哪些可以換位置</a>。</p>
 <p>每個專案的 port 是建立時隨機產生的，你的不會是 5298，看 <code>launchSettings.json</code> 的 <code>applicationUrl</code> 或終端機印的 <code>Now listening on</code> 就知道。</p>
 <div class="callout">
 <p>❓ <strong>瀏覽器打開 <code>http://localhost:5298/</code> 出現 404，是不是壞了？</strong>沒壞。Web API 只回應有定義的路徑，範本只有 <code>/weatherforecast</code>，根目錄 <code>/</code> 沒有人處理，所以回 404。這也代表伺服器有在運作，真的沒啟動的話會是「無法連線」。</p>
@@ -846,23 +854,10 @@ public class WeatherForecastController : ControllerBase  // (5) 繼承 Controlle
 
 <h3 id="routing">路由：請求怎麼找到你的方法</h3>
 <p class="lead">請求進來時，由<mark class="key">路由</mark>決定該呼叫哪個方法。程式啟動時把每個方法的「動詞＋路徑」登記成一張表，請求進來就查表：路徑查不到回 <mark class="key">404</mark>，動詞不對回 <mark class="key">405</mark>。在方法上寫 <code>[HttpGet("{id}")]</code> 就完成登記，不用自己判斷網址。</p>
-<p>分兩個時間點：<strong>啟動時</strong>建表，<strong>每個請求</strong>查表。</p>
+<p>分兩個時間點。<strong>程式啟動時</strong>：你執行 <code>dotnet run</code>，<code>Program.cs</code> 從第一行往下跑，在開始接收請求之前，<code>app.MapControllers()</code> 把路由表建好，整個執行期間只做這一次。<strong>每個請求進來時</strong>：框架只查這張表。</p>
 <div class="diagram">
-<div class="mermaid">
-flowchart TD
-    subgraph BOOT["啟動時：app.MapControllers()"]
-        SCAN["找出專案裡所有 Controller 類別<br>名稱結尾是 Controller，或繼承 ControllerBase"] --> READ["讀每個方法上的 Route、HttpGet 這些 attribute"]
-        READ --> TABLE["路由表<br>GET /weatherforecast → WeatherForecastController.Get()"]
-    end
-    subgraph REQ["每個請求進來"]
-        R["GET /weatherforecast"] --> MATCH{"動詞＋路徑<br>在路由表裡嗎？"}
-        MATCH -- "有" --> NEW["建立 WeatherForecastController 物件"] --> CALL["呼叫 Get()"] --> JSON["回傳值轉成 JSON，200 OK"]
-        MATCH -- "路徑沒有人認領" --> NF["404 Not Found"]
-        MATCH -- "路徑有、動詞沒有" --> MNA["405 Method Not Allowed"]
-    end
-    TABLE -.-> MATCH
-</div>
-<div class="diagram-caption">啟動時掃一次建表，之後每個請求只是查表；表裡沒有的路徑就是 404</div>
+<img src="../images/route-table.svg" alt="路由表：左邊是程式啟動時，app.MapControllers() 找出所有 Controller 類別、讀上面的 Route 和 HttpGet 標記，把每個方法寫成路由表的一列；中間是路由表，五列分別是 GET /api/todos 對 GetAll、GET /api/todos/{id} 對 GetById、POST /api/todos 對 Create、PUT /api/todos/{id} 對 Update、DELETE /api/todos/{id} 對 Delete；右邊是三個請求查表的結果：GET /api/todos/5 對到 GetById 回 200，POST /api/todos/5 路徑有但動詞對不上回 405，GET / 表裡沒有這條路徑回 404" style="width:100%;height:auto">
+<div class="diagram-caption">左邊寫表、右邊查表。以做完題 6 的 <code>TodosController</code> 為例：對得到一列就呼叫那個方法；路徑有但動詞對不上是 405；整條路徑都不在表裡是 404</div>
 </div>
 <p>路徑怎麼算出來的：<code>[Route("[controller]")]</code> 裡的 <code>[controller]</code> 會換成<strong>類別名去掉結尾的 Controller</strong>，再接上方法的 <code>[HttpGet("…")]</code>：</p>
 <div class="table-wrap">
@@ -874,7 +869,7 @@ flowchart TD
   <tr><td><code>TodosController</code></td><td><code>api/[controller]</code></td><td><code>[HttpDelete("{id}")]</code></td><td><code>DELETE /api/todos/5</code></td></tr>
 </table>
 </div>
-<p>對範本實測幾個網址，對照上面的圖：</p>
+<p>範本的路由表只有一列（<code>GET /weatherforecast</code>）。對範本實測幾個網址，規則和上面的圖一樣：</p>
 <pre><code class="nohighlight">GET  /                      → 404   路由表裡沒有「/」，沒有人認領
 GET  /weatherforecast       → 200   命中
 GET  /WeatherForecast       → 200   路徑不分大小寫
@@ -1088,6 +1083,19 @@ flowchart LR
   <tr><td><code>builder.Build()</code></td><td>登記簿定案，做出 <code>app</code>（型別是 <code>WebApplication</code>）。之後再 <code>builder.Services.Add…</code> 會丟例外（實測）：<br><code>InvalidOperationException: The service collection cannot be modified because it is read-only.</code></td><td>把「準備」和「執行」分成兩段，Build 是分界線</td></tr>
   <tr><td><code>app.UseXxx()</code> / <code>app.MapXxx()</code></td><td>排請求的管線。<code>Use…</code> 是<strong>每個請求都會經過的關卡</strong>（http 轉 https、檢查授權）；<code>Map…</code> 是<strong>終點</strong>：哪條路徑交給誰（<code>MapControllers</code> 就是建上面的路由表）</td><td>決定請求進來之後依序經過什麼</td></tr>
   <tr><td><code>app.Run()</code></td><td>啟動 Kestrel 伺服器，開始聽 port，然後<strong>卡在這一行</strong>，直到 Ctrl+C 或程序被關掉。寫在 <code>Run()</code> 後面的程式碼要等伺服器關掉才會執行（實測）</td><td>開門營業。到這裡之前，一個請求都還沒進來</td></tr>
+</table>
+</div>
+<h4 id="program-order">這幾行哪些可以換位置</h4>
+<p>分界線是 <code>builder.Build()</code>：<mark class="key">Add… 一律在它之前，Use… 和 Map… 一律在它之後</mark>。在同一邊裡面，有的可以換、有的換了結果會不同：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>哪幾行</th><th>能不能換</th><th>原因</th></tr>
+  <tr><td><code>AddControllers()</code> 和 <code>AddOpenApi()</code> 彼此</td><td>可以</td><td>兩行都只是往登記簿各寫一筆，誰先寫結果一樣</td></tr>
+  <tr><td><code>Add…</code> 移到 <code>Build()</code> 之後</td><td><mark class="caution">不行</mark></td><td><code>Build()</code> 之後登記簿不能再改，程式一啟動就丟例外（下面有實測）</td></tr>
+  <tr><td><code>Use…</code>、<code>Map…</code> 移到 <code>Build()</code> 之前</td><td>不行</td><td><code>app</code> 是 <code>Build()</code> 做出來的，在那之前還沒有 <code>app</code> 這個變數，編譯不會過</td></tr>
+  <tr><td><code>UseHttpsRedirection()</code> 和 <code>UseAuthorization()</code> 彼此</td><td>換了順序就不同</td><td>請求照程式碼寫的順序，一關一關經過。這個專案沒有設定權限，對調了看不出差別；照範本的順序放就好</td></tr>
+  <tr><td><code>MapControllers()</code> 和 <code>Use…</code> 之間</td><td>可以</td><td>請求一定先走完所有 <code>Use…</code> 的關卡，最後才查路由表，和 <code>Map…</code> 寫在第幾行無關</td></tr>
+  <tr><td><code>app.Run()</code></td><td>要在最後</td><td>程式會卡在這一行，寫在它後面的 <code>Use…</code>、<code>Map…</code> 等於沒寫</td></tr>
 </table>
 </div>
 <p><strong>實測：在每個階段印一行，看執行順序</strong></p>
