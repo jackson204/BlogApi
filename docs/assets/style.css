@@ -107,6 +107,34 @@ pre code.hljs { background: none; padding: 0; }
 .hl.a { background: var(--accent-soft); color: var(--accent); }
 .hl.b { background: var(--ok-soft); color: var(--ok); }
 .hl.c { background: var(--danger-soft); color: var(--danger); }
+/* 重點標記：key = 這一段要帶走的詞；caution = 要小心、容易踩到 */
+mark.key, mark.caution { padding: 0 4px; border-radius: 4px; font-weight: 700; }
+mark.key { background: var(--accent-soft); color: var(--accent); }
+mark.caution { background: var(--warn-soft); color: var(--warn); }
+/* 放在同色底的框裡時，色塊改用頁面底色加外框，才看得出來 */
+.aim mark.key, .callout mark.key, .callout mark.caution {
+  background: var(--surface);
+  box-shadow: 0 0 0 1px currentColor;
+}
+mark.key code, mark.caution code { background: none; padding: 0; color: inherit; }
+/* 導言：小節標題下面，直接講這一節是什麼、做什麼、作用在哪裡 */
+.lead {
+  margin: 10px 0 18px;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--accent);
+  font-size: 1.05rem;
+}
+/* 對比：左邊不建議的寫法（✗），右邊建議的寫法（✓），下面各一句理由 */
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+.compare > div { min-width: 0; padding: 8px 14px; border: 1px solid var(--border); border-top: 4px solid; border-radius: var(--radius); background: var(--surface); }
+.compare .bad { border-top-color: var(--danger); }
+.compare .good { border-top-color: var(--ok); }
+.compare .compare-label { margin: 4px 0; font-weight: 700; }
+.compare .bad .compare-label { color: var(--danger); }
+.compare .good .compare-label { color: var(--ok); }
+@media (max-width: 720px) { .compare { grid-template-columns: 1fr; } }
+/* 練習題最下面，連到參考區的那一行 */
+.exercise .more { color: var(--muted); font-size: .95rem; }
 .file-label {
   font-family: var(--mono);
   font-size: .8rem;
@@ -292,16 +320,6 @@ details.aside details.aside { margin: 8px 0 12px; }
 .lesson-card.is-done .done-toggle { border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
 
 /* 學習路線圖 */
-.next-step {
-  margin: 12px 0;
-  padding: 10px 16px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius);
-  background: var(--accent-soft);
-  font-weight: 700;
-}
-.next-step .next-label { margin-right: 12px; color: var(--accent); }
-.next-step .next-note { margin-left: 10px; font-weight: 400; font-size: .9rem; color: var(--muted); }
 .roadmap {
   padding: 4px 16px;
   border: 1px solid var(--border);

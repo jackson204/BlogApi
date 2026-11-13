@@ -23,7 +23,6 @@
 <section id="zone-roadmap">
 <h2 id="roadmap-title">學習路線</h2>
 <p class="zone-hint">一列是一個專案，由左到右照號碼做，做完一個專案再往下一列。每做完一課，在下面那張卡片按「標記為做完」，這張圖就會記住你做到哪裡。</p>
-<div id="next-step" class="next-step"></div>
 <div id="roadmap" class="roadmap"></div>
 <p class="roadmap-legend">
   <span class="legend-dot done">✓</span>做完了
@@ -335,26 +334,10 @@ function nextLesson() {
   return null;
 }
 
-var nextStep = document.getElementById("next-step");
 var roadmap = document.getElementById("roadmap");
 
 function renderRoadmap() {
   var next = nextLesson();
-
-  nextStep.innerHTML = "";
-  if (!next) {
-    nextStep.textContent = "🎉 主線全部做完了。";
-  } else {
-    nextStep.appendChild(el("span", "next-label", "▶ 你的下一步"));
-    if (next.file) {
-      var go = el("a", "", next.title);
-      go.href = next.file;
-      nextStep.appendChild(go);
-    } else {
-      nextStep.appendChild(el("span", "", next.title));
-      nextStep.appendChild(el("span", "next-note", "這一課的課文還沒寫，可以先到觀念庫挑有興趣的讀。"));
-    }
-  }
 
   roadmap.innerHTML = "";
   projects.forEach(function (p) {
