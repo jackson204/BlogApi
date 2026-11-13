@@ -17,14 +17,14 @@
 <div class="tags">
   <span class="tag">dotnet new</span><span class="tag">方案與專案</span><span class="tag">Program.cs</span>
   <span class="tag">Web API</span><span class="tag">Controller</span><span class="tag">路由</span>
-  <span class="tag">Model Binding</span><span class="tag">狀態碼</span><span class="tag">.http</span>
+  <span class="tag">Model Binding</span><span class="tag">狀態碼</span><span class="tag">Postman</span>
 </div>
 
 <div class="callout">
 <p>🧰 <strong>本課使用版本</strong>（2026-11 驗證過）</p>
 <ul>
   <li>.NET SDK <strong>10.0</strong>（專案 <code>TargetFramework</code> 是 <code>net10.0</code>）</li>
-  <li>Rider（用它內建的 <code>.http</code> 檔送請求，不用另外裝 Postman）</li>
+  <li>Postman（題 2 開始用它送請求）</li>
 </ul>
 <p>這一課不需要 Docker，也不需要 SQL Server。</p>
 </div>
@@ -55,7 +55,7 @@
   <li><strong>學完帶走什麼</strong>：建立專案、寫 Controller、決定網址和狀態碼。這些到部落格專案照樣用</li>
 </ul>
 </div>
-<p>一個待辦事項的後端 API。前端（這一課用 Rider 的 <code>.http</code> 檔代替）送請求過來，可以看清單、新增、改成已完成、刪除：</p>
+<p>一個待辦事項的後端 API。前端（這一課用 Postman 代替）送請求過來，可以看清單、新增、改成已完成、刪除：</p>
 <div class="table-wrap">
 <table>
   <tr><th>功能</th><th>HTTP</th><th>網址</th><th>成功時回傳</th><th>哪一題</th></tr>
@@ -70,19 +70,19 @@
 
 <p>動手之前，先看「後端 API」到底在整件事裡的哪個位置：</p>
 <div class="diagram">
-<img src="../images/client-server.svg" alt="用戶端與伺服器：左邊是用戶端（瀏覽器、Rider 的 .http 檔、手機 App），送出 HTTP 請求 GET /api/todos；右邊是伺服器，也就是你的 TodoApi 專案，收到請求、查路由表、執行 TodosController.GetAll()、把回傳值轉成 JSON，再送回 HTTP 回應 200 OK 和 JSON 資料" style="width:100%;height:auto">
+<img src="../images/client-server.svg" alt="用戶端與伺服器：左邊是用戶端（瀏覽器、Postman、手機 App），送出 HTTP 請求 GET /api/todos；右邊是伺服器，也就是你的 TodoApi 專案，收到請求、查路由表、執行 TodosController.GetAll()、把回傳值轉成 JSON，再送回 HTTP 回應 200 OK 和 JSON 資料" style="width:100%;height:auto">
 <div class="diagram-caption">左邊發問、右邊回答。這一課要寫的是右邊那個專案。①②④ 框架會幫你做，你要寫的只有藍色的 ③</div>
 </div>
 <div class="table-wrap">
 <table>
   <tr><th>名詞</th><th>是什麼</th><th>這一課對應到</th></tr>
-  <tr><td>用戶端（Client）</td><td>發出請求的程式</td><td>瀏覽器、Rider 的 <code>.http</code> 檔</td></tr>
+  <tr><td>用戶端（Client）</td><td>發出請求的程式</td><td>瀏覽器、Postman</td></tr>
   <tr><td>伺服器（Server）</td><td>一直開著、等請求進來再回應的程式</td><td>你的 <code>TodoApi</code> 專案，<code>dotnet run</code> 之後就是一台伺服器</td></tr>
   <tr><td>HTTP 請求（Request）</td><td>用戶端送過來的那一段文字，第一行是「動詞 路徑」</td><td><code>GET /api/todos</code></td></tr>
   <tr><td>HTTP 回應（Response）</td><td>伺服器送回去的那一段文字，第一行有狀態碼，後面是內容</td><td><code>200 OK</code> + 待辦事項的 JSON</td></tr>
 </table>
 </div>
-<p>在瀏覽器網址列輸入網址按 Enter，瀏覽器送出的就是一個 <strong>GET</strong> 請求，所以查詢類的 API 可以直接用瀏覽器看。但網址列<strong>只能送 GET</strong>，新增、修改、刪除要用的 POST、PUT、DELETE 送不出來，所以題 2 之後改用 Rider 的 <code>.http</code> 檔當用戶端，它每一種動詞都能送。</p>
+<p>在瀏覽器網址列輸入網址按 Enter，瀏覽器送出的就是一個 <strong>GET</strong> 請求，所以查詢類的 API 可以直接用瀏覽器看。但網址列<strong>只能送 GET</strong>，新增、修改、刪除要用的 POST、PUT、DELETE 送不出來，所以題 2 之後改用 Postman 當用戶端，它每一種動詞都能送。</p>
 <p>開始之前，題 1 會先用指令建立方案和專案，跑起一個只有四行的最小 Web 程式，看懂 <code>Program.cs</code> 的骨架，再開始做待辦事項。</p>
 <h3 id="memory">不接資料庫，那資料存在哪裡？</h3>
 <dl class="keycard">
@@ -138,8 +138,8 @@
 <div class="callout">
 <p>🧩 <strong>做這題需要知道的</strong></p>
 <ul>
-  <li><strong>專案</strong>是一個可以編譯、執行的程式（<code>.csproj</code>）；<strong>方案</strong>是一份「有哪些專案」的清單（<code>.slnx</code> 或 <code>.sln</code>），本身沒有程式碼。Rider 開的是方案</li>
-  <li>指令打在 Rider 下方的 Terminal，或 Windows 的 PowerShell。用 cmd（命令提示字元）也可以，只有 <code>$HOME</code> 要換成 <code>%USERPROFILE%</code>，其他指令一樣</li>
+  <li><strong>專案</strong>是一個可以編譯、執行的程式（<code>.csproj</code>）；<strong>方案</strong>是一份「有哪些專案」的清單（<code>.slnx</code> 或 <code>.sln</code>），本身沒有程式碼</li>
+  <li>指令打在 Windows 的 PowerShell。用 cmd（命令提示字元）也可以，只有 <code>$HOME</code> 要換成 <code>%USERPROFILE%</code>，其他指令一樣</li>
 </ul>
 <div class="table-wrap">
 <table>
@@ -168,7 +168,7 @@ dotnet new web -n HelloWeb -f net10.0      # 建立專案
 dotnet sln add HelloWeb/HelloWeb.csproj    # 把專案加入方案
 
 dotnet run --project HelloWeb              # 執行</code></pre>
-<p>終端機印出 <code>Now listening on: http://localhost:5099</code> 就是跑起來了（port 是建立專案時隨機產生的，你的數字會不一樣）。用瀏覽器打開那個網址。之後要用 Rider 開的話，選 Open，開 <code>TodoApi.slnx</code>。</p>
+<p>終端機印出 <code>Now listening on: http://localhost:5099</code> 就是跑起來了（port 是建立專案時隨機產生的，你的數字會不一樣）。用瀏覽器打開那個網址。</p>
 <p>做完之後的結構（實測）：</p>
 <pre><code class="language-plaintext">RiderProjects\TodoApi\        ← 方案資料夾
 ├─ TodoApi.slnx               ← 方案檔：專案清單
@@ -182,7 +182,7 @@ dotnet run --project HelloWeb              # 執行</code></pre>
 <pre><code class="language-xml">&lt;Solution&gt;
   &lt;Project Path="HelloWeb/HelloWeb.csproj" /&gt;
 &lt;/Solution&gt;</code></pre>
-<p>.NET 10 的 <code>dotnet new sln</code> 產生的是新格式 <code>.slnx</code>；用 Rider 建立可能是舊格式 <code>.sln</code>，內容比較長，但記的是同一件事，兩種都能用。</p>
+<p>.NET 10 的 <code>dotnet new sln</code> 產生的是新格式 <code>.slnx</code>；舊版 SDK 產生的是舊格式 <code>.sln</code>，內容比較長，但記的是同一件事，兩種都能用。</p>
 
 <p><strong>最小的 Web 程式：範本的 <code>Program.cs</code> 只有四行</strong></p>
 <p class="file-label">HelloWeb/Program.cs（範本產生的原樣）</p>
@@ -222,7 +222,6 @@ POST /             → 405          路徑有，但只登記了 GET</code></pre>
 <div class="callout warn">
 <p>⚠️ <strong>忘了 <code>dotnet sln add</code> 會怎樣？</strong>（實測）專案資料夾和檔案都在，但方案的清單裡沒有它：</p>
 <ul>
-  <li>Rider 開方案，<strong>看不到這個專案</strong></li>
   <li>在方案資料夾執行 <code>dotnet build</code>，<strong>不會報錯</strong>，只有一個警告，而且什麼都沒編譯：
 <pre><code class="nohighlight">warning : 找不到可還原的專案!          （英文版是 Unable to find a project to restore!）
     1 個警告
@@ -231,7 +230,6 @@ POST /             → 405          路徑有，但只登記了 GET</code></pre>
 </ul>
 <p>「0 個錯誤」很容易讓人以為成功了。看到這個警告就要想到：專案沒有加入方案。可以用 <code>dotnet sln list</code> 列出方案裡有哪些專案。</p>
 </div>
-<p>用 Rider 的話：New Solution → Empty Solution 建立方案，再對方案按右鍵 → Add → New Project 建立專案。Rider 會自動把專案加入方案，不用自己執行 <code>sln add</code>。</p>
 </div>
 </details>
 <p>🔎 <strong>卡住再讀</strong>：<a href="#program-lifecycle">Program.cs 的四個階段</a>、<a href="#launchsettings">port 從哪裡來</a></p>
@@ -245,18 +243,17 @@ POST /             → 405          路徑有，但只登記了 GET</code></pre>
 <ul>
   <li>在題 1 的方案資料夾裡，再建立一個 ASP.NET Core Web API 專案，名稱 <code>TodoApi</code>，並加入方案</li>
   <li>.NET 10、使用 Controller（不是 Minimal API）</li>
-  <li>執行專案，用範本附的 <code>TodoApi.http</code> 呼叫 <code>GET /weatherforecast</code></li>
-  <li>確認能跑之後，刪掉範本的 <code>WeatherForecast.cs</code>、<code>Controllers/WeatherForecastController.cs</code>，以及 <code>.http</code> 裡 weatherforecast 那段</li>
+  <li>執行專案，用 Postman 呼叫 <code>GET /weatherforecast</code></li>
+  <li>確認能跑之後，刪掉範本的 <code>WeatherForecast.cs</code>、<code>Controllers/WeatherForecastController.cs</code>，以及這一課用不到的 <code>TodoApi.http</code></li>
 </ul>
 <div class="callout">
 <p>🧩 <strong>做這題需要知道的</strong></p>
 <ul>
   <li>做法和題 1 一樣，只是範本從 <code>web</code> 換成 <code>webapi</code>：<code>dotnet new webapi -n 專案名稱 --use-controllers -f net10.0</code>，建完一樣要 <code>dotnet sln add</code>。.NET 10 的範本<strong>預設是 Minimal API</strong>，要加 <code>--use-controllers</code> 才會產生 Controller 版本</li>
-  <li>用 Rider 也可以：對方案按右鍵 → Add → New Project → ASP.NET Core Web API，Framework 選 <em>net10.0</em>，勾選 <em>Use controllers</em></li>
-  <li><code>.http</code> 檔是 Rider 可以直接執行的請求檔，點請求那一行左邊的 ▶ 就會送出</li>
+  <li>Postman 是專門用來送 HTTP 請求的程式：新增一個請求，左邊下拉選單選動詞（GET、POST…），旁邊填網址，按 <em>Send</em> 送出，下方會顯示狀態碼和回應內容</li>
 </ul>
 </div>
-<p class="accept">✅ 驗收：<code>.http</code> 檔送出請求後回傳 200 和一串天氣 JSON</p>
+<p class="accept">✅ 驗收：Postman 送出請求後回傳 200 和一串天氣 JSON</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
@@ -264,14 +261,14 @@ POST /             → 405          路徑有，但只登記了 GET</code></pre>
 dotnet new webapi -n TodoApi --use-controllers -f net10.0
 dotnet sln add TodoApi/TodoApi.csproj
 dotnet run --project TodoApi</code></pre>
-<p>執行也可以用 Rider：上方選 <code>TodoApi: http</code> 按 ▶。看到 <code>Now listening on: http://localhost:5298</code> 就是跑起來了。打開 <code>TodoApi.http</code>，點 GET 那行左邊的 ▶ 送出。</p>
+<p>看到 <code>Now listening on: http://localhost:5298</code> 就是跑起來了（port 換成你自己的）。打開 Postman，動詞選 GET，網址填 <code>http://localhost:5298/weatherforecast</code>，按 <em>Send</em>。</p>
 <p>做完之後的結構：</p>
 <pre><code class="language-plaintext">RiderProjects\TodoApi\        ← 方案資料夾
 ├─ TodoApi.slnx               ← 現在清單裡有兩個專案
 ├─ HelloWeb\                  ← 題 1 的專案，之後用不到了，留著對照
 └─ TodoApi\                   ← 這次建立的專案，後面的題目都在這裡寫
     ├─ TodoApi.csproj
-    ├─ TodoApi.http           ← Rider 可以直接執行的 HTTP 請求檔
+    ├─ TodoApi.http           ← 範本附的請求檔，這一課用不到，一起刪掉
     ├─ Program.cs             ← 程式進入點
     ├─ appsettings.json
     ├─ WeatherForecast.cs                          ← 範本的示範，確認能跑之後刪掉
@@ -355,11 +352,9 @@ public class TodosController : ControllerBase
         return Todos;
     }
 }</code></pre>
-<p class="file-label">TodoApi/TodoApi.http（port 換成你 launchSettings.json 裡的）</p>
-<pre><code class="language-plaintext">@TodoApi_HostAddress = http://localhost:5298
-
-### 全部待辦事項 → 200
-GET {{TodoApi_HostAddress}}/api/todos</code></pre>
+<p class="file-label">用 Postman 送這個請求（port 換成你 launchSettings.json 裡的）</p>
+<pre><code class="language-plaintext">### 全部待辦事項 → 200
+GET http://localhost:5298/api/todos</code></pre>
 <p>實測回應：</p>
 <pre><code class="language-json">[{"id":1,"title":"買牛奶","isDone":false},{"id":2,"title":"裝 .NET SDK","isDone":true}]</code></pre>
 <ul>
@@ -421,15 +416,15 @@ GET {{TodoApi_HostAddress}}/api/todos</code></pre>
 
         return todo;
     }</code></pre>
-<p class="file-label">TodoApi/TodoApi.http（接在後面）</p>
+<p class="file-label">用 Postman 送這些請求</p>
 <pre><code class="language-plaintext">### 只看已完成的 → 200
-GET {{TodoApi_HostAddress}}/api/todos?isDone=true
+GET http://localhost:5298/api/todos?isDone=true
 
 ### 單一筆 → 200
-GET {{TodoApi_HostAddress}}/api/todos/1
+GET http://localhost:5298/api/todos/1
 
 ### 不存在的編號 → 404
-GET {{TodoApi_HostAddress}}/api/todos/99</code></pre>
+GET http://localhost:5298/api/todos/99</code></pre>
 <p>實測回應：</p>
 <pre><code class="nohighlight">GET /api/todos?isDone=true → 200 [{"id":2,"title":"裝 .NET SDK","isDone":true}]
 GET /api/todos/1           → 200 {"id":1,"title":"買牛奶","isDone":false}
@@ -499,9 +494,9 @@ public record CreateTodoRequest(
 
         return CreatedAtAction(nameof(GetById), new { id = todo.Id }, todo);
     }</code></pre>
-<p class="file-label">TodoApi/TodoApi.http（接在後面）</p>
+<p class="file-label">用 Postman 送這些請求</p>
 <pre><code class="language-plaintext">### 新增 → 201
-POST {{TodoApi_HostAddress}}/api/todos
+POST http://localhost:5298/api/todos
 Content-Type: application/json
 
 {
@@ -509,13 +504,13 @@ Content-Type: application/json
 }
 
 ### 沒有 title → 400
-POST {{TodoApi_HostAddress}}/api/todos
+POST http://localhost:5298/api/todos
 Content-Type: application/json
 
 {}
 
 ### 多帶 id 和 isDone → 201，但後端不理它們
-POST {{TodoApi_HostAddress}}/api/todos
+POST http://localhost:5298/api/todos
 Content-Type: application/json
 
 {
@@ -523,7 +518,7 @@ Content-Type: application/json
   "id": 999,
   "isDone": true
 }</code></pre>
-<p><code>.http</code> 檔的寫法：每個請求用 <code>###</code> 分隔；第一行是「動詞 網址」，下一行放 header，<strong>空一行</strong>之後才是 JSON body。</p>
+<p>上面每個 <code>###</code> 是一個請求：第一行是「動詞 網址」，下一行是 header，空一行之後是 JSON body。在 Postman 裡，body 要到 <em>Body</em> 分頁選 <em>raw</em>、格式選 <em>JSON</em>，再把 JSON 貼進去；選了 JSON，Postman 會自動加上 <code>Content-Type: application/json</code> 這個 header，不用自己填。</p>
 <p>實測回應：</p>
 <pre><code class="nohighlight">POST /api/todos  {"title":"寫第一支 API"}
 → 201  Location: http://localhost:5298/api/Todos/3
@@ -564,7 +559,7 @@ POST /api/todos  {"title":"多帶欄位","id":999,"isDone":true}
   <li>修改要能改 <code>IsDone</code>，所以另外寫一個有 <code>Title</code> 和 <code>IsDone</code> 的 record，不要和新增共用</li>
 </ul>
 </div>
-<p class="accept">✅ 驗收：照答案的 <code>.http</code> 檔從頭送一遍，狀態碼依序是 200、200、200、404、201、400、201、204、404、204、404</p>
+<p class="accept">✅ 驗收：照答案列的請求從頭送一遍，狀態碼依序是 200、200、200、404、201、400、201、204、404、204、404</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
@@ -666,9 +661,9 @@ public class TodosController : ControllerBase
         return NoContent();
     }
 }</code></pre>
-<p class="file-label">TodoApi/TodoApi.http（接在後面）</p>
+<p class="file-label">用 Postman 送這些請求</p>
 <pre><code class="language-plaintext">### 修改 → 204
-PUT {{TodoApi_HostAddress}}/api/todos/3
+PUT http://localhost:5298/api/todos/3
 Content-Type: application/json
 
 {
@@ -677,7 +672,7 @@ Content-Type: application/json
 }
 
 ### 修改不存在的 → 404
-PUT {{TodoApi_HostAddress}}/api/todos/99
+PUT http://localhost:5298/api/todos/99
 Content-Type: application/json
 
 {
@@ -686,10 +681,10 @@ Content-Type: application/json
 }
 
 ### 刪除 → 204
-DELETE {{TodoApi_HostAddress}}/api/todos/1
+DELETE http://localhost:5298/api/todos/1
 
 ### 再刪一次 → 404
-DELETE {{TodoApi_HostAddress}}/api/todos/1</code></pre>
+DELETE http://localhost:5298/api/todos/1</code></pre>
 <p>全部送完之後再 <code>GET /api/todos</code>，實測：</p>
 <pre><code class="language-json">[{"id":2,"title":"裝 .NET SDK","isDone":true},{"id":3,"title":"寫第一支 API","isDone":true},{"id":4,"title":"多帶欄位","isDone":false}]</code></pre>
 <ul>
@@ -709,7 +704,7 @@ DELETE {{TodoApi_HostAddress}}/api/todos/1</code></pre>
 <p>這一題不寫新功能，只做實驗、看結果。</p>
 <p><strong>實驗 A：重新啟動</strong></p>
 <ol>
-  <li>照題 6 的 <code>.http</code> 檔新增、修改、刪除幾筆，<code>GET /api/todos</code> 確認資料變了</li>
+  <li>照題 6 的請求新增、修改、刪除幾筆，<code>GET /api/todos</code> 確認資料變了</li>
   <li>把程式停掉，再啟動</li>
   <li>再 <code>GET /api/todos</code></li>
 </ol>
@@ -1224,7 +1219,7 @@ fail: Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware[1]
   <dt>目的</dt><dd><code>app.Run()</code> 沒有寫網址，port 和環境是這個檔案決定的</dd>
   <dt>記住</dt><dd>連不上時來這裡對 <code>applicationUrl</code>。這個檔案只在開發機用，不會跟著發佈</dd>
 </dl>
-<p><code>app.Run()</code> 沒有寫網址，它聽的 port 是哪裡來的？答案在 <code>Properties\launchSettings.json</code>。這是<strong>開發機專用</strong>的啟動設定，Rider 的 ▶ 和 <code>dotnet run</code> 會讀它；發佈到正式環境時不會帶著它。題 2 建好的範本長這樣：</p>
+<p><code>app.Run()</code> 沒有寫網址，它聽的 port 是哪裡來的？答案在 <code>Properties\launchSettings.json</code>。這是<strong>開發機專用</strong>的啟動設定，<code>dotnet run</code> 會讀它；發佈到正式環境時不會帶著它。題 2 建好的範本長這樣：</p>
 <p class="file-label">TodoApi/Properties/launchSettings.json</p>
 <pre><code class="language-json">{
   "profiles": {
@@ -1251,9 +1246,9 @@ fail: Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware[1]
 <div class="table-wrap">
 <table>
   <tr><th>欄位</th><th>做什麼</th><th>影響到哪裡</th></tr>
-  <tr><td><code>profiles</code> 底下的 <code>http</code>、<code>https</code></td><td>兩組啟動設定。Rider 執行按鈕旁的下拉選單選的就是這個；<code>dotnet run</code> 沒指定時用第一個</td><td>題 2 答案說「選 <code>TodoApi: http</code> 按 ▶」就是在選 profile</td></tr>
+  <tr><td><code>profiles</code> 底下的 <code>http</code>、<code>https</code></td><td>兩組啟動設定。<code>dotnet run</code> 沒指定時用第一個；要指定就寫 <code>dotnet run --launch-profile https</code></td><td>題 2 的 <code>dotnet run</code> 沒指定，用的是第一組 <code>http</code></td></tr>
   <tr><td><code>commandName: "Project"</code></td><td>用「執行這個專案」的方式啟動，相當於 <code>dotnet run</code></td><td>一般不用動</td></tr>
-  <tr><td><code>applicationUrl</code></td><td><code>Run()</code> 要聽的網址和 port。port 數字是建專案時<strong>隨機抽的</strong>，所以每個人的不一樣</td><td>終端機印的 <code>Now listening on: http://localhost:5298</code>；<code>TodoApi.http</code> 的 <code>@TodoApi_HostAddress</code> 要填這個</td></tr>
+  <tr><td><code>applicationUrl</code></td><td><code>Run()</code> 要聽的網址和 port。port 數字是建專案時<strong>隨機抽的</strong>，所以每個人的不一樣</td><td>終端機印的 <code>Now listening on: http://localhost:5298</code>；Postman 的網址要填這個 port</td></tr>
   <tr><td><code>environmentVariables</code> 裡的 <code>ASPNETCORE_ENVIRONMENT</code></td><td>啟動時設一個環境變數，值是 <code>Development</code></td><td><code>app.Environment.IsDevelopment()</code> 回 <code>true</code>；會多讀 <code>appsettings.Development.json</code></td></tr>
   <tr><td><code>launchBrowser</code></td><td>啟動時要不要自動開瀏覽器</td><td>API 專案通常 <code>false</code></td></tr>
   <tr><td><code>dotnetRunMessages</code></td><td><code>dotnet run</code> 時要不要印 Building… 這類訊息</td><td>只影響終端機輸出</td></tr>
@@ -1267,17 +1262,16 @@ fail: Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware[1]
 <h2 id="pitfalls">5. 常見坑</h2>
 <ul>
   <li><strong>忘了 <code>--use-controllers</code></strong>：專案裡沒有 <code>Controllers</code> 資料夾，<code>Program.cs</code> 裡是 <code>app.MapGet(…)</code>。那是題 1 那種 Minimal API 的寫法。把專案資料夾刪掉、<code>dotnet sln remove</code> 之後重建最快</li>
-  <li><strong>改了程式但結果沒變</strong>：程式要停掉再啟動才會用新的程式碼。Rider 的 ▶ 旁邊有重新啟動的按鈕</li>
-  <li><strong><code>.http</code> 檔的 port 和實際的不一樣</strong>：出現「連線被拒絕」時，對一下 <code>@TodoApi_HostAddress</code> 和終端機印的 <code>Now listening on</code></li>
-  <li><strong>POST 回 415 Unsupported Media Type</strong>：少了 <code>Content-Type: application/json</code> 那一行，框架不知道 body 是 JSON</li>
-  <li><strong>POST 的 JSON 沒被讀到</strong>：<code>.http</code> 檔裡 header 和 JSON 之間要<strong>空一行</strong></li>
+  <li><strong>改了程式但結果沒變</strong>：程式要停掉再啟動才會用新的程式碼。按 Ctrl+C 停掉，再 <code>dotnet run</code> 一次</li>
+  <li><strong>Postman 網址的 port 和實際的不一樣</strong>：出現「連線被拒絕」（<code>ECONNREFUSED</code>）時，對一下網址裡的 port 和終端機印的 <code>Now listening on</code></li>
+  <li><strong>POST 回 415 Unsupported Media Type</strong>：請求少了 <code>Content-Type: application/json</code> 這個 header，框架不知道 body 是 JSON。Postman 的 <em>Body</em> 分頁選 <em>raw</em> 之後，格式要選 <em>JSON</em>，不是 <em>Text</em></li>
   <li><strong>路徑是 <code>/api/todos</code> 不是 <code>/todos</code></strong>：看 Controller 上的 <code>[Route("api/[controller]")]</code>，前面有 <code>api/</code></li>
   <li><strong><code>static List</code> 只適合練習</strong>：兩個請求同時新增時，<code>List</code> 和 <code>_nextId++</code> 都可能出錯（它們不是設計給多個執行緒同時用的）。真的專案不會這樣存資料，下一個專案就換成資料庫</li>
 </ul>
 
 <!-- ============================================================ -->
 <h2 id="next">6. 下一步</h2>
-<p>熱身專案到這裡結束。你現在會的：用指令建立方案和專案、看懂 <code>Program.cs</code> 的四個階段、寫 Controller、決定路徑和動詞、從三個地方拿參數、回傳對的狀態碼、用 <code>.http</code> 檔測試。</p>
+<p>熱身專案到這裡結束。你現在會的：用指令建立方案和專案、看懂 <code>Program.cs</code> 的四個階段、寫 Controller、決定路徑和動詞、從三個地方拿參數、回傳對的狀態碼、用 Postman 測試。</p>
 <p>還不會的，也是部落格專案要解決的：</p>
 <ol>
   <li>資料一重啟就不見。怎麼存到資料庫？（<a href="00-docker-mssql.html">00</a> 先把資料庫跑起來，01 用 EF Core 讀寫）</li>
