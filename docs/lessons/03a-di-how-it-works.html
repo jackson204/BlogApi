@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>03a DI 怎麼把東西送進 Controller</title>
+<title>03a 依賴注入（DI）：從 new 到 DI 容器</title>
 <link rel="stylesheet" href="../assets/style.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
@@ -12,10 +12,10 @@
 <main class="page">
 
 <div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / 階段 3</div>
-<h1>03a｜DI 怎麼把東西送進 Controller：從 AddDbContext 到建構子</h1>
-<p class="subtitle">第 1 課你沒有寫任何 <code>new BlogDbContext(…)</code>，Controller 的建構子卻拿得到它。這一課把框架在背後做的事一段一段攤開：登記簿長什麼樣、框架怎麼知道建構子要什麼、你寫的 lambda 什麼時候才執行、請求結束後它去了哪裡。</p>
+<h1>03a｜依賴注入（DI）：從 new 到 DI 容器</h1>
+<p class="subtitle">第 1 課你沒有寫任何 <code>new BlogDbContext(…)</code>，Controller 的建構子卻拿得到它。這件事叫 DI（依賴注入）。這一課先講它是什麼、要解決什麼問題，再從「自己 <code>new</code>」開始一步一步改到 DI 容器，最後回到 BlogApi，把框架在背後做的事一段一段攤開。</p>
 <div class="tags">
-  <span class="tag">DI</span><span class="tag">依賴注入</span><span class="tag">DI 容器</span><span class="tag">AddDbContext</span>
+  <span class="tag">DI</span><span class="tag">依賴注入</span><span class="tag">Dependency Injection</span><span class="tag">new</span><span class="tag">ServiceCollection</span><span class="tag">介面</span><span class="tag">DI 容器</span><span class="tag">AddDbContext</span>
   <span class="tag">IServiceCollection</span><span class="tag">IServiceProvider</span><span class="tag">反射</span><span class="tag">scope</span>
   <span class="tag">Scoped</span><span class="tag">生命週期</span><span class="tag">DbContextOptions</span><span class="tag">建構子注入</span>
 </div>
@@ -23,18 +23,26 @@
 <div class="callout">
 <p>📌 <strong>這一課的位置</strong></p>
 <ul>
-  <li><strong>前置</strong>：<a href="01-efcore-crud.html">01 文章 CRUD</a>。這裡拆解的就是第 1 課寫的三段程式：建構子（3-3）、註冊（<a href="01-efcore-crud.html#register">3-5</a>）、Controller（<a href="01-efcore-crud.html#controller-skeleton">3-7</a>）</li>
-  <li><strong>這一課不用寫程式</strong>，是讀懂框架做了什麼。內容原本是第 1 課的 3-8，因為比第 1 課其他部分深很多，獨立成一課</li>
-  <li><strong>讀完要帶走三件事</strong>：登記不等於建立；有人要的時候才建立，每個請求各一個；請求結束就丟掉</li>
-  <li><strong>下一課</strong>（03b，尚未產出）才會自己動手：把邏輯從 Controller 抽成 Service、自己註冊、選生命週期</li>
+  <li><strong>前置</strong>：<a href="01-efcore-crud.html">01 文章 CRUD</a>。第 1 課寫了建構子（3-3）、註冊（<a href="01-efcore-crud.html#register">3-5</a>）、Controller（<a href="01-efcore-crud.html#controller-skeleton">3-7</a>），當時只說「照著寫就好」。這一課回頭解釋</li>
+  <li><strong>前半（DI 是什麼、第 1 到第 5 步）</strong>：觀念。每一步都是可以單獨執行的小程式，建議跟著打一次</li>
+  <li><strong>後半（在 BlogApi 裡實際走一遍）</strong>：不用寫程式，是讀懂框架做了什麼。內容原本是第 1 課的 3-8</li>
+  <li><strong>讀完要帶走</strong>：DI 就是「需要的東西寫在建構子上，由外面做好傳進來」；容器負責記做法、建立、遞送、丟掉；登記不等於建立</li>
+  <li><strong>下一課</strong>（03b，尚未產出）才會在部落格專案裡動手：把邏輯從 Controller 抽成 Service、自己註冊、選生命週期</li>
 </ul>
-<p>本課引用的版本：EF Core 10.0.13、ASP.NET Core 10.0.11（2026-10 驗證過）。</p>
+<p>本課引用的版本：.NET 10、EF Core 10.0.13、ASP.NET Core 10.0.11（2026-10 驗證過）。</p>
 </div>
 
 <nav class="toc">
   <strong>目錄</strong>
   <ol>
-    <li><a href="#wiring">全景：三段程式是誰串起來的</a></li>
+    <li><a href="#what">DI 是什麼</a></li>
+    <li><a href="#step1">第 1 步：在用到的地方自己 new</a></li>
+    <li><a href="#step2">第 2 步：改成從建構子收進來</a></li>
+    <li><a href="#step3">第 3 步：自己寫一本登記簿</a></li>
+    <li><a href="#step4">第 4 步：換成 .NET 內建的容器</a></li>
+    <li><a href="#effect">所以 DI 帶來什麼</a></li>
+    <li><a href="#step5">第 5 步：ASP.NET Core 幫你做了哪些</a></li>
+    <li><a href="#wiring">在 BlogApi 裡實際走一遍：三段程式是誰串起來的</a></li>
     <li><a href="#flow-1">① 程式啟動：AddDbContext 只登記，不建立</a></li>
     <li><a href="#flow-2">② 程式跑起來：還沒有人要 BlogDbContext</a></li>
     <li><a href="#flow-3-1">③-1 請求進來：建立 PostsController</a></li>
@@ -46,7 +54,682 @@
 </nav>
 
 <!-- ============================================================ -->
-<h2 id="wiring">全景：三段程式是誰串起來的</h2>
+<h2 id="what">DI 是什麼</h2>
+<p><strong>DI</strong> 是 Dependency Injection 的縮寫，中文叫<strong>依賴注入</strong>。名字拆開來看：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>詞</th><th>意思</th><th>在部落格 API 裡</th></tr>
+  <tr><td>依賴（Dependency）</td><td>一個類別要完成工作，<strong>需要用到的另一個東西</strong></td><td><code>PostsController</code> 要查文章，需要 <code>BlogDbContext</code>。<code>BlogDbContext</code> 就是它的依賴</td></tr>
+  <tr><td>注入（Injection）</td><td>那個東西<strong>不是自己建立的，而是別人做好交進來的</strong></td><td><code>PostsController</code> 的建構子寫 <code>BlogDbContext db</code>，有人把做好的傳進來</td></tr>
+</table>
+</div>
+<p>合起來一句話：<strong>一個類別需要的東西，不要自己 <code>new</code>，寫在建構子的參數上，由外面做好傳進來。</strong></p>
+<h3>它要解決什麼問題</h3>
+<p>物件要用之前得先建立。問題是「誰來建立、建立時要知道哪些事、用完誰負責丟」。自己 <code>new</code> 的話，這三件事都落在使用它的那個類別身上；DI 把這三件事從使用者身上拿走，集中到一個地方處理。</p>
+<h3>三個角色</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>角色</th><th>是什麼</th><th>在部落格 API 裡</th></tr>
+  <tr><td>被需要的東西（服務）</td><td>提供功能的類別</td><td><code>BlogDbContext</code></td></tr>
+  <tr><td>需要它的人（使用者）</td><td>在建構子上寫出自己要什麼</td><td><code>PostsController</code></td></tr>
+  <tr><td>負責建立與遞送的人（容器）</td><td>記得每樣東西怎麼做，有人要就做好送過去，用完負責丟</td><td>ASP.NET Core 內建的 DI 容器，也就是 <code>builder.Services</code> 背後的東西</td></tr>
+</table>
+</div>
+<h3>用了之後能達到什麼效果</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>效果</th><th>意思</th><th>這一課哪裡看得到</th></tr>
+  <tr><td>使用者不用知道怎麼建立</td><td>Controller 不用知道連線字串、不用知道 <code>BlogDbContext</code> 的建構子要什麼</td><td><a href="#step2">第 2 步</a></td></tr>
+  <tr><td>建立的做法只寫一次</td><td>改連線字串、換資料庫，只改一個地方</td><td><a href="#step3">第 3 步</a></td></tr>
+  <tr><td>一長串的建立由容器代勞</td><td>A 要 B、B 要 C、C 要 D，不用自己一層一層 <code>new</code></td><td><a href="#step3">第 3 步延伸</a></td></tr>
+  <tr><td>用多久、什麼時候丟，有人管</td><td>每個請求一個、請求結束自動丟，不會忘記關連線</td><td><a href="#step4">第 4 步</a></td></tr>
+  <tr><td>可以換成別的實作</td><td>正式環境用真的資料庫，測試時換成假的，使用它的類別不用改</td><td><a href="#effect">所以 DI 帶來什麼</a></td></tr>
+</table>
+</div>
+<p>下面不直接講框架。先從最直覺的寫法「要用就 <code>new</code>」開始，每一步解決上一步的一個問題，走到第 4 步就是 DI 容器，第 5 步再對回 ASP.NET Core。</p>
+
+<h3 id="how-to-follow">開始之前：這幾步要怎麼跟著做</h3>
+<p><strong>不用開新的專案，也不要動 BlogApi 專案。</strong>第 1 到第 4 步和 <a href="csharp-class-object.html#exercise">C# 補充頁的練習</a>一樣，用單檔程式（<a href="https://learn.microsoft.com/dotnet/core/sdk/file-based-apps" target="_blank">file-based apps</a>）：一個資料夾、一個 <code>.cs</code> 檔，直接執行。</p>
+<ol>
+  <li>找個地方建一個空資料夾，例如 <code>di-lab</code>。不要放在 BlogApi 專案的資料夾裡面</li>
+  <li>在裡面建一個檔案 <code>di-lab.cs</code>，把下面「完整檔案」的內容整段貼進去</li>
+  <li>終端機切到那個資料夾，執行 <code>dotnet run di-lab.cs</code>。第一次會下載套件，要等一下</li>
+  <li>輸出會分成好幾段，每段開頭是 <code>===== 第 1 步：…</code> 這樣的標題，對應下面的每一節。一邊讀一邊對照</li>
+</ol>
+<p>下面每一節貼的程式都是這個檔案的<strong>節錄</strong>，輸出也是這個檔案實際跑出來的（.NET 10）。只想讀、不想跑也可以，每一節的程式和輸出都放在一起了。</p>
+
+<details class="aside">
+<summary>📄 完整檔案 di-lab.cs（展開後整段複製）</summary>
+<div class="aside-body">
+<p>第一行的 <code>#:package</code> 是單檔程式安裝套件的寫法，第 4 步的容器會用到。檔案前半是每一步執行的程式，後半是各步用到的類別。</p>
+<pre><code class="language-csharp">#:package Microsoft.Extensions.DependencyInjection@10.0.14
+
+using Microsoft.Extensions.DependencyInjection;
+
+// 從「自己 new」一步一步走到 DI。BlogDb 是簡化版的 DbContext：建立與丟掉時會印一行字。
+Console.OutputEncoding = System.Text.Encoding.UTF8;
+const string ConnectionString = "Server=localhost,1433;Database=BlogDb;…";
+void H(string t) { Console.WriteLine(); Console.WriteLine($"===== {t}"); }
+
+H("第 1 步：在用到的地方自己 new");
+BlogDb.Reset();
+Console.WriteLine(new PostsControllerV1().GetAll());
+Console.WriteLine(new CommentsControllerV1().GetAll());
+
+H("第 2 步：改成從建構子收進來，由外面 new 好再傳");
+BlogDb.Reset();
+using (var db = new BlogDb(ConnectionString))
+{
+    var posts = new PostsController(db);
+    var comments = new CommentsController(db);
+    Console.WriteLine(posts.GetAll());
+    Console.WriteLine(comments.GetAll());
+}
+
+H("第 2 步延伸：東西一多，外面那一行越來越長");
+BlogDb.Reset();
+using (var db = new BlogDb(ConnectionString))
+{
+    var controller = new PostsControllerWithService(new PostService(db, new Clock()), new Clock());
+    Console.WriteLine(controller.GetAll());
+}
+
+H("第 3 步：自己寫一本登記簿");
+BlogDb.Reset();
+var mini = new MiniContainer();
+mini.Register&lt;BlogDb&gt;(() =&gt; new BlogDb(ConnectionString));
+mini.Register&lt;PostsController&gt;(() =&gt; new PostsController(mini.Get&lt;BlogDb&gt;()));
+Console.WriteLine("（登記完了，上面沒有印出任何「建立」）");
+var fromMini = mini.Get&lt;PostsController&gt;();
+Console.WriteLine(fromMini.GetAll());
+
+H("第 3 步延伸：讓登記簿自己看建構子要什麼");
+BlogDb.Reset();
+var auto = new AutoContainer();
+auto.Register&lt;BlogDb&gt;(() =&gt; new BlogDb(ConnectionString));
+auto.Register&lt;Clock&gt;(() =&gt; new Clock());
+Console.WriteLine("（只登記了 BlogDb 和 Clock，沒有登記 PostService、PostsControllerWithService）");
+var fromAuto = auto.Get&lt;PostsControllerWithService&gt;();
+Console.WriteLine(fromAuto.GetAll());
+
+H("第 4 步：換成 .NET 內建的容器");
+BlogDb.Reset();
+var services = new ServiceCollection();
+services.AddScoped&lt;BlogDb&gt;(_ =&gt; new BlogDb(ConnectionString));
+services.AddSingleton&lt;Clock&gt;();
+services.AddScoped&lt;PostService&gt;();
+services.AddTransient&lt;PostsControllerWithService&gt;();
+Console.WriteLine("（AddXxx 都呼叫完了）");
+using var provider = services.BuildServiceProvider();
+Console.WriteLine("（BuildServiceProvider 完畢，上面沒有印出任何「建立」）");
+for (var request = 1; request &lt;= 2; request++)
+{
+    Console.WriteLine($"-- 請求 {request} 進來");
+    using (var scope = provider.CreateScope())
+    {
+        var controller = scope.ServiceProvider.GetRequiredService&lt;PostsControllerWithService&gt;();
+        Console.WriteLine(controller.GetAll());
+        var again = scope.ServiceProvider.GetRequiredService&lt;BlogDb&gt;();
+        Console.WriteLine($"同一個請求再要一次 BlogDb，拿到的是 #{again.Id}");
+    }
+
+    Console.WriteLine($"-- 請求 {request} 結束");
+}
+
+H("效果：換一個實作，使用它的類別不用改");
+foreach (var useFake in new[] { false, true })
+{
+    var s = new ServiceCollection();
+    if (useFake) s.AddScoped&lt;IPostStore, FakePostStore&gt;();
+    else s.AddScoped&lt;IPostStore, SqlPostStore&gt;();
+    s.AddTransient&lt;ReportController&gt;();
+    using var p = s.BuildServiceProvider();
+    using var sc = p.CreateScope();
+    Console.WriteLine($"登記 {(useFake ? "FakePostStore" : "SqlPostStore")} → " + sc.ServiceProvider.GetRequiredService&lt;ReportController&gt;().Summary());
+}
+
+H("沒登記就要");
+try
+{
+    using var p = new ServiceCollection().AddTransient&lt;ReportController&gt;().BuildServiceProvider();
+    p.GetRequiredService&lt;ReportController&gt;();
+}
+catch (InvalidOperationException ex)
+{
+    Console.WriteLine("InvalidOperationException: " + ex.Message);
+}
+
+// ---------------------------------------------------------------- 簡化版的 DbContext
+public class BlogDb : IDisposable
+{
+    private static int _count;
+    public int Id { get; }
+
+    public BlogDb(string connectionString)
+    {
+        Id = ++_count;
+        Console.WriteLine($"  [建立] BlogDb #{Id}");
+    }
+
+    public static void Reset() =&gt; _count = 0;
+
+    public List&lt;string&gt; Titles() =&gt; ["Hello", "第二篇"];
+
+    public void Dispose() =&gt; Console.WriteLine($"  [丟掉] BlogDb #{Id}");
+}
+
+public class Clock
+{
+    public string Today() =&gt; "2026-11-13";
+}
+
+// ---------------------------------------------------------------- 第 1 步
+public class PostsControllerV1
+{
+    public string GetAll()
+    {
+        using var db = new BlogDb("Server=localhost,1433;Database=BlogDb;…");
+        return $"PostsController 用 BlogDb #{db.Id} 查到 {db.Titles().Count} 篇";
+    }
+}
+
+public class CommentsControllerV1
+{
+    public string GetAll()
+    {
+        using var db = new BlogDb("Server=localhost,1433;Database=BlogDb;…");
+        return $"CommentsController 用 BlogDb #{db.Id}";
+    }
+}
+
+// ---------------------------------------------------------------- 第 2 步
+public class PostsController
+{
+    private readonly BlogDb _db;
+
+    public PostsController(BlogDb db)
+    {
+        _db = db;
+    }
+
+    public string GetAll() =&gt; $"PostsController 用 BlogDb #{_db.Id} 查到 {_db.Titles().Count} 篇";
+}
+
+public class CommentsController
+{
+    private readonly BlogDb _db;
+
+    public CommentsController(BlogDb db)
+    {
+        _db = db;
+    }
+
+    public string GetAll() =&gt; $"CommentsController 用 BlogDb #{_db.Id}";
+}
+
+public class PostService
+{
+    private readonly BlogDb _db;
+    private readonly Clock _clock;
+
+    public PostService(BlogDb db, Clock clock)
+    {
+        _db = db;
+        _clock = clock;
+    }
+
+    public string Summary() =&gt; $"{_clock.Today()} 共 {_db.Titles().Count} 篇（BlogDb #{_db.Id}）";
+}
+
+public class PostsControllerWithService
+{
+    private readonly PostService _service;
+    private readonly Clock _clock;
+
+    public PostsControllerWithService(PostService service, Clock clock)
+    {
+        _service = service;
+        _clock = clock;
+    }
+
+    public string GetAll() =&gt; "PostsController → PostService：" + _service.Summary();
+}
+
+// ---------------------------------------------------------------- 第 3 步
+public class MiniContainer
+{
+    private readonly Dictionary&lt;Type, Func&lt;object&gt;&gt; _recipes = new();
+
+    // 登記：只把「做法」存起來，不執行
+    public void Register&lt;T&gt;(Func&lt;T&gt; how) where T : class
+    {
+        _recipes[typeof(T)] = how;
+    }
+
+    // 要：查到做法，這時才執行
+    public T Get&lt;T&gt;() where T : class
+    {
+        return (T)_recipes[typeof(T)]();
+    }
+}
+
+public class AutoContainer
+{
+    private readonly Dictionary&lt;Type, Func&lt;object&gt;&gt; _recipes = new();
+
+    public void Register&lt;T&gt;(Func&lt;T&gt; how) where T : class
+    {
+        _recipes[typeof(T)] = how;
+    }
+
+    public T Get&lt;T&gt;() where T : class =&gt; (T)Get(typeof(T));
+
+    private object Get(Type type)
+    {
+        // 有登記做法就照做
+        if (_recipes.TryGetValue(type, out var how))
+        {
+            return how();
+        }
+
+        // 沒登記：看它的建構子要哪些東西，一個一個去要，再呼叫建構子
+        var constructor = type.GetConstructors().Single();
+        var arguments = constructor.GetParameters()
+            .Select(parameter =&gt; Get(parameter.ParameterType))
+            .ToArray();
+        Console.WriteLine($"  [自動] {type.Name} 的建構子要 ({string.Join(", ", constructor.GetParameters().Select(p =&gt; p.ParameterType.Name))})");
+        return constructor.Invoke(arguments);
+    }
+}
+
+// ---------------------------------------------------------------- 效果：可以替換
+public interface IPostStore
+{
+    List&lt;string&gt; Titles();
+}
+
+public class SqlPostStore : IPostStore
+{
+    public List&lt;string&gt; Titles() =&gt; ["（從資料庫查到的）Hello", "（從資料庫查到的）第二篇"];
+}
+
+public class FakePostStore : IPostStore
+{
+    public List&lt;string&gt; Titles() =&gt; ["假資料 A"];
+}
+
+public class ReportController
+{
+    private readonly IPostStore _store;
+
+    public ReportController(IPostStore store)
+    {
+        _store = store;
+    }
+
+    public string Summary() =&gt; $"{_store.Titles().Count} 篇：{string.Join("、", _store.Titles())}";
+}</code></pre>
+</div>
+</details>
+
+<h3 id="blogdb">先認識替身：BlogDb</h3>
+<p>接下來每一步都在問同樣三個問題：<strong>什麼時候建立、建立了幾個、什麼時候丟掉</strong>。真正的 <code>BlogDbContext</code> 建立和丟掉時不會印任何東西，而且要連上資料庫才能用，沒辦法用來觀察。</p>
+<p>所以這幾步用一個替身 <code>BlogDb</code> 代替它：不連資料庫，只在建立和丟掉時各印一行字。它已經在完整檔案裡，不用另外建。</p>
+<pre><code class="language-csharp">public class BlogDb : IDisposable
+{
+    private static int _count;
+    public int Id { get; }
+
+    public BlogDb(string connectionString)
+    {
+        Id = ++_count;
+        Console.WriteLine($"  [建立] BlogDb #{Id}");
+    }
+
+    public static void Reset() =&gt; _count = 0;
+
+    public List&lt;string&gt; Titles() =&gt; ["Hello", "第二篇"];
+
+    public void Dispose() =&gt; Console.WriteLine($"  [丟掉] BlogDb #{Id}");
+}</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>這一行</th><th>做什麼</th><th>對應真正的 BlogDbContext</th></tr>
+  <tr><td><code>private static int _count;</code></td><td>所有 <code>BlogDb</code> 共用的計數器，記目前做到第幾個（<code>static</code> 見<a href="csharp-class-object.html#static">類別與物件</a>）</td><td>沒有，這是為了觀察加的</td></tr>
+  <tr><td><code>public int Id { get; }</code></td><td>這一個是第幾個被建立的。輸出裡的 <code>#1</code>、<code>#2</code> 就是它</td><td>沒有，同上</td></tr>
+  <tr><td><code>public BlogDb(string connectionString)</code></td><td>建立時一定要給連線字串。這裡收了不會真的去連，只是讓「誰要建立它，誰就得知道連線字串」這件事成立。建立時印 <code>[建立]</code></td><td>建構子要收連線設定（<code>DbContextOptions</code>）</td></tr>
+  <tr><td><code>Reset()</code></td><td>把計數歸零。完整檔案每一步開始前都會呼叫，讓每一步都從 <code>#1</code> 算起</td><td>沒有</td></tr>
+  <tr><td><code>Titles()</code></td><td>假裝查資料庫，回傳兩個寫死的標題</td><td><code>db.Posts.ToListAsync()</code> 這類查詢</td></tr>
+  <tr><td><code>: IDisposable</code> 與 <code>Dispose()</code></td><td>用完之後要呼叫的收尾方法，這裡印 <code>[丟掉]</code></td><td>在這裡把資料庫連線還回去</td></tr>
+</table>
+</div>
+<p><strong>怎麼讀輸出</strong>：</p>
+<ul>
+  <li><code>[建立] BlogDb #1</code>：有一個 <code>BlogDb</code> 被 <code>new</code> 出來了。出現 <code>#2</code> 代表又做了第二個</li>
+  <li><code>[丟掉] BlogDb #1</code>：那一個的 <code>Dispose()</code> 被呼叫了，連線還回去了</li>
+  <li>只有 <code>[建立]</code>、沒有對應的 <code>[丟掉]</code>：沒有人負責收尾，真正的程式裡這代表連線沒還</li>
+</ul>
+<p>程式裡會看到 <code>using var db = new BlogDb(…);</code> 或 <code>using (var db = …) { … }</code>：意思是「離開這個範圍時，自動幫我呼叫 <code>db.Dispose()</code>」。</p>
+
+<!-- ============================================================ -->
+<h2 id="step1">第 1 步：在用到的地方自己 new</h2>
+<p>最直覺的寫法：哪裡要用，就在哪裡建立。</p>
+<pre><code class="language-csharp">public class PostsControllerV1
+{
+    public string GetAll()
+    {
+        using var db = new BlogDb("Server=localhost,1433;Database=BlogDb;…");
+        return $"PostsController 用 BlogDb #{db.Id} 查到 {db.Titles().Count} 篇";
+    }
+}
+
+public class CommentsControllerV1
+{
+    public string GetAll()
+    {
+        using var db = new BlogDb("Server=localhost,1433;Database=BlogDb;…");
+        return $"CommentsController 用 BlogDb #{db.Id}";
+    }
+}
+
+Console.WriteLine(new PostsControllerV1().GetAll());
+Console.WriteLine(new CommentsControllerV1().GetAll());</code></pre>
+<pre><code class="nohighlight">  [建立] BlogDb #1
+  [丟掉] BlogDb #1
+PostsController 用 BlogDb #1 查到 2 篇
+  [建立] BlogDb #2
+  [丟掉] BlogDb #2
+CommentsController 用 BlogDb #2</code></pre>
+<p>能動。但兩個 Controller 就已經看得出問題：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>問題</th><th>現在的樣子</th><th>之後會怎樣</th></tr>
+  <tr><td>每個使用者都要知道怎麼建立</td><td>兩個 Controller 都寫了連線字串</td><td>換資料庫、改連線字串，要找出每一個 <code>new BlogDb(…)</code> 逐一修改</td></tr>
+  <tr><td>每個使用者都要記得丟</td><td>每個方法都要寫 <code>using</code></td><td>有一個地方忘了寫，連線就不會還回去</td></tr>
+  <tr><td>同一個請求裡拿不到同一個</td><td>各自 <code>new</code> 各自的，#1 和 #2 是不同的物件</td><td>一個請求裡兩個類別要一起存檔時，改動分散在兩個物件，沒辦法一起成功或一起失敗</td></tr>
+  <tr><td>換不掉</td><td><code>new BlogDb</code> 寫死在方法裡</td><td>想在測試時換成假的，只能改這個類別的程式</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="step2">第 2 步：改成從建構子收進來</h2>
+<p>把 <code>new</code> 從 Controller 裡拿掉。Controller 只在建構子上說「我需要一個 <code>BlogDb</code>」，由外面做好傳進來。</p>
+<pre><code class="language-csharp">public class PostsController
+{
+    private readonly BlogDb _db;
+
+    public PostsController(BlogDb db)      // 我需要一個 BlogDb，誰做的、怎麼做的我不管
+    {
+        _db = db;
+    }
+
+    public string GetAll() =&gt; $"PostsController 用 BlogDb #{_db.Id} 查到 {_db.Titles().Count} 篇";
+}
+
+// CommentsController 的寫法相同
+
+// 外面：做好一個，傳給兩個 Controller
+using (var db = new BlogDb(ConnectionString))
+{
+    var posts = new PostsController(db);
+    var comments = new CommentsController(db);
+    Console.WriteLine(posts.GetAll());
+    Console.WriteLine(comments.GetAll());
+}</code></pre>
+<pre><code class="nohighlight">  [建立] BlogDb #1
+PostsController 用 BlogDb #1 查到 2 篇
+CommentsController 用 BlogDb #1
+  [丟掉] BlogDb #1</code></pre>
+<div class="callout ok">
+<p>📌 <strong>這一步就已經是「依賴注入」了。</strong><code>BlogDb</code> 是 <code>PostsController</code> 的<strong>依賴</strong>；它不是 Controller 自己建立的，是從建構子<strong>注入</strong>的。這種寫法叫<strong>建構子注入</strong>。第 1 課的 <code>public PostsController(BlogDbContext db)</code> 就是這個。</p>
+<p>DI 的核心只有這麼多。後面的第 3、4 步都在回答同一個問題：<strong>「外面」那個負責 <code>new</code> 的人，能不能不要是我？</strong></p>
+</div>
+<div class="table-wrap">
+<table>
+  <tr><th>第 1 步的問題</th><th>這一步之後</th></tr>
+  <tr><td>每個使用者都要知道怎麼建立</td><td>✅ Controller 裡沒有連線字串了</td></tr>
+  <tr><td>每個使用者都要記得丟</td><td>✅ Controller 裡沒有 <code>using</code> 了，外面統一丟</td></tr>
+  <tr><td>同一個請求裡拿不到同一個</td><td>✅ 兩個 Controller 拿到的都是 #1</td></tr>
+  <tr><td>換不掉</td><td>✅ 外面傳什麼進來，Controller 就用什麼</td></tr>
+</table>
+</div>
+<h3>剩下的問題：外面那一段越來越長</h3>
+<p>程式長大之後，Controller 不直接用 <code>BlogDb</code>，而是用 <code>PostService</code>；<code>PostService</code> 需要 <code>BlogDb</code> 和 <code>Clock</code>；Controller 自己也要 <code>Clock</code>。外面就變成這樣：</p>
+<pre><code class="language-csharp">using (var db = new BlogDb(ConnectionString))
+{
+    var controller = new PostsControllerWithService(new PostService(db, new Clock()), new Clock());
+    Console.WriteLine(controller.GetAll());
+}</code></pre>
+<ul>
+  <li>每多一層、每多一個參數，這一行就要改。有十個 Controller 就有十段這樣的程式</li>
+  <li>要自己記得建立的順序：先有 <code>BlogDb</code> 才能做 <code>PostService</code>，才能做 Controller</li>
+  <li>在 Web API 裡更麻煩：Controller 是<strong>框架</strong>在請求進來時建立的，你根本沒有機會寫這一行</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="step3">第 3 步：自己寫一本登記簿</h2>
+<p>把「每樣東西怎麼做」集中記在一個地方，要的時候去查。這個「記做法的地方」就是容器。先自己寫一個最小的版本，只有兩個方法：</p>
+<pre><code class="language-csharp">public class MiniContainer
+{
+    private readonly Dictionary&lt;Type, Func&lt;object&gt;&gt; _recipes = new();
+
+    // 登記：只把「做法」存起來，不執行
+    public void Register&lt;T&gt;(Func&lt;T&gt; how) where T : class
+    {
+        _recipes[typeof(T)] = how;
+    }
+
+    // 要：查到做法，這時才執行
+    public T Get&lt;T&gt;() where T : class
+    {
+        return (T)_recipes[typeof(T)]();
+    }
+}</code></pre>
+<p>它就是一個 <a href="csharp-dictionary.html">Dictionary</a>：key 是型別，value 是「怎麼做出這個型別」的一段程式（<code>Func</code>，見<a href="csharp-delegates-signature.html#delegate">方法簽章那一頁</a>）。</p>
+<pre><code class="language-csharp">var mini = new MiniContainer();
+mini.Register&lt;BlogDb&gt;(() =&gt; new BlogDb(ConnectionString));
+mini.Register&lt;PostsController&gt;(() =&gt; new PostsController(mini.Get&lt;BlogDb&gt;()));
+Console.WriteLine("（登記完了，上面沒有印出任何「建立」）");
+
+var controller = mini.Get&lt;PostsController&gt;();
+Console.WriteLine(controller.GetAll());</code></pre>
+<pre><code class="nohighlight">（登記完了，上面沒有印出任何「建立」）
+  [建立] BlogDb #1
+PostsController 用 BlogDb #1 查到 2 篇</code></pre>
+<ul>
+  <li><strong>登記的時候什麼都沒建立</strong>。<code>() =&gt; new BlogDb(…)</code> 只是把做法交出去，要等有人 <code>Get</code> 才執行</li>
+  <li>連線字串只出現在登記的那一行。要換，改這一行就好</li>
+  <li>這就是 <code>builder.Services.AddDbContext&lt;BlogDbContext&gt;(options =&gt; …)</code> 在做的事：往登記簿加一筆做法</li>
+</ul>
+<h3>延伸：讓登記簿自己看建構子要什麼</h3>
+<p>上面 <code>PostsController</code> 的做法還是自己寫的。但它的建構子已經寫明要什麼了，登記簿可以自己去看：</p>
+<pre><code class="language-csharp">private object Get(Type type)
+{
+    // 有登記做法就照做
+    if (_recipes.TryGetValue(type, out var how))
+    {
+        return how();
+    }
+
+    // 沒登記：看它的建構子要哪些東西，一個一個去要，再呼叫建構子
+    var constructor = type.GetConstructors().Single();
+    var arguments = constructor.GetParameters()
+        .Select(parameter =&gt; Get(parameter.ParameterType))
+        .ToArray();
+    return constructor.Invoke(arguments);
+}</code></pre>
+<pre><code class="language-csharp">var auto = new AutoContainer();
+auto.Register&lt;BlogDb&gt;(() =&gt; new BlogDb(ConnectionString));
+auto.Register&lt;Clock&gt;(() =&gt; new Clock());
+// 沒有登記 PostService，也沒有登記 PostsControllerWithService
+
+var controller = auto.Get&lt;PostsControllerWithService&gt;();</code></pre>
+<pre><code class="nohighlight">（只登記了 BlogDb 和 Clock，沒有登記 PostService、PostsControllerWithService）
+  [建立] BlogDb #1
+  [自動] PostService 的建構子要 (BlogDb, Clock)
+  [自動] PostsControllerWithService 的建構子要 (PostService, Clock)
+PostsController → PostService：2026-11-13 共 2 篇（BlogDb #1）</code></pre>
+<ul>
+  <li>第 2 步那一長串 <code>new PostsControllerWithService(new PostService(db, new Clock()), new Clock())</code> 不用寫了。容器看到 Controller 要 <code>PostService</code>，就去做 <code>PostService</code>；看到它要 <code>BlogDb</code> 和 <code>Clock</code>，就再去要</li>
+  <li><code>GetConstructors()</code>、<code>GetParameters()</code> 是在程式執行時查看一個型別長什麼樣，這個能力叫<strong>反射</strong>。真正的容器也是這樣知道建構子要什麼的（後面<a href="#reflection">有補充</a>）</li>
+  <li>這就是為什麼在 ASP.NET Core 裡，Controller 的建構子寫什麼參數，框架就送什麼進來</li>
+</ul>
+<h3>這本登記簿還缺什麼</h3>
+<p>看上面兩段輸出：有 <code>[建立]</code>，但<strong>沒有 <code>[丟掉]</code></strong>。這個迷你版只會做，不會收：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>缺的</th><th>會怎樣</th></tr>
+  <tr><td>不會丟</td><td>做出來的 <code>BlogDb</code> 沒有人呼叫 <code>Dispose</code>，連線不會還回去</td></tr>
+  <tr><td>不管用多久</td><td>每次 <code>Get&lt;BlogDb&gt;()</code> 都做一個新的。同一個請求裡的兩個類別又拿到不同的物件，第 1 步的老問題回來了</td></tr>
+  <tr><td>沒登記時的錯誤訊息很難懂</td><td>會在很深的地方丟例外，看不出是哪個型別沒登記</td></tr>
+</table>
+</div>
+<p>要補齊這些，就是下一步。</p>
+
+<!-- ============================================================ -->
+<h2 id="step4">第 4 步：換成 .NET 內建的容器</h2>
+<p>.NET 內建的容器做的是同一件事，並把上一步缺的補上了。套件是 <code>Microsoft.Extensions.DependencyInjection</code>，ASP.NET Core 專案已經內含，Console 專案要自己裝。</p>
+<pre><code class="language-csharp">using Microsoft.Extensions.DependencyInjection;
+
+var services = new ServiceCollection();                              // 登記簿
+services.AddScoped&lt;BlogDb&gt;(_ =&gt; new BlogDb(ConnectionString));       // 登記做法
+services.AddSingleton&lt;Clock&gt;();                                      // 沒寫做法：容器自己看建構子
+services.AddScoped&lt;PostService&gt;();
+services.AddTransient&lt;PostsControllerWithService&gt;();
+Console.WriteLine("（AddXxx 都呼叫完了）");
+
+using var provider = services.BuildServiceProvider();                // 登記簿整理成可以查的容器
+Console.WriteLine("（BuildServiceProvider 完畢，上面沒有印出任何「建立」）");
+
+for (var request = 1; request &lt;= 2; request++)
+{
+    Console.WriteLine($"-- 請求 {request} 進來");
+    using (var scope = provider.CreateScope())                       // 一個 scope 代表一個請求
+    {
+        var controller = scope.ServiceProvider.GetRequiredService&lt;PostsControllerWithService&gt;();
+        Console.WriteLine(controller.GetAll());
+
+        var again = scope.ServiceProvider.GetRequiredService&lt;BlogDb&gt;();
+        Console.WriteLine($"同一個請求再要一次 BlogDb，拿到的是 #{again.Id}");
+    }
+
+    Console.WriteLine($"-- 請求 {request} 結束");
+}</code></pre>
+<pre><code class="nohighlight">（AddXxx 都呼叫完了）
+（BuildServiceProvider 完畢，上面沒有印出任何「建立」）
+-- 請求 1 進來
+  [建立] BlogDb #1
+PostsController → PostService：2026-11-13 共 2 篇（BlogDb #1）
+同一個請求再要一次 BlogDb，拿到的是 #1
+  [丟掉] BlogDb #1
+-- 請求 1 結束
+-- 請求 2 進來
+  [建立] BlogDb #2
+PostsController → PostService：2026-11-13 共 2 篇（BlogDb #2）
+同一個請求再要一次 BlogDb，拿到的是 #2
+  [丟掉] BlogDb #2
+-- 請求 2 結束</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>觀察</th><th>代表什麼</th></tr>
+  <tr><td>登記與 <code>BuildServiceProvider</code> 之後都沒有 <code>[建立]</code></td><td>登記不等於建立，和第 3 步一樣</td></tr>
+  <tr><td>請求進來、有人要的時候才 <code>[建立]</code></td><td>用到才做</td></tr>
+  <tr><td>同一個請求再要一次，拿到同一個（#1）</td><td>容器記得這個請求已經做過，不再做第二個</td></tr>
+  <tr><td>請求結束時出現 <code>[丟掉]</code></td><td><strong>容器負責丟</strong>，沒有人寫 <code>Dispose</code> 或 <code>using var db</code></td></tr>
+  <tr><td>第二個請求是 #2</td><td>每個請求有自己的一個，互不影響</td></tr>
+</table>
+</div>
+<h3>和迷你登記簿對照</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>迷你登記簿（第 3 步）</th><th>.NET 內建的容器</th><th>ASP.NET Core 裡的名字</th></tr>
+  <tr><td><code>new MiniContainer()</code></td><td><code>new ServiceCollection()</code></td><td><code>builder.Services</code></td></tr>
+  <tr><td><code>Register&lt;T&gt;(做法)</code></td><td><code>AddScoped&lt;T&gt;(做法)</code> 等</td><td><code>AddDbContext</code>、<code>AddControllers</code>、<code>AddScoped</code>…</td></tr>
+  <tr><td>（沒有這一步）</td><td><code>BuildServiceProvider()</code></td><td><code>builder.Build()</code></td></tr>
+  <tr><td><code>Get&lt;T&gt;()</code></td><td><code>GetRequiredService&lt;T&gt;()</code></td><td>框架建立 Controller 時替你呼叫</td></tr>
+  <tr><td>自動看建構子</td><td>有</td><td>有</td></tr>
+  <tr><td>不會丟、不管用多久</td><td><strong>會丟，而且可以指定用多久</strong></td><td>同左</td></tr>
+</table>
+</div>
+<h3>用多久：登記時選的那個字</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>登記的寫法</th><th>多久做一個新的</th><th>上面的例子</th></tr>
+  <tr><td><code>AddScoped</code></td><td>每個 scope（請求）一個，scope 結束就丟</td><td><code>BlogDb</code>：請求 1 是 #1，請求 2 是 #2</td></tr>
+  <tr><td><code>AddSingleton</code></td><td>整個程式只有一個</td><td><code>Clock</code></td></tr>
+  <tr><td><code>AddTransient</code></td><td>每次要都做一個新的</td><td>Controller</td></tr>
+</table>
+</div>
+<p>這叫<strong>生命週期</strong>。<code>AddDbContext</code> 登記的是 Scoped，所以第 1 課的 <code>BlogDbContext</code> 是每個請求一個。三種該怎麼選、選錯會怎樣，是下一課 03b 的主題；這一課只要知道有這三種。</p>
+
+<!-- ============================================================ -->
+<h2 id="effect">所以 DI 帶來什麼</h2>
+<p>把四步走過的東西對回開頭那張「效果」表：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>第 1 步的問題</th><th>哪一步解決</th><th>怎麼解決</th></tr>
+  <tr><td>每個使用者都要知道怎麼建立</td><td>第 2 步</td><td>改成從建構子收進來</td></tr>
+  <tr><td>外面要自己一層一層 <code>new</code></td><td>第 3 步</td><td>做法集中登記，容器自己看建構子</td></tr>
+  <tr><td>要記得丟、同一個請求要拿到同一個</td><td>第 4 步</td><td>容器管生命週期</td></tr>
+  <tr><td>換不掉</td><td>第 2 步加上介面</td><td>見下方</td></tr>
+</table>
+</div>
+<h3>換一個實作，使用它的類別不用改</h3>
+<p>第 2 步之後，Controller 拿到什麼就用什麼。如果它要的是一個<strong>介面</strong>（<a href="csharp-class-object.html">類別與物件那一頁</a>的第 6 節），就可以在登記的地方決定要給哪一個實作：</p>
+<pre><code class="language-csharp">public interface IPostStore
+{
+    List&lt;string&gt; Titles();
+}
+
+public class SqlPostStore : IPostStore { /* 真的去查資料庫 */ }
+public class FakePostStore : IPostStore { /* 回傳寫死的假資料 */ }
+
+public class ReportController
+{
+    private readonly IPostStore _store;
+
+    public ReportController(IPostStore store)     // 只知道介面，不知道是哪一個實作
+    {
+        _store = store;
+    }
+
+    public string Summary() =&gt; $"{_store.Titles().Count} 篇：{string.Join("、", _store.Titles())}";
+}
+
+services.AddScoped&lt;IPostStore, SqlPostStore&gt;();      // 有人要 IPostStore → 給 SqlPostStore
+// 或
+services.AddScoped&lt;IPostStore, FakePostStore&gt;();     // 有人要 IPostStore → 給 FakePostStore</code></pre>
+<pre><code class="nohighlight">登記 SqlPostStore → 2 篇：（從資料庫查到的）Hello、（從資料庫查到的）第二篇
+登記 FakePostStore → 1 篇：假資料 A</code></pre>
+<p><code>ReportController</code> 一個字都沒改，只換了登記的那一行。這就是測試能寫得起來的原因：測試時登記假的，不用真的開資料庫（06 會用到）。</p>
+<h3>沒登記就要，會怎樣</h3>
+<pre><code class="nohighlight">InvalidOperationException: Unable to resolve service for type 'IPostStore' while attempting to activate 'ReportController'.</code></pre>
+<p>這句錯誤訊息之後會常看到，讀法是：「要建立 <code>ReportController</code> 時，它的建構子要一個 <code>IPostStore</code>，但登記簿裡查不到」。解法是去補登記。</p>
+<h3>代價與不適用的情況</h3>
+<ul>
+  <li><strong>多了一層間接</strong>。看 Controller 看不出拿到的是哪個實作，要去找登記的地方。追程式時要習慣這件事</li>
+  <li><strong>錯誤從編譯時移到執行時</strong>。忘了登記，編譯會過，要到有人要的時候才丟上面那個例外</li>
+  <li><strong>不是每個東西都要登記</strong>。只是裝資料的類別（Entity、請求與回應的物件）、沒有依賴的小工具，直接 <code>new</code> 就好。會需要登記的是「有依賴、或可能要換、或要管生命週期」的類別</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="step5">第 5 步：ASP.NET Core 幫你做了哪些</h2>
+<p>第 4 步的程式裡，登記之外的部分（<code>BuildServiceProvider</code>、每個請求 <code>CreateScope</code>、<code>GetRequiredService</code>）在 Web API 專案裡你一行都沒寫，因為框架替你做了：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>第 4 步你自己寫的</th><th>在 BlogApi 裡是誰做的</th><th>你寫的只有</th></tr>
+  <tr><td><code>new ServiceCollection()</code></td><td><code>WebApplication.CreateBuilder(args)</code> 建好，放在 <code>builder.Services</code></td><td>—</td></tr>
+  <tr><td><code>services.AddScoped&lt;BlogDb&gt;(做法)</code></td><td>你</td><td><code>builder.Services.AddDbContext&lt;BlogDbContext&gt;(options =&gt; …)</code></td></tr>
+  <tr><td><code>services.BuildServiceProvider()</code></td><td><code>builder.Build()</code></td><td>—</td></tr>
+  <tr><td>每個請求 <code>CreateScope()</code>，結束時丟掉</td><td>ASP.NET Core 在每個請求進來與結束時做</td><td>—</td></tr>
+  <tr><td><code>GetRequiredService&lt;Controller&gt;()</code></td><td>ASP.NET Core 在路由找到 Controller 之後做</td><td>Controller 的建構子：<code>public PostsController(BlogDbContext db)</code></td></tr>
+</table>
+</div>
+<p>所以第 1 課你只寫了兩個地方：<strong>登記的那一行</strong>，和<strong>建構子的參數</strong>。中間全部是框架做的，這就是當時覺得「東西是憑空出現的」的原因。</p>
+<p>接下來的章節，把這條路在真正的 BlogApi 裡一段一段攤開，並附上框架的原始碼與實測。<strong>到這裡為止的五步已經是 DI 的全部觀念</strong>；後面是「眼見為憑」的部分，第一次讀可以只看每一段打開的內容，不用展開原始碼。</p>
+
+<!-- ============================================================ -->
+<h2 id="wiring">在 BlogApi 裡實際走一遍：三段程式是誰串起來的</h2>
 <p>第 1 課的 <a href="01-efcore-crud.html#entity-dbcontext">3-3</a> 寫了建構子、<a href="01-efcore-crud.html#register">3-5</a> 寫了註冊、<a href="01-efcore-crud.html#controller-skeleton">3-7</a> 寫了 Controller，但這三段程式<strong>彼此沒有呼叫對方</strong>，你也沒有寫任何 <code>new BlogDbContext(…)</code>。把它們串起來的是 ASP.NET Core 和 EF Core。先看整條流程：</p>
 
 <div class="diagram">

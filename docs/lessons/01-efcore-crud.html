@@ -1237,11 +1237,12 @@ dotnet user-secrets list                       # 看目前存了什麼</code></p
     </td>
     <td>
       <ul>
-        <li><a href="03a-di-how-it-works.html">03a</a>：「登記簿」（DI 容器）是怎麼運作的、框架怎麼知道建構子要什麼</li>
+        <li><a href="03a-di-how-it-works.html#what">03a</a>：DI 是什麼、要解決什麼問題</li>
+        <li><a href="03a-di-how-it-works.html#step1">03a</a>：沒有 DI 的話要怎麼寫？從自己 <code>new</code> 一步一步改到 DI</li>
+        <li><a href="03a-di-how-it-works.html#step3">03a</a>：「登記簿」（DI 容器）是怎麼運作的、框架怎麼知道建構子要什麼</li>
         <li><a href="03a-di-how-it-works.html#lifetime">03a</a>：lambda 什麼時候執行、同一個請求會拿到幾個 DbContext</li>
-        <li>03b：沒有 DI 的話要怎麼寫？會遇到什麼問題？</li>
-        <li>03b：自己的 Service 怎麼註冊、怎麼拿</li>
-        <li>03b：生命週期 Transient、Scoped、Singleton 差在哪</li>
+        <li>03b：把邏輯從 Controller 抽成自己的 Service，怎麼註冊、怎麼拿</li>
+        <li>03b：生命週期 Transient、Scoped、Singleton 該怎麼選</li>
       </ul>
     </td>
   </tr>
@@ -1424,7 +1425,7 @@ public class PostsController : ControllerBase
 </ol>
 </div>
 
-<p>框架內部到底怎麼做到的（登記簿長什麼樣、怎麼知道建構子要什麼、你的 lambda 什麼時候才執行），獨立成一課：<a href="03a-di-how-it-works.html">03a｜DI 怎麼把東西送進 Controller</a>。那裡有分段的流程圖、框架原始碼與實測。<strong>現在不用讀</strong>，先把這一課的練習做完，學到第 3 課時再去。</p>
+<p>框架內部到底怎麼做到的（登記簿長什麼樣、怎麼知道建構子要什麼、你的 lambda 什麼時候才執行），獨立成一課：<a href="03a-di-how-it-works.html">03a｜依賴注入（DI）</a>。那一課先從「自己 <code>new</code>」一步一步講到 DI，再用分段的流程圖、框架原始碼與實測說明框架怎麼做。<strong>現在不用讀</strong>，先把這一課的練習做完，學到第 3 課時再去。</p>
 
 <!-- ============================================================ -->
 <h2 id="exercise">4. 練習題</h2>

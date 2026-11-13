@@ -56,7 +56,7 @@
   <tr><td>想看一句 SQL</td><td>加 endpoint → 啟動 → 用 <code>.http</code> 打 → 看 Run 視窗</td><td>改一行 LINQ → 按 ▶ → 直接印在主控台</td></tr>
   <tr><td>噪音</td><td>路由、Controller、狀態碼、JSON 全混在一起</td><td>只有 LINQ 和 SQL</td></tr>
   <tr><td>Debug</td><td>要等請求進來</td><td>Rider 直接下中斷點，單步看 <code>IQueryable</code> 什麼時候執行</td></tr>
-  <tr><td>順便學到</td><td>—</td><td><strong>自己 <code>new</code> DbContext</strong>：沒有 DI 的世界長什麼樣，對照 <a href="03a-di-how-it-works.html">03a</a>（框架怎麼幫你 <code>new</code>），也是 03b「沒有 DI 會怎樣」的伏筆</td></tr>
+  <tr><td>順便學到</td><td>—</td><td><strong>自己 <code>new</code> DbContext</strong>：沒有 DI 的世界長什麼樣，對照 <a href="03a-di-how-it-works.html">03a</a>的第 1 步（自己 <code>new</code> 會遇到什麼問題）</td></tr>
 </table>
 </div>
 <p>資料庫也是獨立的：不用部落格的 <code>BlogDb</code>，另外建一個有五張表的小商店，JOIN、GROUP BY 今天就能練，不用等第 2 課。這套商店的結構之後做購物網站可以直接延用。</p>
