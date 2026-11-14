@@ -44,7 +44,12 @@
   <tr><td>伺服器（server）</td><td>一直開著、等請求進來再回應的程式</td><td>網站、Web API</td></tr>
 </table>
 </div>
-<p>從按下 Enter 到拿到回應，中間有六個步驟：</p>
+<p>先看大方向。在瀏覽器輸入網址、按下 Enter 之後，依序經過四個階段：</p>
+<div class="diagram">
+<img src="../images/web-overview.svg" alt="輸入網址按下 Enter 之後的四個階段：一，瀏覽器，輸入網址按下 Enter；二，DNS，把網址裡的主機名稱換成 IP 位址；三，伺服器，收到請求，處理之後準備好回應；四，回應，狀態碼和內容送回瀏覽器，畫面出現" style="width:100%;height:auto">
+<div class="diagram-caption">瀏覽器先問到伺服器在哪裡，再把請求送過去；伺服器處理完，把回應送回來</div>
+</div>
+<p>把這四個階段拆細一點，是六個步驟：</p>
 <div class="diagram">
 <img src="../images/request-journey.svg" alt="從網址到回應的六個步驟：拆開網址、用主機名稱查出 IP 位址、連到那台機器的 port、送出請求、伺服器處理並回應、用戶端處理回應" style="width:100%;height:auto">
 <div class="diagram-caption">前三步在找伺服器，第四步才送出請求。下面每一節講其中一段</div>
@@ -142,14 +147,28 @@ http://127.0.0.1:5062/echo     → 200</code></pre>
 
 curl: (7) Failed to connect to localhost
 port 5999 ... Couldn't connect to server</code></pre>
-<p>5999 這個 port 沒有程式在聽。停在圖裡的第 ③ 步，沒有請求、沒有回應，也<mark class="caution">沒有任何狀態碼</mark>。要檢查的是：伺服器有沒有啟動、port 有沒有打錯。</p>
+<p>走到哪一步：</p>
+<ol>
+  <li><span class="hl b">✓</span> 找到機器：<code>localhost</code> 就是這台電腦</li>
+  <li><span class="hl c">✗</span> 連到 port：5999 沒有程式在聽，<strong>停在這裡</strong></li>
+  <li>送出請求：沒有發生</li>
+  <li>伺服器回應：沒有發生</li>
+</ol>
+<p>所以沒有請求、沒有回應，也<mark class="caution">沒有任何狀態碼</mark>。要檢查的是：伺服器有沒有啟動、port 有沒有打錯。</p>
 </div>
 <div class="good">
 <p class="compare-label">✓ 404：連上了，伺服器有回應</p>
 <pre><code class="nohighlight">curl.exe -i http://localhost:5062/favicon.ico
 
 HTTP/1.1 404 Not Found</code></pre>
-<p>伺服器收到請求，回答「我沒有這個路徑」。走完了六個步驟。要檢查的是：路徑有沒有打錯。</p>
+<p>走到哪一步：</p>
+<ol>
+  <li><span class="hl b">✓</span> 找到機器</li>
+  <li><span class="hl b">✓</span> 連到 port：5062 有程式在聽</li>
+  <li><span class="hl b">✓</span> 送出請求：<code>GET /favicon.ico</code></li>
+  <li><span class="hl b">✓</span> 伺服器回應：<strong>404</strong>，意思是「我沒有這個路徑」</li>
+</ol>
+<p>每一步都走完了，伺服器是正常的。要檢查的是：路徑有沒有打錯。</p>
 </div>
 </div>
 

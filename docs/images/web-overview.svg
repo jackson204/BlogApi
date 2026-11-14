@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 318" width="1000" height="318" role="img" aria-label="輸入網址按下 Enter 之後的四個階段：一，瀏覽器，輸入網址按下 Enter；二，DNS，把網址裡的主機名稱換成 IP 位址；三，伺服器，收到請求，處理之後準備好回應；四，回應，狀態碼和內容送回瀏覽器，畫面出現">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --ok: #1a7f37; --ok-s: #dcfce7;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --ok: #3fb950; --ok-s: #12261b;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 15px; font-weight: 700; }
+  .t { font-size: 15px; font-weight: 700; }
+  .sm { font-size: 12px; fill: var(--muted); }
+  .lbl { font-size: 11.5px; fill: var(--muted); }
+  .k1 { fill: var(--c1); } .k-ok { fill: var(--ok); }
+  .line { fill: var(--soft); stroke: var(--muted); stroke-width: 2; }
+  .stroke { fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+  .soft { fill: var(--border); }
+  .blue { fill: var(--c1-s); stroke: var(--c1); stroke-width: 2; }
+  .blue-line { fill: none; stroke: var(--c1); stroke-width: 2; }
+  .blue-fill { fill: var(--c1-s); }
+  .dot { fill: var(--muted); }
+  .dot-ok { fill: var(--ok); }
+  .badge { fill: var(--ok); }
+  .badge-text { fill: var(--bg); font-size: 11.5px; font-weight: 700; }
+  .check { fill: none; stroke: var(--bg); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .code { font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 20px; font-weight: 700; fill: var(--muted); }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; stroke-dasharray: 6 5; }
+  .back { fill: none; stroke: var(--ok); stroke-width: 2; stroke-dasharray: 6 5; }
+  .f-m { fill: var(--muted); } .f-ok { fill: var(--ok); }
+</style>
+<defs>
+  <marker id="w1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-m" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="w2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-ok" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="318" rx="12"/>
+
+<text class="h" x="500" y="30" text-anchor="middle">輸入網址、按下 Enter 之後發生的事</text>
+
+<!-- ① 瀏覽器 -->
+<rect class="line" x="80" y="58" width="120" height="90" rx="8"/>
+<path class="stroke" d="M80,78 H200"/>
+<circle class="dot" cx="92" cy="68" r="3"/><circle class="dot" cx="102" cy="68" r="3"/><circle class="dot" cx="112" cy="68" r="3"/>
+<rect class="bg" x="92" y="85" width="96" height="13" rx="4"/>
+<rect class="blue-fill" x="92" y="104" width="96" height="18" rx="3"/>
+<rect class="soft" x="92" y="128" width="64" height="6" rx="3"/>
+<rect class="soft" x="92" y="138" width="40" height="5" rx="2.5"/>
+
+<!-- ② DNS -->
+<circle class="blue" cx="380" cy="103" r="43"/>
+<ellipse class="blue-line" cx="380" cy="103" rx="18" ry="43"/>
+<path class="blue-line" d="M337,103 H423 M344,82 Q380,94 416,82 M344,124 Q380,112 416,124"/>
+<rect class="badge" x="398" y="124" width="48" height="24" rx="12"/>
+<text class="badge-text" x="422" y="140" text-anchor="middle">DNS</text>
+
+<!-- ③ 伺服器 -->
+<rect class="line" x="570" y="58" width="100" height="24" rx="5"/>
+<rect class="line" x="570" y="88" width="100" height="24" rx="5"/>
+<rect class="line" x="570" y="118" width="100" height="24" rx="5"/>
+<circle class="dot-ok" cx="583" cy="70" r="3.5"/><circle class="dot-ok" cx="583" cy="100" r="3.5"/><circle class="dot-ok" cx="583" cy="130" r="3.5"/>
+<path class="stroke" d="M600,70 H656 M600,100 H656 M600,130 H656 M620,142 V152 M596,152 H644"/>
+
+<!-- ④ 回應 -->
+<path class="line" d="M826,58 H874 L896,80 V148 H826 Z"/>
+<path class="stroke" d="M874,58 V80 H896"/>
+<text class="code" x="859" y="116" text-anchor="middle">{ }</text>
+<circle class="badge" cx="896" cy="142" r="15"/>
+<path class="check" d="M889,142 l5,5 l9,-10"/>
+
+<!-- 箭頭 -->
+<text class="lbl" x="268" y="94" text-anchor="middle">主機在哪裡？</text>
+<path class="arr" d="M214,103 H322" marker-end="url(#w1)"/>
+<text class="lbl" x="497" y="94" text-anchor="middle">送出請求</text>
+<path class="arr" d="M440,103 H554" marker-end="url(#w1)"/>
+<text class="lbl" x="748" y="94" text-anchor="middle">產生回應</text>
+<path class="arr" d="M686,103 H810" marker-end="url(#w1)"/>
+
+<!-- 說明 -->
+<text class="t k1" x="140" y="182" text-anchor="middle">1. 瀏覽器</text>
+<text class="sm" x="140" y="203" text-anchor="middle">輸入網址，</text>
+<text class="sm" x="140" y="220" text-anchor="middle">按下 Enter</text>
+
+<text class="t k1" x="380" y="182" text-anchor="middle">2. DNS</text>
+<text class="sm" x="380" y="203" text-anchor="middle">把網址裡的主機名稱</text>
+<text class="sm" x="380" y="220" text-anchor="middle">換成 IP 位址</text>
+
+<text class="t" x="620" y="182" text-anchor="middle">3. 伺服器</text>
+<text class="sm" x="620" y="203" text-anchor="middle">收到請求，</text>
+<text class="sm" x="620" y="220" text-anchor="middle">執行對應的程式</text>
+
+<text class="t k-ok" x="860" y="182" text-anchor="middle">4. 回應</text>
+<text class="sm" x="860" y="203" text-anchor="middle">狀態碼和內容</text>
+<text class="sm" x="860" y="220" text-anchor="middle">準備好了</text>
+
+<!-- 回到瀏覽器 -->
+<path class="back" d="M860,234 V258 H140 V238" marker-end="url(#w2)"/>
+<text x="500" y="282" text-anchor="middle">回應送回瀏覽器，畫面出現</text>
+<text class="sm" x="500" y="302" text-anchor="middle">寫 Web API 就是在寫第 3 步：收到請求之後，執行哪一段程式、回應什麼</text>
+</svg>

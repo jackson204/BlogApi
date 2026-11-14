@@ -13,6 +13,10 @@
   --warn-soft: #fbf0de;
   --danger: #b3261e;
   --danger-soft: #fbe7e5;
+  --violet: #7a3fc4;
+  --violet-soft: #f1e8fb;
+  --teal: #0b7285;
+  --teal-soft: #e0f3f6;
   --code-bg: #f3f1ea;
   --radius: 10px;
   --font: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
@@ -35,6 +39,10 @@
     --warn-soft: #33281a;
     --danger: #f08a82;
     --danger-soft: #3a1f1d;
+    --violet: #c49bf5;
+    --violet-soft: #2e2140;
+    --teal: #5fc4d6;
+    --teal-soft: #15303a;
     --code-bg: #111315;
   }
 }
@@ -107,6 +115,16 @@ pre code.hljs { background: none; padding: 0; }
 .hl.a { background: var(--accent-soft); color: var(--accent); }
 .hl.b { background: var(--ok-soft); color: var(--ok); }
 .hl.c { background: var(--danger-soft); color: var(--danger); }
+/* 分段上色：一串文字拆成幾段，每段一個顏色（例如網址的六段）。
+   沒有左右內距，放在等寬的程式碼區塊裡不會讓上下行錯位 */
+.seg { font-weight: 700; border-radius: 3px; }
+.seg.s1 { background: var(--violet-soft); color: var(--violet); }
+.seg.s2 { background: var(--accent-soft); color: var(--accent); }
+.seg.s3 { background: var(--teal-soft); color: var(--teal); }
+.seg.s4 { background: var(--ok-soft); color: var(--ok); }
+.seg.s5 { background: var(--warn-soft); color: var(--warn); }
+.seg.s6 { background: var(--danger-soft); color: var(--danger); }
+td .seg, p .seg, li .seg { padding: 0 4px; }
 /* 重點標記：key = 這一段要帶走的詞；caution = 要小心、容易踩到 */
 mark.key, mark.caution { padding: 0 4px; border-radius: 4px; font-weight: 700; }
 mark.key { background: var(--accent-soft); color: var(--accent); }

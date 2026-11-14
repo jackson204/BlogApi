@@ -44,25 +44,26 @@
 <!-- ============================================================ -->
 <h2 id="parts">1. 一條網址拆成幾段</h2>
 <p>先看一條完整的網址。瀏覽器網址列看到的是整條，但伺服器收到的只有其中兩段。</p>
-<pre><code class="nohighlight">https://example.com:5107/api/posts/5?keyword=docker&amp;page=2#top
-\___/   \_________/ \__/\__________/ \___________________/ \_/
- [1]        [2]      [3]     [4]              [5]          [6]</code></pre>
+<pre><code class="nohighlight"><span class="seg s1">https</span>://<span class="seg s2">example.com</span>:<span class="seg s3">5107</span><span class="seg s4">/api/posts/5</span>?<span class="seg s5">keyword=docker&amp;page=2</span>#<span class="seg s6">top</span>
+<span class="seg s1">\___/</span>   <span class="seg s2">\_________/</span> <span class="seg s3">\__/</span><span class="seg s4">\__________/</span> <span class="seg s5">\___________________/</span> <span class="seg s6">\_/</span>
+ <span class="seg s1">[1]</span>        <span class="seg s2">[2]</span>      <span class="seg s3">[3]</span>     <span class="seg s4">[4]</span>              <span class="seg s5">[5]</span>          <span class="seg s6">[6]</span></code></pre>
 <div class="table-wrap">
 <table>
   <tr><th>段</th><th>名稱</th><th>這一段在說什麼</th><th>誰會用到它</th></tr>
-  <tr><td>[1]</td><td>協定（scheme）<code>https</code></td><td>用哪一套規則溝通：<code>http</code>，或加密的 <code>https</code></td><td>瀏覽器決定怎麼建立連線</td></tr>
-  <tr><td>[2]</td><td>主機（host）<code>example.com</code></td><td>要連到哪一台電腦</td><td>瀏覽器查 DNS、建立連線；伺服器從 <code>Host</code> header 看到它</td></tr>
-  <tr><td>[3]</td><td>port <code>5107</code></td><td>那台電腦上的哪一個門。省略時 https 是 443、http 是 80</td><td>瀏覽器</td></tr>
-  <tr><td>[4]</td><td>路徑（path）<code>/api/posts/5</code></td><td>對哪個資源：第 5 篇文章</td><td>伺服器用它決定交給哪個方法（路由）</td></tr>
-  <tr><td>[5]</td><td>query string <code>keyword=docker&amp;page=2</code></td><td>附加條件：怎麼篩、怎麼排、第幾頁</td><td>伺服器拿來填方法的參數</td></tr>
-  <tr><td>[6]</td><td>fragment <code>top</code></td><td>頁面裡的某個位置，例如跳到某個標題</td><td>只有瀏覽器用，<strong>不會送給伺服器</strong></td></tr>
+  <tr><td><span class="seg s1">[1]</span></td><td>協定（scheme）<code>https</code></td><td>用哪一套規則溝通：<code>http</code>，或加密的 <code>https</code></td><td>瀏覽器決定怎麼建立連線</td></tr>
+  <tr><td><span class="seg s2">[2]</span></td><td>主機（host）<code>example.com</code></td><td>要連到哪一台電腦</td><td>瀏覽器查 DNS、建立連線；伺服器從 <code>Host</code> header 看到它</td></tr>
+  <tr><td><span class="seg s3">[3]</span></td><td>port <code>5107</code></td><td>那台電腦上的哪一個門。省略時 https 是 443、http 是 80</td><td>瀏覽器</td></tr>
+  <tr><td><span class="seg s4">[4]</span></td><td>路徑（path）<code>/api/posts/5</code></td><td>對哪個資源：第 5 篇文章</td><td>伺服器用它決定交給哪個方法（路由）</td></tr>
+  <tr><td><span class="seg s5">[5]</span></td><td>query string <code>keyword=docker&amp;page=2</code></td><td>附加條件：怎麼篩、怎麼排、第幾頁</td><td>伺服器拿來填方法的參數</td></tr>
+  <tr><td><span class="seg s6">[6]</span></td><td>fragment <code>top</code></td><td>頁面裡的某個位置，例如跳到某個標題</td><td>只有瀏覽器用，<strong>不會送給伺服器</strong></td></tr>
 </table>
 </div>
 
 <h3 id="sent">真正送到伺服器的是哪幾段</h3>
 <p>瀏覽器送出請求時，會把網址拆開放進 HTTP 請求的不同位置：</p>
-<pre><code class="language-http">GET /api/posts/5?keyword=docker&amp;page=2 HTTP/1.1
-Host: example.com:5107</code></pre>
+<pre><code class="nohighlight">GET <span class="seg s4">/api/posts/5</span>?<span class="seg s5">keyword=docker&amp;page=2</span> HTTP/1.1
+Host: <span class="seg s2">example.com</span>:<span class="seg s3">5107</span></code></pre>
+<p>顏色和上面的六段一樣。<span class="seg s1">協定</span>和<span class="seg s6">fragment</span>沒有出現在請求裡。</p>
 <ul>
   <li><strong>第一行「動詞 路徑?query string」</strong>：路徑和 query string 連在一起送</li>
   <li><strong>主機和 port</strong> 變成 <code>Host</code> header</li>
