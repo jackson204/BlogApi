@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C# 補充：Attribute</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / <a href="../index.html#concepts">觀念庫</a> / C# 語法</div>
+<h1>C# 補充：Attribute（貼在程式碼上的標記）</h1>
+<p class="subtitle">類別或方法上面那一行方括號，例如 <code>[Obsolete]</code>、<code>[Required]</code>、<code>[HttpGet]</code>，叫 attribute。這頁講它是什麼、怎麼寫、為什麼貼上去不一定有效果，以及什麼時候才需要自己寫一個。</p>
+<div class="tags">
+  <span class="tag">attribute</span><span class="tag">特性</span><span class="tag">方括號</span><span class="tag">[Obsolete]</span><span class="tag">[Required]</span><span class="tag">AttributeUsage</span><span class="tag">GetCustomAttribute</span><span class="tag">reflection</span><span class="tag">反射</span><span class="tag">CS0182</span><span class="tag">CS0592</span><span class="tag">CS0618</span><span class="tag">file-based app</span>
+</div>
+
+<p>範例都是可以直接執行的單一檔案：存成 <code>demo.cs</code>，用 <code>dotnet run demo.cs</code> 執行（.NET 10）。輸出是實際執行的結果。這種執行方式會多印幾行 <code>IL2026</code> 警告，和這頁的內容無關，下面的輸出都省略了。</p>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#what">attribute 是什麼</a></li>
+    <li><a href="#syntax">寫法</a></li>
+    <li><a href="#reader">標記自己不做事，要有人讀它</a></li>
+    <li><a href="#who">誰在讀</a></li>
+    <li><a href="#mistake">貼了卻沒效果</a></li>
+    <li><a href="#own">什麼時候自己寫一個</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="what">1. attribute 是什麼</h2>
+<p class="lead">attribute 是<mark class="key">貼在程式碼上的標記</mark>，寫在方括號裡，放在類別、方法、屬性或參數的前面。它替那段程式碼附加一筆說明，讓別的程式可以讀到。</p>
+<pre><code class="language-csharp">public class Calc
+{
+    [Obsolete("請改用 Add")]                 // 貼在方法上的標記
+    public int OldAdd(int a, int b) =&gt; a + b;
+
+    public int Add(int a, int b) =&gt; a + b;
+}</code></pre>
+<p><code>[Obsolete("請改用 Add")]</code> 沒有改變 <code>OldAdd</code> 的內容，方法照樣算得出結果。它只是在這個方法上留了一筆資料：「這個方法過時了，說明文字是『請改用 Add』」。</p>
+<p>中文資料有時把 attribute 翻成「特性」。<mark class="caution">中文版的編譯器訊息把它翻成「屬性」</mark>，和 property（<code>{ get; set; }</code> 那種）是同一個詞，看錯誤訊息時要從上下文分辨。這頁一律寫 attribute。</p>
+
+<!-- ============================================================ -->
+<h2 id="syntax">2. 寫法</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>寫法</th><th>意思</th></tr>
+  <tr><td><code>[Obsolete]</code></td><td>不帶任何值</td></tr>
+  <tr><td><code>[Obsolete("請改用 Add")]</code></td><td>括號裡的值照順序傳給 attribute 的建構子</td></tr>
+  <tr><td><code>[Label("蘋果", Color = "紅")]</code></td><td><code>名稱 = 值</code> 是設定 attribute 的某個屬性，寫在照順序的值後面</td></tr>
+  <tr><td><code>[Required, MaxLength(100)]</code></td><td>一次貼兩個，和分兩行寫 <code>[Required]</code>、<code>[MaxLength(100)]</code> 一樣</td></tr>
+  <tr><td><code>[ObsoleteAttribute]</code></td><td>和 <code>[Obsolete]</code> 一樣。attribute 的類別名稱都用 <code>Attribute</code> 結尾，貼的時候可以省略這個結尾</td></tr>
+</table>
+</div>
+<p>attribute 本身是一個<mark class="key">繼承 <code>Attribute</code> 的類別</mark>。方括號裡的寫法對應到這個類別的建構子和屬性：</p>
+<pre><code class="language-csharp">using System.Reflection;
+
+var a = typeof(Apple).GetCustomAttribute&lt;LabelAttribute&gt;();
+Console.WriteLine($"{a!.Text} / {a.Color}");
+var b = typeof(Banana).GetCustomAttribute&lt;LabelAttribute&gt;();
+Console.WriteLine($"{b!.Text} / {b.Color}");
+
+public class LabelAttribute : Attribute
+{
+    public string Text { get; }
+    public string Color { get; set; } = "沒有指定";
+
+    public LabelAttribute(string text)
+    {
+        Text = text;
+    }
+}
+
+// "蘋果" 傳給建構子的 text；Color = "紅" 設定 Color 屬性
+[Label("蘋果", Color = "紅")]
+public class Apple { }
+
+// 寫完整的類別名稱也可以；沒有設定 Color，用預設值
+[LabelAttribute("香蕉")]
+public class Banana { }</code></pre>
+<pre><code class="nohighlight">蘋果 / 紅
+香蕉 / 沒有指定</code></pre>
+<p>類別、建構子、繼承的寫法見「<a href="csharp-class-object.html">類別與物件</a>」。</p>
+
+<h3>括號裡只能放編譯時就確定的值</h3>
+<p>標記是編譯的時候就寫進程式裡的，所以括號裡只能放字串、數字、<code>true</code>／<code>false</code>、enum、<code>typeof(…)</code>、<code>nameof(…)</code> 這類不用執行程式就知道的值。</p>
+<div class="compare">
+<div class="bad">
+<p class="compare-label">✗ 編譯不過：值要執行了才知道</p>
+<pre><code class="language-csharp">[Label(DateTime.Now.ToString())]
+public class Apple { }</code></pre>
+<pre><code class="nohighlight">error CS0182: 屬性引數必須是常數運算式、typeof 運算式
+或屬性參數類型的陣列建立運算式</code></pre>
+</div>
+<div class="good">
+<p class="compare-label">✓ 可以：值寫死在程式碼裡</p>
+<pre><code class="language-csharp">[Label("蘋果")]
+public class Apple { }</code></pre>
+<p>需要執行時才決定的值，不適合放在 attribute，改用一般的屬性或方法參數。</p>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="reader">3. 標記自己不做事，要有人讀它</h2>
+<p class="lead">attribute 只是一筆附在程式碼上的資料。<mark class="key">沒有任何程式去讀它，它就沒有任何效果</mark>。這是 attribute 最容易誤會的地方。</p>
+<p>先看沒有人讀的情況。<code>LabelAttribute</code> 的建構子裡放了一行印字，用來看它有沒有被執行：</p>
+<pre><code class="language-csharp">var apple = new Apple();
+Console.WriteLine("程式照常執行，[Label] 沒有任何效果");
+
+public class LabelAttribute : Attribute
+{
+    public string Text { get; }
+
+    public LabelAttribute(string text)
+    {
+        Text = text;
+        Console.WriteLine("LabelAttribute 的建構子被呼叫了");
+    }
+}
+
+[Label("蘋果")]
+public class Apple { }</code></pre>
+<pre><code class="nohighlight">程式照常執行，[Label] 沒有任何效果</code></pre>
+<p><code>Apple</code> 被建立了，但「LabelAttribute 的建構子被呼叫了」沒有印出來。貼了標記、也建立了被貼的類別的物件，attribute 的程式碼一行都沒有執行。</p>
+<p>再加上讀標記的程式。下面最上面那個 <code>foreach</code> 就是「讀的人」：它找出這個程式裡所有的類別，一個一個問「你身上有沒有 <code>[Label]</code>」，有的話把上面的文字印出來。</p>
+<pre><code class="language-csharp">using System.Reflection;
+
+// 讀標記的人：找出這個程式裡所有貼了 [Label] 的類別，把標記上的文字印出來
+foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
+{
+    var label = type.GetCustomAttribute&lt;LabelAttribute&gt;();
+    if (label is not null)
+    {
+        Console.WriteLine($"{type.Name} 的標記文字：{label.Text}");
+    }
+}
+
+public class LabelAttribute : Attribute
+{
+    public string Text { get; }
+
+    public LabelAttribute(string text)
+    {
+        Text = text;
+    }
+}
+
+[Label("蘋果")]
+public class Apple { }
+
+[Label("香蕉")]
+public class Banana { }
+
+public class Cherry { }</code></pre>
+<pre><code class="nohighlight">Apple 的標記文字：蘋果
+Banana 的標記文字：香蕉</code></pre>
+<p><code>Cherry</code> 沒有貼標記，<code>GetCustomAttribute</code> 回傳 <code>null</code>，所以沒有印出來。在程式執行時查「這個類別有哪些成員、貼了哪些標記」的做法叫 <strong>reflection</strong>（反射），<code>GetTypes()</code>、<code>GetCustomAttribute&lt;T&gt;()</code> 都屬於它。</p>
+<p>整個機制就是這兩半：</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>做什麼</th><th>上面的例子</th></tr>
+  <tr><td>貼標記的人</td><td>在類別或方法上寫 <code>[…]</code></td><td><code>[Label("蘋果")]</code></td></tr>
+  <tr><td>讀標記的人</td><td>用 reflection 找出標記，依標記的內容決定要做什麼</td><td>最上面的 <code>foreach</code></td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="who">4. 誰在讀</h2>
+<p>平常寫程式多半只當「貼標記的人」，讀的人是編譯器、函式庫或框架。看到一個 attribute，先問「<mark class="key">誰會讀它、什麼時候讀</mark>」，就知道它什麼情況下有效。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>讀的人</th><th>什麼時候讀</th><th>例子</th></tr>
+  <tr><td>編譯器</td><td>編譯時</td><td><code>[Obsolete]</code>：有人呼叫被標記的方法，編譯器就發出警告</td></tr>
+  <tr><td>函式庫</td><td>有人呼叫它的時候</td><td><code>[Required]</code>：<code>Validator</code> 檢查物件時，讀屬性上的標記</td></tr>
+  <tr><td>框架</td><td>通常是程式啟動時</td><td>以 ASP.NET Core 為例，啟動時讀 Controller 方法上的 <code>[HttpGet]</code>，決定哪個網址交給哪個方法</td></tr>
+</table>
+</div>
+
+<h3>編譯器讀：[Obsolete]</h3>
+<pre><code class="language-csharp">var c = new Calc();
+Console.WriteLine(c.OldAdd(1, 2));
+
+public class Calc
+{
+    [Obsolete("請改用 Add")]
+    public int OldAdd(int a, int b) =&gt; a + b;
+
+    public int Add(int a, int b) =&gt; a + b;
+}</code></pre>
+<pre><code class="nohighlight">warning CS0618: 'Calc.OldAdd(int, int)' 已經過時: '請改用 Add'
+3</code></pre>
+<p>程式照樣執行、印出 3，只是編譯時多了一個警告，警告裡的文字就是括號裡寫的那一句。</p>
+
+<h3>函式庫讀：[Required]</h3>
+<pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
+
+var item = new Item { Name = "" };
+Console.WriteLine($"物件建立成功，Name 是空字串：[{item.Name}]");
+
+var results = new List&lt;ValidationResult&gt;();
+bool ok = Validator.TryValidateObject(item, new ValidationContext(item), results, validateAllProperties: true);
+Console.WriteLine($"呼叫 Validator 之後：通過 = {ok}");
+foreach (var r in results)
+{
+    Console.WriteLine($"  {r.ErrorMessage}");
+}
+
+public class Item
+{
+    [Required]
+    public string Name { get; set; } = "";
+}</code></pre>
+<pre><code class="nohighlight">物件建立成功，Name 是空字串：[]
+呼叫 Validator 之後：通過 = False
+  The Name field is required.</code></pre>
+<p><code>[Required]</code> 沒有阻止 <code>Name</code> 被設成空字串，物件照樣建立成功。要等到有人呼叫 <code>Validator.TryValidateObject</code>，它去讀屬性上的 <code>[Required]</code>，才檢查出問題。</p>
+
+<!-- ============================================================ -->
+<h2 id="mistake">5. 貼了卻沒效果</h2>
+<p>標記貼對了卻沒有效果，原因幾乎都是「讀的人沒有來」。</p>
+<div class="compare">
+<div class="bad">
+<p class="compare-label">✗ 以為貼上去就會生效</p>
+<pre><code class="language-csharp">public class Item
+{
+    [Required]
+    public string Name { get; set; } = "";
+}
+
+var item = new Item { Name = "" };   // 不會出錯</code></pre>
+<p>沒有任何程式去讀 <code>[Required]</code>，空字串照樣放得進去。</p>
+</div>
+<div class="good">
+<p class="compare-label">✓ 確認有人會讀</p>
+<pre><code class="language-csharp">Validator.TryValidateObject(
+    item, new ValidationContext(item),
+    results, validateAllProperties: true);</code></pre>
+<p>自己呼叫讀取的程式，或確認使用的框架在這個情況下會替你呼叫。</p>
+</div>
+</div>
+<p>遇到「貼了沒效果」，照這個順序查：</p>
+<ol>
+  <li>這個 attribute 是誰在讀：編譯器、某個函式庫，還是框架</li>
+  <li>讀的人在這個情況下有沒有執行。框架常常要先經過設定，才會去讀某一類標記</li>
+  <li>標記貼的位置是不是讀的人會看的地方。貼在類別上和貼在方法上，讀的人不一定都看</li>
+</ol>
+
+<h3>貼錯位置：有些 attribute 會擋，有些不會</h3>
+<p>寫 attribute 的人可以用 <code>[AttributeUsage]</code> 限制它能貼在哪裡，貼錯地方編譯就不過：</p>
+<pre><code class="language-csharp">[AttributeUsage(AttributeTargets.Class)]   // 只能貼在類別上
+public class LabelAttribute : Attribute
+{
+    public string Text { get; }
+    public LabelAttribute(string text) { Text = text; }
+}
+
+public class Apple
+{
+    [Label("重量")]                         // 貼在屬性上
+    public int Weight { get; set; }
+}</code></pre>
+<pre><code class="nohighlight">error CS0592: 屬性 'Label' 在此宣告類型上無效。其只有在 '類別' 宣告上才有效。</code></pre>
+<p>訊息裡的「屬性 'Label'」指的是 attribute。<mark class="caution">沒有寫 <code>[AttributeUsage]</code> 的 attribute 哪裡都能貼</mark>，貼錯地方編譯器不會說話，只是讀的人不會看到它。</p>
+
+<!-- ============================================================ -->
+<h2 id="own">6. 什麼時候自己寫一個</h2>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>情況</th></tr>
+  <tr><td>用現成的就好</td><td>絕大多數時候。編譯器、函式庫、框架已經定義好一批 attribute，照文件貼上去</td></tr>
+  <tr><td>自己寫</td><td>同一件事要套用在很多個類別或方法上，而且「要不要套用、套用時的設定」想直接寫在那段程式碼旁邊。這時要寫兩樣東西：attribute 類別，以及讀它的程式</td></tr>
+  <tr><td>不要用 attribute</td><td>值要執行時才知道；只有一兩個地方用到；用一般的方法參數或 <code>if</code> 就能表達</td></tr>
+</table>
+</div>
+<p>自己寫的時候記得：只寫 attribute 類別、沒寫讀它的程式，等於什麼都沒做。</p>
+
+<nav class="footer-nav">
+  <span></span>
+  <a href="../index.html#concepts">回目錄（觀念庫）</a>
+  <span></span>
+</nav>
+
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

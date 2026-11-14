@@ -54,8 +54,8 @@
   <tr><td>只看已完成／未完成</td><td>GET</td><td><code>/api/todos?isDone=true</code></td><td>200 + 陣列</td><td>題 4</td></tr>
   <tr><td>單一筆</td><td>GET</td><td><code>/api/todos/{id}</code></td><td>200 + 物件</td><td>題 4</td></tr>
   <tr><td>新增</td><td>POST</td><td><code>/api/todos</code></td><td>201 + 新增的那一筆</td><td>題 5</td></tr>
-  <tr><td>修改</td><td>PUT</td><td><code>/api/todos/{id}</code></td><td>204，沒有內容</td><td>題 6</td></tr>
-  <tr><td>刪除</td><td>DELETE</td><td><code>/api/todos/{id}</code></td><td>204，沒有內容</td><td>題 6</td></tr>
+  <tr><td>修改</td><td>PUT</td><td><code>/api/todos/{id}</code></td><td>204，沒有內容</td><td>題 7</td></tr>
+  <tr><td>刪除</td><td>DELETE</td><td><code>/api/todos/{id}</code></td><td>204，沒有內容</td><td>題 7</td></tr>
 </table>
 </div>
 
@@ -74,10 +74,27 @@
 </table>
 </div>
 <p>在瀏覽器網址列輸入網址按 Enter，瀏覽器送出的就是一個 GET 請求，所以查詢類的 API 可以直接用瀏覽器看。但網址列<mark class="caution">只能送 GET</mark>，新增、修改、刪除要用的 POST、PUT、DELETE 送不出來，所以題 2 之後改用 Postman 當用戶端，它每一種動詞都能送。</p>
+<h3>狀態碼：伺服器用三位數字回報結果</h3>
+<p class="lead">伺服器每次回應，第一行都有一個三位數字，叫<mark class="key">狀態碼</mark>，告訴用戶端這次請求的結果。上面那張圖裡回應的 <code>HTTP/1.1 200 OK</code>，<code>200</code> 就是狀態碼。Postman 送出請求後，回應區最先顯示的也是它。</p>
+<p>第一位數字代表大類。這一課會遇到兩類：<code>2xx</code> 是<strong>成功</strong>；<code>4xx</code> 是<strong>用戶端送來的請求有問題</strong>，例如網址打錯、資料沒填。</p>
+<div class="table-wrap">
+<table id="status">
+  <tr><th>狀態碼</th><th>意思</th><th>這一課什麼時候會看到</th></tr>
+  <tr><td><code>200 OK</code></td><td>成功，回應裡有資料</td><td>查詢</td></tr>
+  <tr><td><code>201 Created</code></td><td>成功，而且新增了一筆</td><td>新增</td></tr>
+  <tr><td><code>204 No Content</code></td><td>成功，沒有資料要回</td><td>修改、刪除</td></tr>
+  <tr><td><code>400 Bad Request</code></td><td>送來的資料不對</td><td>新增時沒填標題</td></tr>
+  <tr><td><code>404 Not Found</code></td><td>找不到</td><td>網址不存在，或查一筆不存在的編號</td></tr>
+  <tr><td><code>405 Method Not Allowed</code></td><td>網址有，但不接受這個動詞</td><td>對只接受 GET 的網址送 POST</td></tr>
+</table>
+</div>
+<p>做題目時每送一個請求，先看狀態碼是不是預期的那一個，再看內容。看到 <mark class="caution">404 不代表伺服器壞了</mark>：伺服器有回應，只是它說「沒有這個網址」。伺服器真的沒啟動時，Postman 顯示的是連不上，沒有任何狀態碼。</p>
+<p class="more">狀態碼的完整分類和其他常用的幾個：<a href="http-status-codes.html">HTTP 狀態碼</a></p>
+
 <h3 id="memory">不接資料庫，那資料存在哪裡？</h3>
-<p class="lead">資料放在 Controller 的一個 <code>static List&lt;TodoItem&gt;</code> 裡，新增、查詢都是在操作這個清單，所以不用安裝資料庫也有地方放資料，可以先專心學 API。代價是<mark class="caution">程式一關資料就消失</mark>，下一個專案才要換成資料庫。</p>
+<p class="lead">資料放在 Controller 的一個 <code>List&lt;TodoItem&gt;</code> 裡，新增、查詢都是在操作這個清單，所以不用安裝資料庫也有地方放資料，可以先專心學 API。代價是<mark class="caution">程式一關資料就消失</mark>，下一個專案才要換成資料庫。</p>
 <p>那個清單在<mark class="key">程式的記憶體</mark>裡，就是 Controller 裡的一個變數：</p>
-<pre><code class="language-csharp">private static readonly List&lt;TodoItem&gt; Todos = new()
+<pre><code class="language-csharp">List&lt;TodoItem&gt; Todos = new()
 {
     new TodoItem { Id = 1, Title = "買牛奶", IsDone = false },
     new TodoItem { Id = 2, Title = "裝 .NET SDK", IsDone = true }
@@ -86,7 +103,7 @@
 <div class="table-wrap">
 <table>
   <tr><th>什麼時候</th><th>記憶體裡發生什麼</th></tr>
-  <tr><td>程式啟動</td><td>作業系統分一塊記憶體給這個程式，上面那一行執行，清單建立出來，裡面有寫死的兩筆</td></tr>
+  <tr><td>程式啟動</td><td>作業系統分一塊記憶體給這個程式。上面那一行執行時，清單在這塊記憶體裡建立出來，裡面有寫死的兩筆</td></tr>
   <tr><td>新增（POST）</td><td><code>Todos.Add(…)</code>：往清單裡多放一個物件</td></tr>
   <tr><td>查詢（GET）</td><td>從清單裡找出來回傳</td></tr>
   <tr><td>修改、刪除</td><td>改清單裡那個物件的屬性，或把它從清單拿掉</td></tr>
@@ -103,7 +120,7 @@
 </table>
 </div>
 <p>對 Controller 來說，這一課的 <code>List</code> 就是資料庫的替身。到了部落格，<code>Todos.Add(…)</code> 會換成「寫進資料表」，<code>Todos.Where(…)</code> 會換成「查詢資料表」，但網址、JSON、狀態碼這些 API 的外觀完全不變。所以現在先用最簡單的 <code>List</code> 把 API 這一半學會，資料庫那一半留給下一個專案。</p>
-<p>資料會不見這件事，題 7 會做兩個實驗親眼看一次，順便看到那一行為什麼一定要寫 <code>static</code>。</p>
+<p>資料會不見這件事，題 6 會親眼看一次。</p>
 
 <!-- ============================================================ -->
 <h2 id="exercise">2. 動手做</h2>
@@ -115,8 +132,8 @@
 <p>需求：</p>
 <ul>
   <li>建立資料夾 <code>TodoApi</code>，在裡面建立一個方案（solution），名稱 <code>TodoApi</code></li>
-  <li>在方案資料夾裡建立一個「空的 ASP.NET Core」專案（project），名稱 <code>HelloWeb</code>，並把它加入方案</li>
-  <li>執行 <code>HelloWeb</code>，用瀏覽器打開，看到 <code>Hello World!</code></li>
+  <li>在方案資料夾裡建立一個「空的 ASP.NET Core」專案（project），名稱也叫 <code>TodoApi</code>，並把它加入方案。這一課從頭到尾都用這一個專案</li>
+  <li>執行專案，用瀏覽器打開，看到 <code>Hello World!</code></li>
   <li>自己加一條路徑：打開 <code>/hello/Jack</code> 會看到 <code>Hello Jack!</code>，<code>Jack</code> 換成別的名字也可以</li>
 </ul>
 <div class="callout">
@@ -147,47 +164,43 @@
 cd TodoApi
 
 dotnet new sln -n TodoApi                  # 建立方案
-dotnet new web -n HelloWeb -f net10.0      # 建立專案
-dotnet sln add HelloWeb/HelloWeb.csproj    # 把專案加入方案
+dotnet new web -n TodoApi -f net10.0       # 建立專案
+dotnet sln add TodoApi/TodoApi.csproj      # 把專案加入方案
 
-dotnet run --project HelloWeb              # 執行</code></pre>
-<p>終端機印出 <code>Now listening on: http://localhost:5099</code> 就是跑起來了（port 是建立專案時隨機產生的，你的數字會不一樣）。用瀏覽器打開那個網址。</p>
+dotnet run --project TodoApi               # 執行</code></pre>
+<p>終端機印出 <code>Now listening on: http://localhost:5298</code> 就是跑起來了（port 是建立專案時隨機產生的，你的數字會不一樣）。用瀏覽器打開那個網址。</p>
 <p>做完之後的結構（實測）：</p>
 <pre><code class="language-plaintext">TodoApi\                      ← 方案資料夾
 ├─ TodoApi.slnx               ← 方案檔：專案清單
-└─ HelloWeb\                  ← 專案
-    ├─ HelloWeb.csproj        ← 專案檔：.NET 版本、用到的套件
+└─ TodoApi\                   ← 專案（和方案同名，這很常見）
+    ├─ TodoApi.csproj         ← 專案檔：.NET 版本、用到的套件
     ├─ Program.cs             ← 程式進入點，整個程式就這一個檔案
     ├─ appsettings.json
     └─ Properties\launchSettings.json   ← 執行時用的網址和 port</code></pre>
 <p>方案檔打開來只有三行，「把專案加入方案」就是多了中間那一行：</p>
 <p class="file-label">TodoApi.slnx</p>
 <pre><code class="language-xml">&lt;Solution&gt;
-  &lt;Project Path="HelloWeb/HelloWeb.csproj" /&gt;
+  &lt;Project Path="TodoApi/TodoApi.csproj" /&gt;
 &lt;/Solution&gt;</code></pre>
 <p>.NET 10 的 <code>dotnet new sln</code> 產生的是新格式 <code>.slnx</code>；舊版 SDK 產生的是舊格式 <code>.sln</code>，內容比較長，但記的是同一件事，兩種都能用。</p>
 
 <p><strong>最小的 Web 程式：範本的 <code>Program.cs</code> 只有四行</strong></p>
-<p class="file-label">HelloWeb/Program.cs（範本產生的原樣）</p>
-<pre><code class="language-csharp">var builder = WebApplication.CreateBuilder(args);
+<p class="file-label">TodoApi/Program.cs（範本產生的四行，註解是另外加的）</p>
+<pre><code class="language-csharp">// 準備：讀設定檔，做出一個 builder
+var builder = WebApplication.CreateBuilder(args);
+
+// 定案：做出 app，它就是這個網站本身
 var app = builder.Build();
 
+// 排路徑：有人用 GET 打 / 時，執行後面那段程式，把回傳值送回去
 app.MapGet("/", () =&gt; "Hello World!");
 
+// 開門：開始聽 port，程式會停在這一行，直到按 Ctrl+C
 app.Run();</code></pre>
-<div class="table-wrap">
-<table>
-  <tr><th>那一行</th><th>做什麼</th></tr>
-  <tr><td><code>WebApplication.CreateBuilder(args)</code></td><td><strong>準備</strong>：讀設定檔，做出一個 <code>builder</code></td></tr>
-  <tr><td><code>builder.Build()</code></td><td><strong>定案</strong>：做出 <code>app</code>，它就是這個網站本身</td></tr>
-  <tr><td><code>app.MapGet("/", () =&gt; "Hello World!")</code></td><td><strong>排路徑</strong>：有人用 GET 打 <code>/</code> 時，執行後面那段程式，把回傳值送回去</td></tr>
-  <tr><td><code>app.Run()</code></td><td><strong>開門</strong>：開始聽 port，程式會停在這一行，直到按 Ctrl+C</td></tr>
-</table>
-</div>
 <p><code>() =&gt; "Hello World!"</code> 是一段「沒有名字的方法」，叫 lambda：<code>()</code> 裡是參數（這裡沒有），<code>=&gt;</code> 後面是回傳值。<code>MapGet</code> 把它收起來，等有請求打到 <code>/</code> 才執行。lambda 的寫法見「<a href="csharp-delegates-signature.html">看懂方法簽章</a>」。</p>
 
 <p><strong>加一條路徑</strong></p>
-<p class="file-label">HelloWeb/Program.cs（加一行）</p>
+<p class="file-label">TodoApi/Program.cs（加一行）</p>
 <pre><code class="language-csharp">var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
@@ -220,80 +233,140 @@ POST /             → 405          路徑有，但只登記了 GET</code></pre>
 
 <!-- 題 2 -->
 <div class="exercise">
-<h3>題 2：建立 Web API 專案（Controller 版）</h3>
-<p class="aim">把題 1 的四行換成 <mark class="key">Controller 版</mark>的範本。後面每一題都在這個專案裡寫，先確認它跑得起來。</p>
+<h3>題 2：寫第一個 Controller，把四行的程式改成 Controller 版</h3>
+<p class="aim">在題 1 的專案裡寫第一個 <mark class="key">Controller</mark>，並在 <code>Program.cs</code> 親手加上讓 Controller 生效的兩行。後面每一題都在這個專案裡寫。</p>
 <p>需求：</p>
 <ul>
-  <li>在題 1 的方案資料夾裡，再建立一個 ASP.NET Core Web API 專案，名稱 <code>TodoApi</code>，並加入方案</li>
-  <li>.NET 10、使用 Controller（不是 Minimal API）</li>
-  <li>執行專案，用 Postman 呼叫 <code>GET /weatherforecast</code></li>
-  <li>確認能跑之後，刪掉範本的 <code>WeatherForecast.cs</code>、<code>Controllers/WeatherForecastController.cs</code>，以及這一課用不到的 <code>TodoApi.http</code></li>
+  <li>在 <code>TodoApi</code> 專案裡建立 <code>Controllers</code> 資料夾，裡面建立 <code>HelloController.cs</code></li>
+  <li><code>GET /api/hello</code> 回傳文字 <code>Hello from Controller!</code></li>
+  <li>用 Postman 呼叫，看到 200 和那段文字</li>
 </ul>
+<p>分三步做。每一步改完都重新 <code>dotnet run</code>，用 Postman 送 <code>GET /api/hello</code>，記下看到什麼：</p>
+<ol>
+  <li>只寫 <code>HelloController.cs</code>，<code>Program.cs</code> 不動</li>
+  <li>在 <code>Program.cs</code> 的 <code>app.Run();</code> 前面加一行 <code>app.MapControllers();</code></li>
+  <li>在 <code>Program.cs</code> 的 <code>var app = builder.Build();</code> 前面加一行 <code>builder.Services.AddControllers();</code></li>
+</ol>
 <div class="callout">
-<p>建專案之前，先知道這兩件事：</p>
+<p>Controller 的基本形狀。以一個回傳 <code>pong</code> 的 <code>PingController</code> 為例，顏色相同的地方是同一件事：</p>
+<pre><code class="nohighlight">using Microsoft.AspNetCore.Mvc;
+
+<span class="hl c">[ApiController]</span>
+[Route("api/<span class="hl a">[controller]</span>")]
+public class <span class="hl a">Ping</span>Controller : <span class="hl c">ControllerBase</span>
+{
+    <span class="hl b">[HttpGet]</span>
+    public string Get()
+    {
+        return "pong";
+    }
+}</code></pre>
+<p>這樣寫出來的 API 是 <span class="hl b">GET</span> <code>/api/</code><span class="hl a">ping</span>，回應內容是 <code>pong</code>。</p>
 <ul>
-  <li>做法和題 1 一樣，只是範本從 <code>web</code> 換成 <code>webapi</code>：<code>dotnet new webapi -n 專案名稱 --use-controllers -f net10.0</code>，建完一樣要 <code>dotnet sln add</code>。.NET 10 的範本<mark class="caution">預設是 Minimal API</mark>，要加 <code>--use-controllers</code> 才會產生 Controller 版本</li>
+  <li><span class="hl a">路徑</span>：<code>[controller]</code> 會自動換成類別名去掉結尾的 <code>Controller</code>，所以 <code>PingController</code> 的路徑是 <code>/api/ping</code>。檔案放在 <code>Controllers</code> 資料夾，類別名稱用 <code>Controller</code> 結尾</li>
+  <li><span class="hl b">動詞</span>：方法上面寫 <code>[HttpGet]</code>，代表有人用 GET 打這個路徑時，呼叫這個方法。方法 <code>return</code> 的東西就是回應的內容</li>
+  <li><span class="hl c">每個 Controller 都有的兩樣</span>：<code>[ApiController]</code> 標明這個類別是 Web API 的 Controller，框架會替它自動做幾件事；繼承 <code>ControllerBase</code>，類別裡就有回應請求常用的方法可以呼叫</li>
+  <li>方括號 <code>[…]</code> 是貼在類別或方法上的標記，叫 <strong>attribute</strong>。它自己不做事，是框架在程式啟動時讀這些標記，決定哪個網址交給哪個方法</li>
   <li>Postman 是專門用來送 HTTP 請求的程式：新增一個請求，左邊下拉選單選動詞（GET、POST…），旁邊填網址，按 <em>Send</em> 送出，下方會顯示狀態碼和回應內容</li>
 </ul>
 </div>
-<p class="accept">✅ 驗收：Postman 送出請求後回傳 200 和一串天氣 JSON</p>
+<p class="accept">✅ 驗收：第 3 步做完，Postman 回傳 200 和 <code>Hello from Controller!</code>；說得出第 1 步和第 2 步各自為什麼不行</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
-<pre><code class="language-powershell"># 在題 1 建立的方案資料夾 TodoApi 裡執行
-dotnet new webapi -n TodoApi --use-controllers -f net10.0
-dotnet sln add TodoApi/TodoApi.csproj
-dotnet run --project TodoApi</code></pre>
-<p>看到 <code>Now listening on: http://localhost:5298</code> 就是跑起來了（port 換成你自己的）。打開 Postman，動詞選 GET，網址填 <code>http://localhost:5298/weatherforecast</code>，按 <em>Send</em>。</p>
-<p>做完之後的結構：</p>
-<pre><code class="language-plaintext">TodoApi\                      ← 方案資料夾
-├─ TodoApi.slnx               ← 現在清單裡有兩個專案
-├─ HelloWeb\                  ← 題 1 的專案，之後用不到了，留著對照
-└─ TodoApi\                   ← 這次建立的專案，後面的題目都在這裡寫
-    ├─ TodoApi.csproj
-    ├─ TodoApi.http           ← 範本附的請求檔，這一課用不到，一起刪掉
-    ├─ Program.cs             ← 程式進入點
-    ├─ appsettings.json
-    ├─ WeatherForecast.cs                          ← 範本的示範，確認能跑之後刪掉
-    ├─ Controllers\WeatherForecastController.cs    ← 範本的示範，確認能跑之後刪掉
-    └─ Properties\launchSettings.json              ← 執行時用的網址和 port</code></pre>
-<p><strong>和題 1 的四行比一比</strong>：這個範本的 <code>Program.cs</code> 比較長，但骨架還是同樣的四個階段。</p>
+<p class="file-label">TodoApi/Controllers/HelloController.cs</p>
+<pre><code class="language-csharp">using Microsoft.AspNetCore.Mvc;
+
+namespace TodoApi.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class HelloController : ControllerBase
+{
+    // GET api/hello
+    [HttpGet]
+    public string Get()
+    {
+        return "Hello from Controller!";
+    }
+}</code></pre>
+<p><strong>第 1 步：只寫 Controller，<code>Program.cs</code> 不動</strong>（實測）</p>
+<pre><code class="nohighlight">GET /api/hello   → 404
+GET /            → 200 Hello World!      題 1 的 MapGet 照常運作</code></pre>
+<p>程式編譯得過、跑得起來，也沒有任何錯誤訊息，但 <code>/api/hello</code> 是 404。原因：<code>Program.cs</code> 裡<mark class="caution">沒有任何一行去讀 Controller</mark>，<code>HelloController</code> 只是一個沒有人用的類別。</p>
+<p><strong>第 2 步：加上 <code>app.MapControllers()</code></strong>（實測）</p>
+<p>程式一啟動就丟例外，跑不起來：</p>
+<pre><code class="nohighlight">Unhandled exception. System.InvalidOperationException: Unable to find the required services.
+Please add all the required services by calling 'IServiceCollection.AddControllers' inside the call to 'ConfigureServices(...)' in the application startup code.
+   at Microsoft.AspNetCore.Builder.ControllerEndpointRouteBuilderExtensions.EnsureControllerServices(IEndpointRouteBuilder endpoints)
+   at Microsoft.AspNetCore.Builder.ControllerEndpointRouteBuilderExtensions.MapControllers(IEndpointRouteBuilder endpoints)
+   at Program.&lt;Main&gt;$(String[] args) in …\TodoApi\TodoApi\Program.cs:line 5</code></pre>
+<p>前兩行是例外的型別和訊息，訊息直接說了要加哪一行：<code>AddControllers</code>。下面三行 <code>at …</code> 叫 <mark class="key">stack trace</mark>，記錄出錯時程式正在執行哪個方法、是誰呼叫它的。<mark class="key">由下往上讀</mark>就是出錯的經過：</p>
+<ol>
+  <li><code>Program.cs:line 5</code>：你的 <code>Program.cs</code> 第 5 行（行號看你把 <code>app.MapControllers();</code> 寫在第幾行）</li>
+  <li>這一行呼叫了 <code>MapControllers</code></li>
+  <li><code>MapControllers</code> 裡面呼叫 <code>EnsureControllerServices</code>，檢查讀 Controller 要用的功能有沒有登記。沒有，所以丟出例外</li>
+</ol>
+<p>看 stack trace 時先找路徑是自己專案的那一行，那裡就是要回去改的地方。</p>
+<p><strong>第 3 步：再加上 <code>builder.Services.AddControllers()</code></strong>（實測）</p>
+<pre><code class="nohighlight">GET /api/hello   → 200 Hello from Controller!
+GET /api/Hello   → 200 Hello from Controller!      路徑不分大小寫</code></pre>
+<p class="file-label">TodoApi/Program.cs（做完第 3 步）</p>
+<pre><code class="language-csharp">var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();                  // Build() 之前：登記使用 Controller 需要的功能
+
+var app = builder.Build();
+
+app.MapGet("/", () =&gt; "Hello World!");
+app.MapGet("/hello/{name}", (string name) =&gt; $"Hello {name}!");
+
+app.MapControllers();                               // Build() 之後：讀所有 Controller，建對照表
+
+app.Run();</code></pre>
+<div class="diagram">
+<img src="../images/controllers-two-lines.svg" alt="Program.cs 裡和 Controller 有關的兩行：builder.Services.AddControllers() 在 Build() 之前，把找出 Controller 類別、把請求裡的值變成方法參數、把回傳值變成回應這些功能登記到登記簿 builder.Services；app.MapControllers() 在 Build() 之後，用登記簿裡的功能讀所有 Controller，建出對照表 GET /api/hello 對 HelloController.Get()。建表要用到登記的功能，沒登記就建表，啟動時會丟例外" style="width:100%;height:auto">
+<div class="diagram-caption">藍色那行先登記功能，綠色那行再用這些功能建對照表</div>
+</div>
+<p><code>builder.Services</code> 這本登記簿，正式名稱是<mark class="key">依賴注入</mark>（Dependency Injection，簡稱 DI）的容器。<code>Add…</code> 是往裡面登記「有這個功能」，框架裡要用的地方再向它拿。<code>MapControllers()</code> 在啟動時就是向它拿讀 Controller 的功能，拿不到就丟例外，所以第 2 步的錯誤訊息寫的是 <code>Unable to find the required services</code>（找不到需要的 service）。</p>
+<p class="more">登記簿在程式啟動的哪個階段可以寫、哪個階段定案：<a href="#program-lifecycle">Program.cs 的四個階段</a>。依賴注入想深入時再回來看「<a href="03a-di-how-it-works.html">03a｜依賴注入（DI）：從 new 到 DI 容器</a>」。</p>
+<p><strong><code>AddControllers()</code> 和 <code>MapControllers()</code> 要成對</strong></p>
 <div class="table-wrap">
 <table>
-  <tr><th>階段</th><th>題 1 的 HelloWeb</th><th>這一題的 TodoApi</th></tr>
-  <tr><td>準備</td><td><code>WebApplication.CreateBuilder(args)</code></td><td>一樣，另外多了 <code>builder.Services.AddControllers()</code>：告訴框架這個專案要用 Controller</td></tr>
-  <tr><td>定案</td><td><code>builder.Build()</code></td><td>一樣</td></tr>
-  <tr><td>排路徑</td><td><code>app.MapGet("/", …)</code>：路徑一條一條寫在 <code>Program.cs</code></td><td><code>app.MapControllers()</code>：<code>Program.cs</code> 裡一條路徑都不寫，路徑改標在各個 Controller 類別上，由這一行在啟動時去讀</td></tr>
-  <tr><td>開門</td><td><code>app.Run()</code></td><td>一樣</td></tr>
+  <tr><th>Program.cs 裡有哪一行</th><th>結果</th><th>原因</th></tr>
+  <tr><td>兩行都沒有（第 1 步）</td><td>程式跑得起來，<code>/api/hello</code> 回 404</td><td>沒有人去讀 Controller，對照表裡沒有它</td></tr>
+  <tr><td>只有 <code>MapControllers()</code>（第 2 步）</td><td>程式一啟動就丟例外</td><td>讀 Controller 要用的功能沒有登記</td></tr>
+  <tr><td>只有 <code>AddControllers()</code></td><td>和第 1 步一樣，回 404（實測）</td><td>功能登記了，但沒有人去讀 Controller</td></tr>
+  <tr><td>兩行都有（第 3 步）</td><td>200</td><td>功能登記了，表也建了</td></tr>
 </table>
 </div>
-<p><code>app.MapControllers()</code> 在程式啟動時做一件事：把專案裡每個 Controller 類別找出來，讀類別和方法上面標的 <code>[Route]</code>、<code>[HttpGet]</code>，整理成一張<mark class="key">「動詞＋路徑 → 交給哪個方法」的對照表</mark>。之後每個請求進來，框架就查這張表。以範本為例：<code>WeatherForecastController</code> 上面標了 <code>[Route("[controller]")]</code>，<code>Get()</code> 方法上面標了 <code>[HttpGet]</code>，所以表裡有一筆「<code>GET /weatherforecast</code> → <code>WeatherForecastController.Get()</code>」，這就是你在瀏覽器打 <code>/weatherforecast</code> 會拿到資料的原因。</p>
-<p class="more">這張表怎麼建、請求怎麼查，第 4 節有圖：<a href="#routing">路由：請求怎麼找到你的方法</a>。</p>
-<p>題 1 那種「路徑直接寫在 <code>Program.cs</code>」的寫法叫 <strong>Minimal API</strong>。兩種寫法什麼時候用：</p>
+<p>要用 Controller，固定是這三行、照這個順序：<code>builder.Services.AddControllers()</code> → <code>builder.Build()</code> → <code>app.MapControllers()</code>。<code>Add…</code> 放到 <code>Build()</code> 之後會怎樣，看第 4 節：<a href="#program-order">這幾行哪些可以換位置</a>。</p>
+<p><strong>兩種寫法可以放在同一個專案</strong></p>
+<p>第 3 步做完，題 1 的 <code>/</code> 和 <code>/hello/Jack</code> 照樣回 200（實測）。題 1 那種「路徑直接寫在 <code>Program.cs</code>」的寫法叫 <strong>Minimal API</strong>，它不需要 <code>AddControllers()</code> 和 <code>MapControllers()</code>。兩種寫法什麼時候用：</p>
 <div class="table-wrap">
 <table>
   <tr><th></th><th>Minimal API</th><th>Controller</th></tr>
   <tr><td>路徑寫在哪裡</td><td><code>Program.cs</code> 裡的 <code>app.MapGet(…)</code></td><td>各個 Controller 類別的方法上</td></tr>
   <tr><td>什麼時候用</td><td>API 只有幾支</td><td>API 支數多，要一種資料一個類別分開放</td></tr>
   <tr><td>什麼時候不用</td><td>支數一多，全部擠在一個檔案會很難找</td><td>只有一兩支時，要多建類別和資料夾</td></tr>
-  <tr><td>這份筆記</td><td>只有題 1</td><td>這個專案和部落格</td></tr>
+  <tr><td>這份筆記</td><td>只有題 1</td><td>題 2 之後和部落格</td></tr>
 </table>
 </div>
-<p>範本裡還有另外幾行，這一課用不到，留著不要動就好。各自做的事：</p>
-<ul>
-  <li><code>AddOpenApi()</code> 和 <code>MapOpenApi()</code>：產生一份 JSON 文件，列出這個專案有哪些 API、各自收什麼參數。程式跑起來之後開 <code>/openapi/v1.json</code> 看得到。</li>
-  <li><code>UseHttpsRedirection()</code>：收到 http 的請求時，回覆對方「改用 https 再送一次」。下面那個 <code>Failed to determine the https port</code> 警告就是它印的。</li>
-  <li><code>UseAuthorization()</code>：檢查這個請求有沒有權限呼叫這支 API。這個專案沒有替任何 API 設定權限，所以每個請求都直接通過。</li>
-</ul>
-<p class="more">這幾行不能隨便換位置：<code>Add…</code> 要在 <code>builder.Build()</code> 之前，<code>Use…</code> 和 <code>Map…</code> 要在它之後。完整的規則看第 4 節：<a href="#program-order">這幾行哪些可以換位置</a>。</p>
-<p>每個專案的 port 是建立時隨機產生的，你的不會是 5298，看 <code>launchSettings.json</code> 的 <code>applicationUrl</code> 或終端機印的 <code>Now listening on</code> 就知道。</p>
+<p>後面的題目都用 Controller，題 1 那兩行 <code>app.MapGet(…)</code> 用不到了，可以刪掉。刪掉之後的結構：</p>
+<pre><code class="language-plaintext">TodoApi\                      ← 方案資料夾
+├─ TodoApi.slnx
+└─ TodoApi\                   ← 專案，後面的題目都在這裡寫
+    ├─ TodoApi.csproj
+    ├─ Program.cs             ← 剩下 CreateBuilder、AddControllers、Build、MapControllers、Run
+    ├─ appsettings.json
+    ├─ Controllers\HelloController.cs
+    └─ Properties\launchSettings.json   ← 執行時用的網址和 port</code></pre>
 <div class="callout">
-<p>❓ <strong>瀏覽器打開 <code>http://localhost:5298/</code> 出現 404，是不是壞了？</strong>沒壞。Web API 只回應有定義的路徑，範本只有 <code>/weatherforecast</code>，根目錄 <code>/</code> 沒有人處理，所以回 404。這也代表伺服器有在運作，真的沒啟動的話會是「無法連線」。</p>
-<p>❓ <strong>終端機出現 <code>warn: … Failed to determine the https port for redirect.</code></strong>：<code>Program.cs</code> 有 <code>app.UseHttpsRedirection()</code>，它想把 http 導向 https，但你用的是 <code>http</code> 這個啟動設定，只開了 http，找不到 https 的 port，所以不導向，只發出警告。開發時可以忽略。</p>
+<p>❓ <strong>刪掉 <code>MapGet</code> 之後，瀏覽器打開 <code>http://localhost:5298/</code> 出現 404，是不是壞了？</strong>沒壞。Web API 只回應有定義的路徑，現在只剩 <code>/api/hello</code>，根目錄 <code>/</code> 沒有人處理，所以回 404。這也代表伺服器有在運作，真的沒啟動的話會是「無法連線」。</p>
 </div>
 </div>
 </details>
-<p class="more">想知道為什麼，看第 4 節：<a href="#template-controller">範本產生了什麼</a>、<a href="#routing">為什麼 <code>/</code> 是 404</a>、<a href="#program-lifecycle">Program.cs 的四個階段</a></p>
+<p class="more">想知道為什麼，看第 4 節：<a href="#routing">路由：請求怎麼找到你的方法</a>、<a href="#program-lifecycle">Program.cs 的四個階段</a>、<a href="#apicontroller">[ApiController] 做了什麼</a>、<a href="#controllerbase">為什麼繼承 ControllerBase</a>、<a href="#template-controller">用範本建專案會多出哪幾行</a>。方括號標記這個語法本身，見「<a href="csharp-attribute.html">Attribute</a>」</p>
 </div>
 
 <!-- 題 3 -->
@@ -309,11 +382,10 @@ dotnet run --project TodoApi</code></pre>
 <div class="callout">
 <p>寫 Controller 之前，先知道這幾件事：</p>
 <ul>
-  <li>Controller 是一個類別，放在 <code>Controllers</code> 資料夾，類別上面寫 <code>[ApiController]</code> 和 <code>[Route("api/[controller]")]</code>，並繼承 <code>ControllerBase</code>。照抄範本的 <code>WeatherForecastController</code> 開頭那三行來改就可以</li>
+  <li><code>TodosController</code> 的開頭和題 2 的 <code>HelloController</code> 一樣：放在 <code>Controllers</code> 資料夾、類別上面寫 <code>[ApiController]</code> 和 <code>[Route("api/[controller]")]</code>、繼承 <code>ControllerBase</code></li>
   <li><code>[Route("api/[controller]")]</code> 裡的 <code>[controller]</code> 會自動換成<mark class="key">類別名去掉結尾的 Controller</mark>，所以 <code>TodosController</code> 的路徑是 <code>/api/todos</code></li>
   <li>方法上面寫 <code>[HttpGet]</code>，代表「有人用 GET 打這個路徑時，呼叫這個方法」</li>
   <li>方法 <code>return</code> 什麼，框架就把它<mark class="key">轉成 JSON</mark> 送回去，不用自己轉</li>
-  <li>清單要宣告成 <mark class="key"><code>static</code></mark>。原因題 7 會實驗，現在先照寫</li>
 </ul>
 </div>
 <p class="accept">✅ 驗收：<code>GET /api/todos</code> 回傳 200 和兩筆資料的 JSON 陣列</p>
@@ -339,8 +411,8 @@ namespace TodoApi.Controllers;
 [Route("api/[controller]")]
 public class TodosController : ControllerBase
 {
-    // static：整個程式只有一份，所有請求共用。資料放在記憶體，程式關掉就沒了
-    private static readonly List&lt;TodoItem&gt; Todos = new()
+    // 資料放在記憶體裡的清單，先寫死兩筆
+    private readonly List&lt;TodoItem&gt; Todos = new()
     {
         new TodoItem { Id = 1, Title = "買牛奶", IsDone = false },
         new TodoItem { Id = 2, Title = "裝 .NET SDK", IsDone = true }
@@ -359,7 +431,7 @@ GET http://localhost:5298/api/todos</code></pre>
 <p>實測回應：</p>
 <pre><code class="language-json">[{"id":1,"title":"買牛奶","isDone":false},{"id":2,"title":"裝 .NET SDK","isDone":true}]</code></pre>
 <ul>
-  <li><strong><code>new TodoItem { Id = 1, … }</code></strong> 是「建立物件，順便填屬性」的寫法，叫物件初始設定式。類別、物件、<code>static</code> 是什麼，見「<a href="csharp-class-object.html">類別與物件</a>」</li>
+  <li><strong><code>new TodoItem { Id = 1, … }</code></strong> 是「建立物件，順便填屬性」的寫法，叫物件初始設定式。類別和物件是什麼，見「<a href="csharp-class-object.html">類別與物件</a>」</li>
   <li><strong>C# 的 <code>Title</code> 到 JSON 變成 <code>title</code></strong>：ASP.NET Core 轉 JSON 時預設把屬性名稱的第一個字母改小寫（camelCase），這是前端的習慣。JSON 的格式和轉換規則見「<a href="csharp-json.html">JSON</a>」</li>
   <li><strong><code>ActionResult&lt;List&lt;TodoItem&gt;&gt;</code></strong> 的意思是「正常時回傳 <code>List&lt;TodoItem&gt;</code>，也可以回傳 <code>NotFound()</code> 這種結果」。這一題只用到前半，下一題會用到後半</li>
 </ul>
@@ -460,10 +532,10 @@ GET /api/todos/abc         → 400 {"type":"…","title":"One or more validation
   <li>「前端只能傳 title」：另外寫一個只有 <code>Title</code> 的 <code>record</code> 當參數型別，不要直接用 <code>TodoItem</code>。<code>record</code> 是一種寫起來比較短的類別：<code>public record CreateTodoRequest(string Title);</code></li>
   <li>「必填、最多 100 字」：在 record 的參數前面加 <code>[Required, MaxLength(100)]</code>（要 <code>using System.ComponentModel.DataAnnotations;</code>）。不符合時框架自動回 400</li>
   <li>回 201：<code>return CreatedAtAction(nameof(GetById), new { id = todo.Id }, todo);</code>。三個參數的意思是「新資料可以用 <code>GetById</code> 這個方法查到、它的 <code>id</code> 是多少、回應內容是什麼」</li>
-  <li>下一個編號：用一個 <code>static int</code> 欄位記著，用掉一個就加 1</li>
+  <li>下一個編號：用一個 <code>int</code> 欄位記著，用掉一個就加 1</li>
 </ul>
 </div>
-<p class="accept">✅ 驗收：送出後回 201，再 <code>GET /api/todos</code> 看得到三筆；送 <code>{}</code> 回 400</p>
+<p class="accept">✅ 驗收：送出後回 201，回應內容是新增的那一筆；送 <code>{}</code> 回 400</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
@@ -477,7 +549,7 @@ public record CreateTodoRequest(
     [Required, MaxLength(100)] string Title);</code></pre>
 <p class="file-label">TodoApi/Controllers/TodosController.cs（新增一個欄位和一個方法）</p>
 <pre><code class="language-csharp">    // 放在 Todos 清單下面：下一筆要用的編號
-    private static int _nextId = 3;
+    private int _nextId = 3;
 
     // POST api/todos
     [HttpPost]
@@ -530,11 +602,11 @@ POST /api/todos  {}
         "errors":{"Title":["The Title field is required."]},"traceId":"…"}
 
 POST /api/todos  {"title":"多帶欄位","id":999,"isDone":true}
-→ 201  {"id":4,"title":"多帶欄位","isDone":false}</code></pre>
+→ 201  {"id":3,"title":"多帶欄位","isDone":false}</code></pre>
 <ul>
   <li><strong>201 的回應多了一個 <code>Location</code> header</strong>：這就是 <code>CreatedAtAction</code> 那三個參數的用途，它告訴前端「剛新增的那一筆，網址在這裡」</li>
   <li><strong>送 <code>{}</code> 回 400，而且 <code>Create</code> 方法沒有被呼叫</strong>：清單裡沒有多出一筆空標題的資料。驗證失敗時框架在進方法之前就回 400 了</li>
-  <li><strong>多帶的 <code>id: 999</code>、<code>isDone: true</code> 沒有作用</strong>：回應裡 <code>id</code> 是 4、<code>isDone</code> 是 <code>false</code>。因為 <code>CreateTodoRequest</code> 只有 <code>Title</code> 一個屬性，JSON 裡其他欄位沒有地方可以填，就被丟掉了</li>
+  <li><strong>多帶的 <code>id: 999</code>、<code>isDone: true</code> 沒有作用</strong>：回應裡 <code>id</code> 是 3、<code>isDone</code> 是 <code>false</code>。因為 <code>CreateTodoRequest</code> 只有 <code>Title</code> 一個屬性，JSON 裡其他欄位沒有地方可以填，就被丟掉了</li>
 </ul>
 <p>前端多傳欄位、改到不該由它決定的資料，這個問題叫 <mark class="key">over-posting</mark>。兩種參數型別放在一起比：</p>
 <div class="compare">
@@ -559,7 +631,97 @@ public ActionResult&lt;TodoItem&gt; Create(CreateTodoRequest request)</code></pr
 
 <!-- 題 6 -->
 <div class="exercise">
-<h3>題 6：修改和刪除，PUT、DELETE</h3>
+<h3>題 6：新增的資料去哪了</h3>
+<p class="aim">找出題 5 新增的資料為什麼下一個請求就看不到，用 <mark class="key"><code>static</code></mark> 修好，再看 <code>static</code> 留不住什麼。</p>
+<p>這一題分四步。前兩步只觀察，第 3 步才改程式。</p>
+<p><strong>第 1 步：看現象</strong></p>
+<ol>
+  <li>連續 <code>POST /api/todos</code> 兩次，標題分別是 <code>A</code> 和 <code>B</code>，看兩次回應的 <code>id</code></li>
+  <li><code>GET /api/todos</code>，數一數有幾筆</li>
+  <li><code>GET /api/todos/3</code></li>
+</ol>
+<p><strong>第 2 步：找原因</strong></p>
+<p>在 <code>TodosController</code> 裡加一個建構子。建構子是「這個類別的物件被建立時」會執行的方法，名稱和類別一樣、沒有回傳型別：</p>
+<pre><code class="language-csharp">    public TodosController()
+    {
+        Console.WriteLine("TodosController 被建立了");
+    }</code></pre>
+<p>重新啟動，隨便送幾個請求，數終端機印了幾次這行字。</p>
+<p><strong>第 3 步：修好</strong></p>
+<p>只改 <code>Todos</code> 和 <code>_nextId</code> 這兩行的宣告，方法裡的程式不動。改完之後重做第 1 步，兩次 POST 的 <code>id</code> 要是 3 和 4，<code>GET /api/todos</code> 要看得到四筆。</p>
+<p><strong>第 4 步：重新啟動</strong></p>
+<p>修好之後，把程式停掉再 <code>dotnet run</code>，然後 <code>GET /api/todos</code>，看剛才新增的還在不在。</p>
+<div class="callout">
+<p>第 3 步要用到的 C# 規則：</p>
+<ul>
+  <li>一個類別可以建立很多個物件。一般的欄位是<mark class="key">每個物件各有一份</mark>，物件被丟掉，它的欄位也跟著不見</li>
+  <li>欄位宣告前面加 <code>static</code>，這個欄位就不屬於任何一個物件，而是屬於類別本身，<mark class="key">整個程式只有一份</mark></li>
+  <li><code>static</code> 寫在存取修飾詞後面：<code>private static …</code></li>
+</ul>
+</div>
+<p class="accept">✅ 驗收：第 3 步改完後，兩次 POST 的 <code>id</code> 是 3、4，GET 看得到四筆；說得出第 1 步和第 4 步的資料各自為什麼不見</p>
+<details class="answer">
+<summary>實測結果與原因（做完再打開）</summary>
+<div class="answer-body">
+<p><strong>第 1 步</strong>：不用重新啟動，新增的資料下一個請求就不見了（實測）。</p>
+<pre><code class="nohighlight">POST /api/todos {"title":"A"} → 201 {"id":3,"title":"A","isDone":false}
+POST /api/todos {"title":"B"} → 201 {"id":3,"title":"B","isDone":false}     ← 兩次都是 3
+GET  /api/todos               → 200 [{"id":1,…},{"id":2,…}]                  ← A 和 B 都不在
+GET  /api/todos/3             → 404</code></pre>
+<p><strong>第 2 步</strong>：送幾個請求就印幾次（實測送 5 個請求，印了 5 次）。</p>
+<pre><code class="nohighlight">TodosController 被建立了
+TodosController 被建立了
+TodosController 被建立了
+TodosController 被建立了
+TodosController 被建立了</code></pre>
+<p>原因：<mark class="key">每一個請求進來，框架都會建立一個新的 <code>TodosController</code> 物件</mark>，請求結束就丟掉。<code>Todos</code> 和 <code>_nextId</code> 是一般的欄位，每個物件各有一份，所以：</p>
+<ul>
+  <li>第一個 POST 把 A 加進「這次請求的那個物件」的清單，請求結束，物件連同清單一起丟掉</li>
+  <li>第二個 POST 是另一個新物件，<code>_nextId</code> 又從 3 開始，清單又是寫死的兩筆</li>
+  <li>接著的 GET 再換一個新物件，看到的還是寫死的兩筆</li>
+</ul>
+<p>題 3、題 4 的 GET 沒有出問題，是因為每個新物件的清單裡都有寫死的那兩筆，看起來像同一份。</p>
+<p><strong>第 3 步</strong>：兩行都加上 <code>static</code>。</p>
+<div class="compare">
+<div class="bad">
+<p class="compare-label">✗ 留不住：一般的欄位</p>
+<pre><code class="language-csharp">private readonly List&lt;TodoItem&gt; Todos = new() { … };
+private int _nextId = 3;</code></pre>
+<p>欄位屬於<strong>每一個物件</strong>。每個請求建立一個新的 Controller，就有一份新的清單和新的 <code>_nextId</code>，請求結束一起丟掉。</p>
+</div>
+<div class="good">
+<p class="compare-label">✓ 留得住：<code>static</code> 欄位</p>
+<pre><code class="language-csharp">private static readonly List&lt;TodoItem&gt; Todos = new() { … };
+private static int _nextId = 3;</code></pre>
+<p>欄位屬於<strong>類別</strong>，整個程式只有一份。不管框架建立幾個 Controller 物件，每個請求讀寫的都是同一份清單、同一個 <code>_nextId</code>。</p>
+</div>
+</div>
+<p>改完重做第 1 步（實測）：</p>
+<pre><code class="nohighlight">POST /api/todos {"title":"A"} → 201 {"id":3,"title":"A","isDone":false}
+POST /api/todos {"title":"B"} → 201 {"id":4,"title":"B","isDone":false}
+GET  /api/todos               → 200 [{"id":1,…},{"id":2,…},{"id":3,"title":"A",…},{"id":4,"title":"B",…}]
+GET  /api/todos/3             → 200 {"id":3,"title":"A","isDone":false}</code></pre>
+<p>終端機照樣每個請求印一次「TodosController 被建立了」。物件還是每次新的，只是清單不再跟著物件走。第 2 步加的建構子看完可以刪掉。</p>
+<p><strong><code>static</code> 欄位什麼時候用</strong>：整個程式只需要一份、每個物件都要看到同一個值的東西，例如這一課的練習用清單和編號。<strong>什麼時候不用</strong>：真的專案不會用 <code>static List</code> 放資料，兩個請求同時新增時清單和編號都可能出錯，原因在「<a href="#pitfalls">常見坑</a>」。</p>
+<p><strong>第 4 步</strong>：重新啟動之後，回到最初寫死的那兩筆（實測）。</p>
+<pre><code class="nohighlight">GET /api/todos → 200 [{"id":1,"title":"買牛奶","isDone":false},{"id":2,"title":"裝 .NET SDK","isDone":true}]</code></pre>
+<p><code>static</code> 的清單活在程式的記憶體裡。程式一關，記憶體就還給作業系統；再啟動時，那一行 <code>new() { … }</code> 重新執行一次，又是寫死的兩筆。</p>
+<div class="callout warn">
+<p>💡 <strong>第 1 步和第 4 步合起來的結論</strong></p>
+<ul>
+  <li>Controller 物件只活一個請求那麼久，不能把要留下來的資料放在它的一般欄位上</li>
+  <li>放在 <code>static</code> 欄位可以活到程式關掉為止，但<mark class="caution">程式一重啟（改版、當機、主機重開）就全部消失</mark></li>
+  <li>要讓資料「明天還在」，得把它寫到程式外面去。這就是資料庫要做的事，也是下一個專案從 <a href="00-docker-mssql.html">00｜用 Docker 跑 MSSQL</a> 開始的原因</li>
+</ul>
+</div>
+</div>
+</details>
+<p class="more">類別、物件、建構子、<code>static</code> 的完整說明：<a href="csharp-class-object.html">類別與物件</a></p>
+</div>
+
+<!-- 題 7 -->
+<div class="exercise">
+<h3>題 7：修改和刪除，PUT、DELETE</h3>
 <p class="aim">同一個網址用<mark class="key">不同動詞</mark>做不同的事；成功但沒有資料要回時用 <mark class="key">204</mark>。</p>
 <p>需求：</p>
 <ul>
@@ -576,7 +738,7 @@ public ActionResult&lt;TodoItem&gt; Create(CreateTodoRequest request)</code></pr
   <li>修改要能改 <code>IsDone</code>，所以另外寫一個有 <code>Title</code> 和 <code>IsDone</code> 的 record，不要和新增共用</li>
 </ul>
 </div>
-<p class="accept">✅ 驗收：照答案列的請求從頭送一遍，狀態碼依序是 200、200、200、404、201、400、201、204、404、204、404</p>
+<p class="accept">✅ 驗收：先重新啟動程式，讓資料回到最初的兩筆，再把題 3、題 4、題 5 和這一題答案列的請求照順序送一遍，狀態碼依序是 200、200、200、404、201、400、201、204、404、204、404</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
@@ -714,58 +876,6 @@ DELETE http://localhost:5298/api/todos/1</code></pre>
 <p class="more">想知道為什麼，看第 4 節：<a href="#verbs">一支 API = 動詞 + 路徑</a>、<a href="#routing">404 和 405 的差別</a></p>
 </div>
 
-<!-- 題 7 -->
-<div class="exercise">
-<h3>題 7：兩個實驗，看資料是怎麼不見的</h3>
-<p class="aim">親眼看到資料放在記憶體的代價，知道下一個專案為什麼需要資料庫。</p>
-<p>這一題不寫新功能，只做實驗、看結果。</p>
-<p><strong>實驗 A：重新啟動</strong></p>
-<ol>
-  <li>照題 6 的請求新增、修改、刪除幾筆，<code>GET /api/todos</code> 確認資料變了</li>
-  <li>把程式停掉，再啟動</li>
-  <li>再 <code>GET /api/todos</code></li>
-</ol>
-<p><strong>實驗 B：把 <code>static</code> 拿掉</strong></p>
-<ol>
-  <li>把 <code>Todos</code> 和 <code>_nextId</code> 兩行的 <code>static</code> 刪掉，重新啟動</li>
-  <li>連續 <code>POST /api/todos</code> 兩次，看兩次回應的 <code>id</code></li>
-  <li><code>GET /api/todos</code>，看剛才新增的在不在</li>
-  <li>看完把 <code>static</code> 加回去</li>
-</ol>
-<p class="accept">✅ 驗收：說得出兩個實驗各自「資料為什麼不見」</p>
-<details class="answer">
-<summary>實測結果與原因（做完再打開）</summary>
-<div class="answer-body">
-<p><strong>實驗 A</strong>：重新啟動之後，回到最初寫死的那兩筆。</p>
-<pre><code class="nohighlight">GET /api/todos → 200 [{"id":1,"title":"買牛奶","isDone":false},{"id":2,"title":"裝 .NET SDK","isDone":true}]</code></pre>
-<p><code>Todos</code> 這個清單活在程式的記憶體裡。程式一關，記憶體就還給作業系統；再啟動時，那一行 <code>new() { … }</code> 重新執行一次，又是寫死的兩筆。</p>
-<p><strong>實驗 B</strong>：不用重新啟動，資料就不見了。</p>
-<pre><code class="nohighlight">POST /api/todos {"title":"A"} → 201 {"id":3,"title":"A","isDone":false}
-POST /api/todos {"title":"B"} → 201 {"id":3,"title":"B","isDone":false}     ← 兩次都是 3
-GET  /api/todos               → 200 [{"id":1,…},{"id":2,…}]                  ← A 和 B 都不在
-GET  /api/todos/3             → 404</code></pre>
-<p>原因：<mark class="key">每一個請求進來，框架都會建立一個新的 <code>TodosController</code> 物件</mark>，請求結束就丟掉。</p>
-<div class="table-wrap">
-<table>
-  <tr><th></th><th>有 <code>static</code></th><th>沒有 <code>static</code></th></tr>
-  <tr><td>清單屬於誰</td><td>屬於<strong>類別</strong>，整個程式只有一份</td><td>屬於<strong>每一個物件</strong>，每建立一個 Controller 就有一份新的</td></tr>
-  <tr><td>第一個 POST</td><td>加進那唯一的一份</td><td>加進這次請求的 Controller 的清單，請求結束，整個 Controller 連同清單一起丟掉</td></tr>
-  <tr><td>接著的 GET</td><td>看到同一份清單，有剛才那一筆</td><td>又是一個新的 Controller，清單是剛建立的兩筆</td></tr>
-</table>
-</div>
-<p>所以沒有 <code>static</code> 的時候，兩次 POST 拿到的 <code>_nextId</code> 都是全新的 3。</p>
-<div class="callout warn">
-<p>💡 <strong>兩個實驗合起來的結論</strong></p>
-<ul>
-  <li>Controller 物件只活一個請求那麼久，不能把要留下來的資料放在它身上</li>
-  <li>放在 <code>static</code> 可以活到程式關掉為止，但<mark class="caution">程式一重啟（改版、當機、主機重開）就全部消失</mark></li>
-  <li>要讓資料「明天還在」，得把它寫到程式外面去。這就是資料庫要做的事，也是下一個專案從 <a href="00-docker-mssql.html">00｜用 Docker 跑 MSSQL</a> 開始的原因</li>
-</ul>
-</div>
-</div>
-</details>
-</div>
-
 <!-- ============================================================ -->
 <h2 id="review">3. 做完回頭看：請求、方法、狀態碼的對應</h2>
 <p>七題做完，把寫過的東西對成一張表：</p>
@@ -779,16 +889,16 @@ GET  /api/todos/3             → 404</code></pre>
   <tr><td><code>DELETE /api/todos/1</code></td><td><code>Delete(int id)</code></td><td>路徑</td><td><code>NoContent()</code>／<code>NotFound()</code></td><td>204／404</td></tr>
 </table>
 </div>
-<p>這一課用到的狀態碼：</p>
+<p>狀態碼的意思在第 1 節的「<a href="#status">狀態碼</a>」。這一課每個狀態碼是這樣回出來的：</p>
 <div class="table-wrap">
-<table id="status">
-  <tr><th>狀態碼</th><th>意思</th><th>誰回的</th></tr>
-  <tr><td><code>200 OK</code></td><td>成功，回應裡有資料</td><td>你：直接 <code>return</code> 資料</td></tr>
-  <tr><td><code>201 Created</code></td><td>成功，而且新增了一筆</td><td>你：<code>CreatedAtAction(…)</code></td></tr>
-  <tr><td><code>204 No Content</code></td><td>成功，沒有資料要回</td><td>你：<code>NoContent()</code></td></tr>
-  <tr><td><code>400 Bad Request</code></td><td>送來的資料不對</td><td>框架：<code>[ApiController]</code> 驗證失敗時自動回</td></tr>
-  <tr><td><code>404 Not Found</code></td><td>找不到</td><td>你：<code>NotFound()</code>；或框架：路徑沒有人認領</td></tr>
-  <tr><td><code>405 Method Not Allowed</code></td><td>路徑有，但沒有方法接這個動詞</td><td>框架</td></tr>
+<table>
+  <tr><th>狀態碼</th><th>誰回的</th><th>怎麼回的</th></tr>
+  <tr><td><code>200 OK</code></td><td>你的程式</td><td>直接 <code>return</code> 資料</td></tr>
+  <tr><td><code>201 Created</code></td><td>你的程式</td><td><code>CreatedAtAction(…)</code></td></tr>
+  <tr><td><code>204 No Content</code></td><td>你的程式</td><td><code>NoContent()</code></td></tr>
+  <tr><td><code>400 Bad Request</code></td><td>框架</td><td><code>[ApiController]</code> 驗證失敗時自動回，方法不會被呼叫</td></tr>
+  <tr><td><code>404 Not Found</code></td><td>你的程式或框架</td><td>你：<code>NotFound()</code>。框架：路徑沒有人認領</td></tr>
+  <tr><td><code>405 Method Not Allowed</code></td><td>框架</td><td>路徑有，但沒有方法接這個動詞</td></tr>
 </table>
 </div>
 <p>記住三件事就夠帶去下一個專案：</p>
@@ -800,11 +910,11 @@ GET  /api/todos/3             → 404</code></pre>
 
 <!-- ============================================================ -->
 <h2 id="reference">4. 參考區：卡住時再查</h2>
-<p>這一節是工具書，從題目最下面的連結過來，看需要的那一段就好。全部用範本的 <code>WeatherForecastController</code> 和幾個獨立的小實驗來說明，每一段的結果都是 .NET 10 實測。</p>
+<p>這一節是工具書，從題目最下面的連結過來，看需要的那一段就好。例子用的是 <code>dotnet new webapi</code> 範本產生的專案（裡面有一個示範用的 <code>WeatherForecastController</code>）和幾個獨立的小實驗，每一段的結果都是 .NET 10 實測。</p>
 <div class="table-wrap">
 <table>
   <tr><th>想知道</th><th>看哪一段</th></tr>
-  <tr><td>範本的 <code>Program.cs</code> 和 Controller 每一行在做什麼</td><td><a href="#template-controller">範本產生了什麼</a></td></tr>
+  <tr><td>用範本建專案會多出哪幾行</td><td><a href="#template-controller">用範本建專案</a></td></tr>
   <tr><td>GET、POST、PUT、DELETE 各是什麼</td><td><a href="#verbs">一支 API = 動詞 + 路徑</a></td></tr>
   <tr><td>請求怎麼找到方法、為什麼 404、為什麼 405</td><td><a href="#routing">路由</a></td></tr>
   <tr><td><code>id</code>、<code>isDone</code>、JSON 各自怎麼變成參數</td><td><a href="#binding">參數從哪裡來</a></td></tr>
@@ -815,8 +925,10 @@ GET  /api/todos/3             → 404</code></pre>
 </table>
 </div>
 
-<h3 id="template-controller">範本產生了什麼：GET /weatherforecast 是怎麼被找到的</h3>
-<p>範本建好之後先別急著刪 <code>WeatherForecastController</code>。它是一支完整的 API，拿來看懂「一個請求怎麼找到你的方法」剛剛好。兩個檔案，各看幾行（.NET 10 範本，實測節錄）：</p>
+<h3 id="template-controller">用範本建專案：範本產生了什麼</h3>
+<p class="lead">題 1、題 2 是從四行的程式一行一行加上去。之後建 Web API 專案（包含部落格）通常直接用範本，它一次產生好 <mark class="key">題 2 親手加的那兩行</mark>，再附上一個示範用的 Controller 和另外幾行設定。</p>
+<pre><code class="language-powershell">dotnet new webapi -n 專案名稱 --use-controllers -f net10.0</code></pre>
+<p>.NET 10 的 <code>webapi</code> 範本<mark class="caution">預設是 Minimal API</mark>，要加 <code>--use-controllers</code> 才會產生 Controller 版本。範本附的 <code>WeatherForecastController</code> 是一支完整的 API，這一節拿它來說明「一個請求怎麼找到你的方法」。兩個檔案，各看幾行（.NET 10 範本，實測節錄）：</p>
 <p class="file-label">Program.cs</p>
 <pre><code class="language-csharp">var builder = WebApplication.CreateBuilder(args);   // 準備階段（這一節最後「Program.cs 的四個階段」）
 
@@ -837,6 +949,13 @@ public class WeatherForecastController : ControllerBase  // (5) 繼承 Controlle
     }
 }</code></pre>
 <p>(1) 到 (5) 分成下面五段講。<code>CreateBuilder</code>、<code>Build()</code>、<code>Run()</code> 各是什麼、port 從哪裡來，在這一節最後的「<a href="#program-lifecycle">Program.cs 的四個階段</a>」和「<a href="#launchsettings">launchSettings.json</a>」。</p>
+<p>範本的 <code>Program.cs</code> 另外還有幾行，上面省略了。各自做的事：</p>
+<ul>
+  <li><code>AddOpenApi()</code> 和 <code>MapOpenApi()</code>：產生一份 JSON 文件，列出這個專案有哪些 API、各自收什麼參數。程式跑起來之後開 <code>/openapi/v1.json</code> 看得到。</li>
+  <li><code>UseHttpsRedirection()</code>：收到 http 的請求時，回覆對方「改用 https 再送一次」。用 <code>http</code> 啟動設定執行時，終端機會印 <code>Failed to determine the https port for redirect</code> 警告：它找不到 https 的 port，所以不轉址，只發出警告，開發時可以忽略。</li>
+  <li><code>UseAuthorization()</code>：檢查這個請求有沒有權限呼叫這支 API。沒有替任何 API 設定權限時，每個請求都直接通過。</li>
+</ul>
+<p>範本還會產生一個 <code>.http</code> 檔（裡面是寫好的請求），用 Postman 的話用不到。</p>
 
 <h3 id="verbs">一支 API = 動詞 + 路徑</h3>
 <p class="lead">同一筆資料要能查、改、刪，光靠網址分不出要做哪一件，所以一支 API 是由<mark class="key">動詞＋路徑</mark>一起決定的：動詞說做什麼（<code>GET</code> 拿、<code>POST</code> 新增、<code>PUT</code> 整筆換掉、<code>DELETE</code> 刪），路徑說對誰做。路徑一樣、動詞不同，就是不同的 API。</p>
@@ -857,7 +976,7 @@ public class WeatherForecastController : ControllerBase  // (5) 繼承 Controlle
 <p>分兩個時間點。<strong>程式啟動時</strong>：你執行 <code>dotnet run</code>，<code>Program.cs</code> 從第一行往下跑，在開始接收請求之前，<code>app.MapControllers()</code> 把路由表建好，整個執行期間只做這一次。<strong>每個請求進來時</strong>：框架只查這張表。</p>
 <div class="diagram">
 <img src="../images/route-table.svg" alt="路由表：左邊是程式啟動時，app.MapControllers() 找出所有 Controller 類別、讀上面的 Route 和 HttpGet 標記，把每個方法寫成路由表的一列；中間是路由表，五列分別是 GET /api/todos 對 GetAll、GET /api/todos/{id} 對 GetById、POST /api/todos 對 Create、PUT /api/todos/{id} 對 Update、DELETE /api/todos/{id} 對 Delete；右邊是三個請求查表的結果：GET /api/todos/5 對到 GetById 回 200，POST /api/todos/5 路徑有但動詞對不上回 405，GET / 表裡沒有這條路徑回 404" style="width:100%;height:auto">
-<div class="diagram-caption">左邊寫表、右邊查表。以做完題 6 的 <code>TodosController</code> 為例：對得到一列就呼叫那個方法；路徑有但動詞對不上是 405；整條路徑都不在表裡是 404</div>
+<div class="diagram-caption">左邊寫表、右邊查表。以做完題 7 的 <code>TodosController</code> 為例：對得到一列就呼叫那個方法；路徑有但動詞對不上是 405；整條路徑都不在表裡是 404</div>
 </div>
 <p>路徑怎麼算出來的：<code>[Route("[controller]")]</code> 裡的 <code>[controller]</code> 會換成<strong>類別名去掉結尾的 Controller</strong>，再接上方法的 <code>[HttpGet("…")]</code>：</p>
 <div class="table-wrap">
@@ -875,11 +994,11 @@ GET  /weatherforecast       → 200   命中
 GET  /WeatherForecast       → 200   路徑不分大小寫
 GET  /weatherforecast/5     → 404   範本的 Get() 沒有宣告 {id}，所以 /weatherforecast/5 不在表裡
 POST /weatherforecast       → 405   路徑有，但沒有方法標 [HttpPost]</code></pre>
-<p>這就是題 2 打開 <code>http://localhost:5298/</code> 看到 404 的原因：伺服器有在跑，只是 <code>/</code> 這條路徑沒有任何方法認領。</p>
+<p>打開 <code>/</code> 看到 404 不代表伺服器壞了：伺服器有在跑，只是 <code>/</code> 這條路徑沒有任何方法認領。</p>
 
 <h3 id="binding">參數從哪裡來</h3>
 <p class="lead">請求裡的值散在路徑、<code>?</code> 後面、body 的 JSON 三個地方，框架會取出來變成方法的參數。它<mark class="key">看參數的長相</mark>決定去哪裡拿：名稱在路徑樣板裡就從路徑拿，簡單型別從 query string 拿，物件型別從 body 的 JSON 拿。參數的名稱和型別寫對，值就會自動填進來。</p>
-<p>範本的 <code>Get()</code> 沒有參數。題 4 到題 6 會用到三種參數，各自從請求的不同地方來：</p>
+<p>範本的 <code>Get()</code> 沒有參數。題 4、題 5、題 7 會用到三種參數，各自從請求的不同地方來：</p>
 <div class="table-wrap">
 <table>
   <tr><th>方法參數長什麼樣</th><th>從請求的哪裡拿</th><th>例子</th></tr>
@@ -888,7 +1007,7 @@ POST /weatherforecast       → 405   路徑有，但沒有方法標 [HttpPost]<
   <tr><td>物件型別：<code>CreateTodoRequest request</code></td><td><strong>body 的 JSON</strong></td><td><code>POST /api/todos</code> + <code>{"title":"…"}</code> → 轉成一個 <code>CreateTodoRequest</code></td></tr>
 </table>
 </div>
-<p>這套「看參數長相決定去哪裡拿」的規則是 <code>[ApiController]</code> 提供的，所以題 4 到題 6 都不用寫 <code>[FromRoute]</code>、<code>[FromQuery]</code>、<code>[FromBody]</code>；只有想要和規則不同時才寫。JSON 文字變成 C# 物件這一步叫<strong>反序列化</strong>，字串和中文怎麼處理見「<a href="encoding-json-html.html">編碼器</a>」。</p>
+<p>這套「看參數長相決定去哪裡拿」的規則是 <code>[ApiController]</code> 提供的，所以這幾題都不用寫 <code>[FromRoute]</code>、<code>[FromQuery]</code>、<code>[FromBody]</code>；只有想要和規則不同時才寫。JSON 文字變成 C# 物件這一步叫<strong>反序列化</strong>，字串和中文怎麼處理見「<a href="encoding-json-html.html">編碼器</a>」。</p>
 
 <h3 id="controllerbase">為什麼繼承 ControllerBase</h3>
 <p class="lead">繼承 <code>ControllerBase</code> 之後，類別裡就有 <code>Ok()</code>、<code>NotFound()</code>、<code>CreatedAtAction()</code>、<code>NoContent()</code> 這些<mark class="key">回傳方法</mark>可以呼叫，回 404、201 這些結果時不用自己 <code>new</code> 結果物件。API 的 Controller 都繼承它。</p>
@@ -1046,7 +1165,7 @@ GET /without/5   → 404（body 是空的）</code></pre>
   <tr><td>③ 錯誤回應用 ProblemDetails JSON 格式</td><td><code>NotFound()</code> 只回狀態碼，body 是空的</td></tr>
 </table>
 </div>
-<p>看完這幾段，題 2 確認範本能跑之後就可以刪掉 WeatherForecast 那兩個檔案；題 3 開始寫的 <code>TodosController</code> 用的是同一套規則，只是路徑改成 <code>api/[controller]</code>、方法變成五個。</p>
+<p>題 2 的 <code>HelloController</code> 和題 3 開始寫的 <code>TodosController</code> 用的是同一套規則，只是路徑改成 <code>api/[controller]</code>、方法變成五個。</p>
 
 <h3 id="program-lifecycle">Program.cs 的四個階段：CreateBuilder → Build → Use／Map → Run</h3>
 <p class="lead"><code>Program.cs</code> 分成四段，知道順序才知道新的一行該加在哪裡，順序錯了會出事：<code>Build()</code> 之前登記「有什麼東西可以用」，之後排「請求怎麼走」，<code>Run()</code> 開始聽請求。<mark class="caution"><code>builder.Services.Add…</code> 一律寫在 <code>Build()</code> 前面</mark>；看到 <code>Unable to resolve service</code> 就是忘了登記。</p>
@@ -1221,7 +1340,7 @@ fail: Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware[1]
 
 <h3 id="launchsettings">Run() 要聽哪個 port：Properties/launchSettings.json</h3>
 <p class="lead"><code>app.Run()</code> 沒有寫網址，要聽哪個 port、用什麼環境，是 <code>Properties\launchSettings.json</code> 決定的。連不上時來這裡對 <code>applicationUrl</code>。<mark class="caution">這個檔案只在開發機用，不會跟著發佈</mark>。</p>
-<p><code>dotnet run</code> 啟動時會讀這個檔案。題 2 建好的範本長這樣：</p>
+<p><code>dotnet run</code> 啟動時會讀這個檔案。題 1 建的專案裡也有這個檔案。下面是範本專案的內容，你的檔案一樣有 <code>http</code>、<code>https</code> 兩組設定，port 的數字會不同：</p>
 <p class="file-label">TodoApi/Properties/launchSettings.json</p>
 <pre><code class="language-json">{
   "profiles": {
@@ -1248,7 +1367,7 @@ fail: Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware[1]
 <div class="table-wrap">
 <table>
   <tr><th>欄位</th><th>做什麼</th><th>影響到哪裡</th></tr>
-  <tr><td><code>profiles</code> 底下的 <code>http</code>、<code>https</code></td><td>兩組啟動設定。<code>dotnet run</code> 沒指定時用第一個；要指定就寫 <code>dotnet run --launch-profile https</code></td><td>題 2 的 <code>dotnet run</code> 沒指定，用的是第一組 <code>http</code></td></tr>
+  <tr><td><code>profiles</code> 底下的 <code>http</code>、<code>https</code></td><td>兩組啟動設定。<code>dotnet run</code> 沒指定時用第一個；要指定就寫 <code>dotnet run --launch-profile https</code></td><td>這一課的 <code>dotnet run</code> 都沒指定，用的是第一組 <code>http</code></td></tr>
   <tr><td><code>commandName: "Project"</code></td><td>用「執行這個專案」的方式啟動，相當於 <code>dotnet run</code></td><td>一般不用動</td></tr>
   <tr><td><code>applicationUrl</code></td><td><code>Run()</code> 要聽的網址和 port。port 數字是建專案時<strong>隨機抽的</strong>，所以每個人的不一樣</td><td>終端機印的 <code>Now listening on: http://localhost:5298</code>；Postman 的網址要填這個 port</td></tr>
   <tr><td><code>environmentVariables</code> 裡的 <code>ASPNETCORE_ENVIRONMENT</code></td><td>啟動時設一個環境變數，值是 <code>Development</code></td><td><code>app.Environment.IsDevelopment()</code> 回 <code>true</code>；會多讀 <code>appsettings.Development.json</code></td></tr>
@@ -1256,14 +1375,14 @@ fail: Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware[1]
   <tr><td><code>dotnetRunMessages</code></td><td><code>dotnet run</code> 時要不要印 Building… 這類訊息</td><td>只影響終端機輸出</td></tr>
 </table>
 </div>
-<p>兩件事對起來：選 <code>http</code> profile 時 <code>Run()</code> 只聽 <code>5298</code>，<code>UseHttpsRedirection()</code> 找不到 https 的 port，才會印題 2 看到的 <code>Failed to determine the https port for redirect</code> 警告；換成 <code>https</code> profile 就同時聽 <code>7025</code> 和 <code>5298</code>，警告消失。</p>
+<p>兩件事對起來：選 <code>http</code> profile 時 <code>Run()</code> 只聽 <code>5298</code>，<code>UseHttpsRedirection()</code> 找不到 https 的 port，才會印 <code>Failed to determine the https port for redirect</code> 警告；換成 <code>https</code> profile 就同時聽 <code>7025</code> 和 <code>5298</code>，警告消失。</p>
 <p>不是用 <code>dotnet run</code> 啟動時（例如發佈後直接跑 <code>dotnet TodoApi.dll</code>，或放進 Docker），<code>launchSettings.json</code> 不會被讀，port 改由環境變數 <code>ASPNETCORE_URLS</code> 或參數 <code>--urls http://…</code> 決定。這一課先知道有這件事就好。</p>
 <p>官方文件：<a href="https://learn.microsoft.com/aspnet/core/mvc/controllers/routing" target="_blank">Routing to controller actions</a>、<a href="https://learn.microsoft.com/aspnet/core/mvc/models/model-binding" target="_blank">Model Binding</a>、<a href="https://learn.microsoft.com/aspnet/core/web-api/#apicontroller-attribute" target="_blank">ApiController attribute</a>、<a href="https://learn.microsoft.com/aspnet/core/fundamentals/middleware/" target="_blank">Middleware（Use／Map 管線）</a>、<a href="https://learn.microsoft.com/aspnet/core/fundamentals/environments#development-and-launchsettingsjson" target="_blank">launchSettings.json 與環境</a></p>
 
 <!-- ============================================================ -->
 <h2 id="pitfalls">5. 常見坑</h2>
 <ul>
-  <li><strong>忘了 <code>--use-controllers</code></strong>：專案裡沒有 <code>Controllers</code> 資料夾，<code>Program.cs</code> 裡是 <code>app.MapGet(…)</code>。那是題 1 那種 Minimal API 的寫法。把專案資料夾刪掉、<code>dotnet sln remove</code> 之後重建最快</li>
+  <li><strong>用 <code>webapi</code> 範本建專案時忘了 <code>--use-controllers</code></strong>：專案裡沒有 <code>Controllers</code> 資料夾，<code>Program.cs</code> 裡是 <code>app.MapGet(…)</code>。那是題 1 那種 Minimal API 的寫法。把專案資料夾刪掉、<code>dotnet sln remove</code> 之後重建最快</li>
   <li><strong>改了程式但結果沒變</strong>：程式要停掉再啟動才會用新的程式碼。按 Ctrl+C 停掉，再 <code>dotnet run</code> 一次</li>
   <li><strong>Postman 網址的 port 和實際的不一樣</strong>：出現「連線被拒絕」（<code>ECONNREFUSED</code>）時，對一下網址裡的 port 和終端機印的 <code>Now listening on</code></li>
   <li><strong>POST 回 415 Unsupported Media Type</strong>：請求少了 <code>Content-Type: application/json</code> 這個 header，框架不知道 body 是 JSON。Postman 的 <em>Body</em> 分頁選 <em>raw</em> 之後，格式要選 <em>JSON</em>，不是 <em>Text</em></li>

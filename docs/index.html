@@ -113,7 +113,7 @@ var topics = [
 var lessons = [
   { id: "w1", kind: "project", project: "warmup", short: "熱身", brief: "第一支 Web API",
     title: "熱身｜待辦事項 API：第一支 Web API（不接資料庫）", file: "lessons/w1-todo-api.html",
-    uses: ["cs-class", "cs-signature", "http-url", "cs-json"],
+    uses: ["http-status", "cs-class", "cs-attribute", "cs-signature", "http-url", "cs-json"],
     tags: ["Web API", "Controller", "路由", "Routing", "HTTP 動詞", "GET POST PUT DELETE", "ControllerBase", "ApiController", "Model Binding", "狀態碼", "200", "201", "204", "404", "405", "launchSettings", "Program.cs", "CreateBuilder", "Build", "Run", "Postman", "記憶體", "List", "static", "TodoApi"] },
 
   { id: "00", kind: "project", project: "blog", short: "00", brief: "Docker 跑 MSSQL",
@@ -188,6 +188,11 @@ var lessons = [
     title: "類別與物件（this、建構子、static、繼承、介面）", file: "lessons/csharp-class-object.html",
     tags: ["類別", "物件", "new", "this", "static", "建構子", "constructor", "物件初始設定式", "readonly", "record", "init", "with", "主要建構子", "primary constructor", "繼承", "base", "protected", "virtual", "override", "abstract", "介面", "interface", "file-based app"] },
 
+  { id: "cs-attribute", kind: "concept", topic: "csharp", short: "Attribute",
+    title: "Attribute（貼在程式碼上的標記）", file: "lessons/csharp-attribute.html",
+    needs: ["cs-class"],
+    tags: ["attribute", "特性", "方括號", "標記", "Obsolete", "Required", "AttributeUsage", "GetCustomAttribute", "reflection", "反射", "CS0182", "CS0592", "CS0618", "file-based app"] },
+
   { id: "cs-signature", kind: "concept", topic: "csharp", short: "方法簽章",
     title: "看懂方法簽章（方法、擴充方法、委派 Action / Func）", file: "lessons/csharp-delegates-signature.html",
     needs: ["cs-class"],
@@ -219,6 +224,10 @@ var lessons = [
   { id: "http-url", kind: "concept", topic: "http", short: "網址與 query string",
     title: "網址與 query string（路徑、?、&、怎麼變成方法參數）", file: "lessons/http-url-querystring.html",
     tags: ["URL", "網址", "query string", "查詢字串", "路徑", "Path", "?", "&", "FromQuery", "Model Binding", "Minimal API", "MapGet", "StringValues", "Request.Query", "%20", "URL 編碼", "fragment", "路由約束", "file-based app"] },
+
+  { id: "http-status", kind: "concept", topic: "http", short: "HTTP 狀態碼",
+    title: "HTTP 狀態碼（200、201、404 這些數字在說什麼）", file: "lessons/http-status-codes.html",
+    tags: ["狀態碼", "status code", "2xx", "3xx", "4xx", "5xx", "200", "201", "204", "301", "302", "304", "400", "401", "403", "404", "405", "409", "500", "503", "Location", "Allow", "curl", "file-based app"] },
 
   { id: "encoding", kind: "concept", topic: "http", short: "編碼器與 XSS",
     title: "編碼器（Encoder）、解碼（Decode）與 XSS", file: "lessons/encoding-json-html.html",

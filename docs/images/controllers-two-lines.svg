@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 428" width="1000" height="428" role="img" aria-label="Program.cs 裡和 Controller 有關的兩行：builder.Services.AddControllers() 在 Build() 之前，把找出 Controller 類別、把請求裡的值變成方法參數、把回傳值變成回應這些功能登記到登記簿 builder.Services；app.MapControllers() 在 Build() 之後，用登記簿裡的功能讀所有 Controller，建出對照表 GET /api/hello 對 HelloController.Get()。建表要用到登記的功能，沒登記就建表，啟動時會丟例外">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --ok: #1a7f37; --ok-s: #dcfce7;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --ok: #3fb950; --ok-s: #12261b;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .t { font-size: 14px; font-weight: 700; }
+  .h { font-size: 15px; font-weight: 700; }
+  .sm { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 11.5px; }
+  .b { font-weight: 700; }
+  .box { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .hl1 { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .hl2 { fill: var(--ok-s); stroke: var(--ok); stroke-width: 1.5; }
+  .k1 { fill: var(--c1); font-weight: 700; } .k-ok { fill: var(--ok); font-weight: 700; }
+  .arr1 { fill: none; stroke: var(--c1); stroke-width: 2.5; }
+  .arr2 { fill: none; stroke: var(--ok); stroke-width: 2.5; }
+  .arr3 { fill: none; stroke: var(--muted); stroke-width: 2; stroke-dasharray: 6 4; }
+  .f-c1 { fill: var(--c1); } .f-ok { fill: var(--ok); } .f-m { fill: var(--muted); }
+</style>
+<defs>
+  <marker id="p1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-c1" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="p2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-ok" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="p3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-m" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="428" rx="12"/>
+
+<text class="h" x="500" y="30" text-anchor="middle">Controller 要生效，Program.cs 要有這兩行</text>
+
+<!-- 左：Program.cs -->
+<rect class="box" x="20" y="56" width="400" height="270" rx="10"/>
+<text class="t" x="36" y="82">Program.cs</text>
+
+<text class="code" x="40" y="114">var builder = WebApplication.CreateBuilder(args);</text>
+
+<rect class="hl1" x="30" y="130" width="380" height="30" rx="6"/>
+<text class="code b" x="40" y="149">builder.Services.AddControllers();</text>
+
+<text class="code" x="40" y="190">var app = builder.Build();</text>
+<text class="sm" x="40" y="208">登記到這一行為止，之後不能再登記</text>
+
+<rect class="hl2" x="30" y="226" width="380" height="30" rx="6"/>
+<text class="code b" x="40" y="245">app.MapControllers();</text>
+
+<text class="code" x="40" y="286">app.Run();</text>
+<text class="sm" x="40" y="304">開始聽 port，等請求進來</text>
+
+<!-- 右上：登記簿 -->
+<rect class="hl1" x="500" y="56" width="480" height="140" rx="10"/>
+<text class="k1" x="516" y="82" font-size="14">① 登記簿：builder.Services</text>
+<text x="516" y="108">＋ 找出專案裡的 Controller 類別</text>
+<text x="516" y="130">＋ 把請求裡的值變成方法的參數</text>
+<text x="516" y="152">＋ 把方法的回傳值變成回應</text>
+<text class="sm" x="516" y="180">只是登記。到這裡還沒有任何 Controller 的網址可以用</text>
+
+<text class="sm" x="456" y="136" text-anchor="middle">登記</text>
+<path class="arr1" d="M412,145 H496" marker-end="url(#p1)"/>
+
+<!-- 中間：② 要用到 ① -->
+<path class="arr3" d="M560,198 V258" marker-end="url(#p3)"/>
+<text x="574" y="222">建表要用到 ① 登記的功能</text>
+<text class="sm" x="574" y="241">沒登記就建表 → 程式一啟動就丟例外（第 2 步）</text>
+
+<!-- 右下：對照表 -->
+<rect class="hl2" x="500" y="262" width="480" height="94" rx="10"/>
+<text class="k-ok" x="516" y="288" font-size="14">② 對照表：動詞＋路徑 → 交給哪個方法</text>
+<text class="code" x="516" y="313">GET /api/hello  →  HelloController.Get()</text>
+<text class="sm" x="516" y="340">之後每個請求進來，就查這張表</text>
+
+<text class="sm" x="446" y="232" text-anchor="middle">建表</text>
+<path class="arr2" d="M412,241 H460 V309 H496" marker-end="url(#p2)"/>
+
+<text x="500" y="388" text-anchor="middle">順序固定：AddControllers() → Build() → MapControllers()</text>
+<text class="sm" x="500" y="410" text-anchor="middle">只有藍色那行：沒有人建表，網址回 404。只有綠色那行：要用的功能沒登記，啟動就丟例外</text>
+</svg>
