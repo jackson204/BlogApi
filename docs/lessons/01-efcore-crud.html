@@ -632,7 +632,7 @@ POST /weatherforecast       → 405   路徑有，但沒有方法標 [HttpPost]<
 <table>
   <tr><th>方法參數長什麼樣</th><th>從請求的哪裡拿</th><th>例子</th></tr>
   <tr><td>名稱出現在路徑樣板裡：<code>[HttpGet("{id}")]</code> + <code>int id</code></td><td><strong>路徑</strong></td><td><code>GET /api/posts/5</code> → <code>id = 5</code></td></tr>
-  <tr><td>簡單型別，但沒出現在路徑樣板：<code>string? keyword</code></td><td><strong><a href="http-url-querystring.html">query string</a></strong>（<code>?</code> 後面）</td><td><code>GET /api/posts?keyword=Docker</code> → <code>keyword = "Docker"</code></td></tr>
+  <tr><td>簡單型別，但沒出現在路徑樣板：<code>string? keyword</code></td><td><strong><a href="http-query-binding.html">query string</a></strong>（<code>?</code> 後面）</td><td><code>GET /api/posts?keyword=Docker</code> → <code>keyword = "Docker"</code></td></tr>
   <tr><td>物件型別：<code>PostRequest request</code></td><td><strong>body 的 JSON</strong></td><td><code>POST /api/posts</code> + <code>{"title":"…","content":"…"}</code> → 轉成一個 <code>PostRequest</code></td></tr>
 </table>
 </div>

@@ -117,9 +117,9 @@ var lessons = [
     tags: ["HTTP", "request", "response", "請求", "回應", "用戶端", "伺服器", "DNS", "IP", "port", "localhost", "header", "body", "Content-Type", "415", "GET POST PUT DELETE", "冪等", "idempotent", "無狀態", "HTTPS", "CORS", "開發人員工具", "Network", "curl", "favicon", "file-based app"] },
 
   { id: "http-url", kind: "project", project: "basics", short: "網址與 query string", brief: "網址怎麼讀",
-    title: "網址與 query string（路徑、?、&、怎麼變成方法參數）", file: "lessons/http-url-querystring.html",
-    needs: ["http-reqres"], note: "先讀第 1、2 節；第 3 節之後用到 ASP.NET Core，做完熱身再回來",
-    tags: ["URL", "網址", "query string", "查詢字串", "路徑", "Path", "?", "&", "FromQuery", "Model Binding", "Minimal API", "MapGet", "StringValues", "Request.Query", "%20", "URL 編碼", "fragment", "路由約束", "file-based app"] },
+    title: "網址與 query string（一條網址怎麼讀）", file: "lessons/http-url-querystring.html",
+    needs: ["http-reqres"],
+    tags: ["URL", "網址", "協定", "主機", "port", "路徑", "Path", "query string", "查詢字串", "?", "&", "%20", "URL 編碼", "百分比編碼", "fragment", "file-based app"] },
 
   { id: "http-status", kind: "project", project: "basics", short: "HTTP 狀態碼", brief: "狀態碼",
     title: "HTTP 狀態碼（200、201、404 這些數字在說什麼）", file: "lessons/http-status-codes.html",
@@ -128,7 +128,7 @@ var lessons = [
 
   { id: "w1", kind: "project", project: "warmup", short: "熱身", brief: "第一支 Web API",
     title: "熱身｜待辦事項 API：第一支 Web API（不接資料庫）", file: "lessons/w1-todo-api.html",
-    needs: ["http-reqres", "http-url", "http-status"], uses: ["cs-class", "cs-attribute", "cs-signature", "cs-json"],
+    needs: ["http-reqres", "http-url", "http-status"], uses: ["cs-class", "cs-attribute", "cs-signature", "cs-json", "http-binding"],
     tags: ["Web API", "Controller", "路由", "Routing", "HTTP 動詞", "GET POST PUT DELETE", "ControllerBase", "ApiController", "Model Binding", "狀態碼", "200", "201", "204", "404", "405", "launchSettings", "Program.cs", "CreateBuilder", "Build", "Run", "Postman", "記憶體", "List", "static", "TodoApi"] },
 
   { id: "00", kind: "project", project: "blog", short: "00", brief: "Docker 跑 MSSQL",
@@ -137,7 +137,7 @@ var lessons = [
 
   { id: "01", kind: "project", project: "blog", short: "01", brief: "文章 CRUD",
     title: "01｜文章 CRUD：EF Core 入門", file: "lessons/01-efcore-crud.html",
-    needs: ["w1", "00"], uses: ["http-url", "cs-signature", "encoding", "lab"],
+    needs: ["w1", "00"], uses: ["http-binding", "cs-signature", "encoding", "lab"],
     tags: ["Web API", "Controller", "EF Core", "DbContext", "Migration", "LINQ", "SQL", "ToQueryString", "User Secrets", "appsettings", "呼叫流程", "Change Tracking", ".http", "ADO.NET", "Dapper", "ORM", "DbSet", "AddDbContext", "生命週期", "Scoped", "NuGet", "Provider", "dotnet-ef", "Fluent API", "Data Annotations", "SQL Injection", "參數化查詢", "泛型", "多個 DbContext", "--context", "solution", "dotnet sln", "Code First", "Database First", "scaffold", "IQueryable", "路由", "Routing", "HTTP 動詞", "GET POST PUT DELETE", "ControllerBase", "ApiController", "Model Binding", "404", "405", "launchSettings", "applicationUrl", "ASPNETCORE_ENVIRONMENT", "CreateBuilder", "Build", "Run", "Middleware"] },
 
   { id: "03a", kind: "project", project: "blog", short: "03a", brief: "依賴注入 DI",
@@ -235,6 +235,11 @@ var lessons = [
     title: "Task 與 async / await", file: "lessons/csharp-async-await.html",
     needs: ["cs-signature"],
     tags: ["Task", "Task<T>", "async", "await", "非同步", "執行緒", "Task.Delay", "Task.WhenAll", "Thread.Sleep", ".Result", "async void", "CS4014", "IsCompleted", "IsFaulted", "file-based app"] },
+
+  { id: "http-binding", kind: "concept", topic: "http", short: "query string 變成參數",
+    title: "query string 怎麼變成方法參數（以 ASP.NET Core 為例）", file: "lessons/http-query-binding.html",
+    needs: ["http-url", "w1"], note: "要先寫過 Controller",
+    tags: ["query string", "Model Binding", "FromQuery", "AsParameters", "Minimal API", "MapGet", "Controller", "StringValues", "Request.Query", "路由約束", "{id:int}", "400", "415", "file-based app"] },
 
   { id: "http-cookie", kind: "concept", topic: "http", short: "Cookie",
     title: "Cookie 是什麼，還有哪些類似的東西（Session、Token、localStorage）", file: "lessons/http-cookie.html",
