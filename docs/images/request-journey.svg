@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 372" width="1000" height="372" role="img" aria-label="從網址到回應的六個步驟：一，把網址 http://localhost:5062/echo/hello?name=amy 拆成協定、主機、port、路徑、query string；二，用主機名稱查出 IP 位址，localhost 是 127.0.0.1；三，連到那台機器的 port；四，送出請求，內容是動詞加路徑、header、body；五，伺服器處理並回應，內容是狀態碼、header、body；六，用戶端處理回應，瀏覽器顯示內容，需要時再送更多請求">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --ok: #1a7f37; --ok-s: #dcfce7;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --ok: #3fb950; --ok-s: #12261b;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .t { font-size: 13px; font-weight: 700; }
+  .h { font-size: 15px; font-weight: 700; }
+  .sm { font-size: 11.5px; fill: var(--muted); }
+  .code { white-space: pre; font-variant-ligatures: none; font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 13px; }
+  .chip { fill: var(--soft); stroke: var(--border); stroke-width: 1.5; }
+  .req { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .res { fill: var(--ok-s); stroke: var(--ok); stroke-width: 1.5; }
+  .k1 { fill: var(--c1); font-weight: 700; } .k-ok { fill: var(--ok); font-weight: 700; }
+  .arr { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .f-m { fill: var(--muted); }
+</style>
+<defs>
+  <marker id="j1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="f-m" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="372" rx="12"/>
+
+<text class="h" x="500" y="30" text-anchor="middle">按下 Enter 之後：從網址到回應的六個步驟</text>
+
+<!-- ① 拆開網址 -->
+<text class="t" x="22" y="84">① 拆開網址</text>
+<text class="sm" x="22" y="102">一條網址裡有五段，</text>
+<text class="sm" x="22" y="118">各自用在不同的步驟</text>
+
+<rect class="chip" x="200" y="62" width="74" height="34" rx="6"/>
+<text class="code" x="237" y="84" text-anchor="middle">http://</text>
+<text class="t" x="237" y="116" text-anchor="middle">協定</text>
+<text class="sm" x="237" y="133" text-anchor="middle">用什麼方式講</text>
+
+<rect class="chip" x="282" y="62" width="150" height="34" rx="6"/>
+<text class="code" x="357" y="84" text-anchor="middle">localhost</text>
+<text class="t" x="357" y="116" text-anchor="middle">主機</text>
+<text class="sm" x="357" y="133" text-anchor="middle">哪一台機器 → 用在 ②</text>
+
+<rect class="chip" x="440" y="62" width="150" height="34" rx="6"/>
+<text class="code" x="515" y="84" text-anchor="middle">:5062</text>
+<text class="t" x="515" y="116" text-anchor="middle">port</text>
+<text class="sm" x="515" y="133" text-anchor="middle">機器上哪個程式 → 用在 ③</text>
+
+<rect class="req" x="598" y="62" width="150" height="34" rx="6"/>
+<text class="code" x="673" y="84" text-anchor="middle">/echo/hello</text>
+<text class="t k1" x="673" y="116" text-anchor="middle">路徑</text>
+<text class="sm" x="673" y="133" text-anchor="middle">要什麼東西 → 放進 ④</text>
+
+<rect class="req" x="756" y="62" width="150" height="34" rx="6"/>
+<text class="code" x="831" y="84" text-anchor="middle">?name=amy</text>
+<text class="t k1" x="831" y="116" text-anchor="middle">query string</text>
+<text class="sm" x="831" y="133" text-anchor="middle">附加的條件 → 放進 ④</text>
+
+<!-- ②～⑥ -->
+<rect class="chip" x="22" y="172" width="180" height="116" rx="8"/>
+<text class="t" x="34" y="196">② 找到是哪一台機器</text>
+<text class="sm" x="34" y="218">用主機名稱查出 IP 位址，</text>
+<text class="sm" x="34" y="235">這個查詢叫 DNS</text>
+<text class="sm" x="34" y="262">localhost 固定是 127.0.0.1，</text>
+<text class="sm" x="34" y="279">也就是這台電腦自己</text>
+
+<path class="arr" d="M204,230 H214" marker-end="url(#j1)"/>
+
+<rect class="chip" x="216" y="172" width="180" height="116" rx="8"/>
+<text class="t" x="228" y="196">③ 連到那台機器的 port</text>
+<text class="sm" x="228" y="218">一個 port 由一個程式負責聽</text>
+<text class="sm" x="228" y="245">沒有程式在聽這個 port，</text>
+<text class="sm" x="228" y="262">就連不上，後面的步驟</text>
+<text class="sm" x="228" y="279">都不會發生</text>
+
+<path class="arr" d="M398,230 H408" marker-end="url(#j1)"/>
+
+<rect class="req" x="410" y="172" width="180" height="116" rx="8"/>
+<text class="t k1" x="422" y="196">④ 送出請求</text>
+<text class="sm" x="422" y="218">動詞＋路徑＋query string</text>
+<text class="sm" x="422" y="235">header：附加說明</text>
+<text class="sm" x="422" y="252">body：要送過去的內容</text>
+<text class="sm" x="422" y="279">（body 可以沒有）</text>
+
+<path class="arr" d="M592,230 H602" marker-end="url(#j1)"/>
+
+<rect class="res" x="604" y="172" width="180" height="116" rx="8"/>
+<text class="t k-ok" x="616" y="196">⑤ 伺服器處理並回應</text>
+<text class="sm" x="616" y="218">狀態碼：結果是哪一種</text>
+<text class="sm" x="616" y="235">header：附加說明</text>
+<text class="sm" x="616" y="252">body：回傳的內容</text>
+<text class="sm" x="616" y="279">（body 可以沒有）</text>
+
+<path class="arr" d="M786,230 H796" marker-end="url(#j1)"/>
+
+<rect class="chip" x="798" y="172" width="180" height="116" rx="8"/>
+<text class="t" x="810" y="196">⑥ 用戶端處理回應</text>
+<text class="sm" x="810" y="218">瀏覽器把內容顯示出來</text>
+<text class="sm" x="810" y="245">內容裡提到的圖片、CSS，</text>
+<text class="sm" x="810" y="262">瀏覽器會再各送一個請求，</text>
+<text class="sm" x="810" y="279">每個都從 ① 重新走一次</text>
+
+<text x="500" y="324" text-anchor="middle">②③ 決定請求送到哪裡，④ 才是請求本身，⑤ 是回應</text>
+<text class="sm" x="500" y="348" text-anchor="middle">一個請求對一個回應。伺服器回應完，這次往來就結束了，它不會記得剛才是誰</text>
+</svg>

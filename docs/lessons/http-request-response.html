@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>起步：HTTP 請求與回應</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<main class="page">
+
+<div class="breadcrumb"><a href="../index.html">📚 部落格 Web API 學習筆記</a> / <a href="../index.html#projects">學習主線</a> / 起步：先懂 HTTP</div>
+<h1>HTTP 請求與回應（瀏覽器和伺服器之間傳了什麼）</h1>
+<p class="subtitle">在瀏覽器輸入網址按下 Enter，到畫面出現內容，中間是瀏覽器送出一個請求、伺服器送回一個回應。這頁講請求怎麼找到伺服器、請求和回應各長什麼樣、header 和動詞的作用，以及瀏覽器和其他工具送請求時的差別。寫 Web API 就是在寫「收到請求之後回應什麼」，所以先把這一來一回看清楚。</p>
+<div class="tags">
+  <span class="tag">HTTP</span><span class="tag">request</span><span class="tag">response</span><span class="tag">用戶端</span><span class="tag">伺服器</span><span class="tag">DNS</span><span class="tag">IP</span><span class="tag">port</span><span class="tag">localhost</span><span class="tag">header</span><span class="tag">body</span><span class="tag">Content-Type</span><span class="tag">415</span><span class="tag">GET POST PUT DELETE</span><span class="tag">冪等</span><span class="tag">無狀態</span><span class="tag">HTTPS</span><span class="tag">CORS</span><span class="tag">開發人員工具</span><span class="tag">curl</span><span class="tag">file-based app</span>
+</div>
+
+<nav class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#overview">一問一答</a></li>
+    <li><a href="#lab">先起一個小網站，把收到的請求印出來</a></li>
+    <li><a href="#where">請求送到哪裡：主機、IP、port</a></li>
+    <li><a href="#request">請求長什麼樣</a></li>
+    <li><a href="#response">回應長什麼樣</a></li>
+    <li><a href="#header">header：請求和回應的附加說明</a></li>
+    <li><a href="#verbs">動詞：重送一次會不會出事</a></li>
+    <li><a href="#stateless">伺服器不記得你是誰</a></li>
+    <li><a href="#browser">瀏覽器比其他工具多做的事</a></li>
+    <li><a href="#https">HTTP 和 HTTPS</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="overview">1. 一問一答</h2>
+<p class="lead">HTTP 是用戶端和伺服器之間的對話規則：<mark class="key">用戶端送出一個請求（request），伺服器送回一個回應（response）</mark>。永遠是用戶端先問，伺服器才答；伺服器不會主動去找用戶端。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>角色</th><th>是什麼</th><th>例子</th></tr>
+  <tr><td>用戶端（client）</td><td>發出請求的程式</td><td>瀏覽器、Postman、<code>curl</code>、手機 App、另一個伺服器上的程式</td></tr>
+  <tr><td>伺服器（server）</td><td>一直開著、等請求進來再回應的程式</td><td>網站、Web API</td></tr>
+</table>
+</div>
+<p>從按下 Enter 到拿到回應，中間有六個步驟：</p>
+<div class="diagram">
+<img src="../images/request-journey.svg" alt="從網址到回應的六個步驟：拆開網址、用主機名稱查出 IP 位址、連到那台機器的 port、送出請求、伺服器處理並回應、用戶端處理回應" style="width:100%;height:auto">
+<div class="diagram-caption">前三步在找伺服器，第四步才送出請求。下面每一節講其中一段</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="lab">2. 先起一個小網站，把收到的請求印出來</h2>
+<p>後面每一節的輸出都來自這個小網站。它把收到的請求整理成文字，原樣回傳，所以可以直接看到「用戶端到底送了什麼」。不用開專案，一個 <code>.cs</code> 檔就能執行（.NET 10）。</p>
+<p class="file-label">echo-lab.cs</p>
+<pre><code class="language-csharp">// 第一行：告訴 SDK 這是 Web 專案，不然沒有 WebApplication 這些型別
+#:sdk Microsoft.NET.Sdk.Web
+#:property PublishAot=false
+
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+// 每個請求進來，先在終端機印一行，再交給下面的路徑處理
+app.Use(async (context, next) =&gt;
+{
+    Console.WriteLine($"收到請求：{context.Request.Method} {context.Request.Path}{context.Request.QueryString}");
+    await next();
+});
+
+// /echo 開頭的網址，不管哪個動詞：把收到的東西整理成文字回傳
+app.Map("/echo/{**rest}", async context =&gt;
+{
+    var request = context.Request;
+
+    var lines = new List&lt;string&gt;();
+    lines.Add($"動詞：{request.Method}");
+    lines.Add($"路徑：{request.Path}");
+    lines.Add($"query string：{request.QueryString}");
+    lines.Add("header：");
+    foreach (var header in request.Headers)
+    {
+        lines.Add($"  {header.Key}: {header.Value}");
+    }
+
+    using var reader = new StreamReader(request.Body);
+    var body = await reader.ReadToEndAsync();
+    lines.Add($"body：{(body == "" ? "（沒有）" : body)}");
+
+    context.Response.ContentType = "text/plain; charset=utf-8";
+    await context.Response.WriteAsync(string.Join("\n", lines));
+});
+
+// 這條路徑要求 body 是 JSON，第 6 節用它看 Content-Type 的作用
+app.MapPost("/items", (Item item) =&gt; $"收到 Item，Name = {item.Name}");
+
+app.Run("http://localhost:5062");
+
+public record Item(string Name);</code></pre>
+<pre><code class="language-powershell"># 放在任何「沒有 .csproj」的資料夾。按 Ctrl+C 停止
+dotnet run echo-lab.cs</code></pre>
+<p>程式裡的每一行現在不用全部看懂，知道它做兩件事就夠了：每個請求在終端機印一行，<code>/echo</code> 開頭的網址把請求的內容回傳。</p>
+<p>跑起來之後有兩種方式送請求：</p>
+<ul>
+  <li>瀏覽器：網址列輸入 <code>http://localhost:5062/echo/hello?name=amy</code></li>
+  <li>終端機：另開一個視窗，用 <code>curl</code>。Windows 的 PowerShell 裡要打 <code>curl.exe</code></li>
+</ul>
+<pre><code class="language-powershell">curl.exe "http://localhost:5062/echo/hello?name=amy"</code></pre>
+<p>用 <code>curl</code> 送的結果（實測）：</p>
+<pre><code class="nohighlight">動詞：GET
+路徑：/echo/hello
+query string：?name=amy
+header：
+  Accept: */*
+  Host: localhost:5062
+  User-Agent: curl/8.7.1
+body：（沒有）</code></pre>
+<p>下面的輸出都是用 <code>curl</code> 實際送出來的。瀏覽器送的請求 header 會多很多，內容依瀏覽器而定，請自己打開看一次。</p>
+
+<!-- ============================================================ -->
+<h2 id="where">3. 請求送到哪裡：主機、IP、port</h2>
+<p class="lead">送出請求之前，用戶端要先知道<mark class="key">連到哪一台機器的哪一個程式</mark>。網址裡的主機回答「哪一台機器」，port 回答「機器上的哪一個程式」。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>名詞</th><th>是什麼</th><th>例子</th></tr>
+  <tr><td>IP 位址</td><td>網路上每台機器的編號，連線實際用的是它</td><td><code>127.0.0.1</code></td></tr>
+  <tr><td>主機名稱</td><td>給人看的名字，連線前要先換成 IP 位址</td><td><code>localhost</code>、<code>example.com</code></td></tr>
+  <tr><td>DNS</td><td>把主機名稱換成 IP 位址的查詢服務</td><td>查 <code>example.com</code> 得到一個 IP 位址</td></tr>
+  <tr><td>port</td><td>同一台機器上用來區分程式的號碼，0 到 65535。一個 port 同時只能有一個程式在聽</td><td><code>5062</code></td></tr>
+</table>
+</div>
+<p><code>localhost</code> 是一個特別的主機名稱，固定代表<mark class="key">這台電腦自己</mark>，對應的 IP 位址是 <code>127.0.0.1</code>。所以這兩個網址連到同一個地方（實測）：</p>
+<pre><code class="nohighlight">http://localhost:5062/echo     → 200
+http://127.0.0.1:5062/echo     → 200</code></pre>
+<p>網址沒寫 port 時，用協定的預設值：<code>http</code> 是 80，<code>https</code> 是 443。平常上網的網址看不到 port，就是因為用了預設值。開發時伺服器通常聽別的 port，所以網址要寫出來。</p>
+
+<h3>連不上，和 404 不一樣</h3>
+<div class="compare">
+<div class="bad">
+<p class="compare-label">✗ 連不上：請求根本沒有送出去</p>
+<pre><code class="nohighlight">curl.exe http://localhost:5999/echo
+
+curl: (7) Failed to connect to localhost
+port 5999 ... Couldn't connect to server</code></pre>
+<p>5999 這個 port 沒有程式在聽。停在圖裡的第 ③ 步，沒有請求、沒有回應，也<mark class="caution">沒有任何狀態碼</mark>。要檢查的是：伺服器有沒有啟動、port 有沒有打錯。</p>
+</div>
+<div class="good">
+<p class="compare-label">✓ 404：連上了，伺服器有回應</p>
+<pre><code class="nohighlight">curl.exe -i http://localhost:5062/favicon.ico
+
+HTTP/1.1 404 Not Found</code></pre>
+<p>伺服器收到請求，回答「我沒有這個路徑」。走完了六個步驟。要檢查的是：路徑有沒有打錯。</p>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="request">4. 請求長什麼樣</h2>
+<p class="lead">一個 HTTP 請求是一段文字，分三塊：<mark class="key">第一行、header、body</mark>。<code>curl</code> 加上 <code>-v</code> 會把實際送出去的文字印出來，<code>&gt;</code> 開頭的是請求。</p>
+<pre><code class="nohighlight">curl.exe -v http://localhost:5062/echo/hello
+
+&gt; GET /echo/hello HTTP/1.1        ← 第一行：動詞、路徑、協定版本
+&gt; Host: localhost:5062            ← header，一行一個，格式是「名稱: 值」
+&gt; User-Agent: curl/8.7.1
+&gt; Accept: */*
+&gt;                                 ← 空一行，代表 header 結束。這個請求沒有 body</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>哪一塊</th><th>說什麼</th></tr>
+  <tr><td>動詞（method）</td><td>要做哪一種事：<code>GET</code> 拿資料、<code>POST</code> 新增、<code>PUT</code> 修改、<code>DELETE</code> 刪除</td></tr>
+  <tr><td>路徑（加上 query string）</td><td>對哪個東西做。網址裡主機和 port 後面的那一段，細節見「<a href="http-url-querystring.html">網址與 query string</a>」</td></tr>
+  <tr><td>header</td><td>這個請求的附加說明：我是誰、我送的內容是什麼格式、我想要什麼格式的回應</td></tr>
+  <tr><td>body</td><td>要送給伺服器的內容。<code>GET</code>、<code>DELETE</code> 通常沒有，<code>POST</code>、<code>PUT</code> 通常有</td></tr>
+</table>
+</div>
+<p>帶 body 的請求。這次對 <code>/echo/items</code> 送 POST，body 是一段 JSON（實測）：</p>
+<pre><code class="nohighlight">動詞：POST
+路徑：/echo/items
+query string：
+header：
+  Accept: */*
+  Host: localhost:5062
+  User-Agent: curl/8.7.1
+  Content-Type: application/json
+  Content-Length: 17
+body：{"name":"cherry"}</code></pre>
+<p>多了兩個 header：<code>Content-Type</code> 說 body 是 JSON，<code>Content-Length</code> 說 body 有 17 個位元組。</p>
+<p><mark class="caution">瀏覽器的網址列只能送 GET</mark>。要送 POST、PUT、DELETE，得用網頁裡的表單或 JavaScript，或改用 Postman、<code>curl</code> 這類可以自己選動詞的工具。</p>
+
+<!-- ============================================================ -->
+<h2 id="response">5. 回應長什麼樣</h2>
+<p class="lead">回應的結構和請求一樣是三塊，只有第一行不同：<mark class="key">請求的第一行是「要做什麼」，回應的第一行是「結果如何」</mark>。<code>curl -v</code> 印出來 <code>&lt;</code> 開頭的是回應。</p>
+<pre><code class="nohighlight">&lt; HTTP/1.1 200 OK                             ← 第一行：協定版本、狀態碼、說明文字
+&lt; Content-Type: text/plain; charset=utf-8     ← header
+&lt; Date: Sat, 14 Nov 2026 06:48:58 GMT
+&lt; Server: Kestrel
+&lt; Transfer-Encoding: chunked
+&lt;                                             ← 空一行，後面是 body
+動詞：GET
+路徑：/echo/hello
+…</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>哪一塊</th><th>說什麼</th></tr>
+  <tr><td>狀態碼</td><td>三位數字，這次請求的結果是哪一種。細節見「<a href="http-status-codes.html">HTTP 狀態碼</a>」</td></tr>
+  <tr><td>header</td><td>這個回應的附加說明：內容是什麼格式、什麼時候產生的、是哪種伺服器</td></tr>
+  <tr><td>body</td><td>回傳的內容：網頁是 HTML，Web API 通常是 JSON。可以沒有</td></tr>
+</table>
+</div>
+<p>瀏覽器拿到回應之後，看 <code>Content-Type</code> 決定怎麼處理 body：HTML 就畫成網頁，圖片就顯示圖片，JSON 或純文字就直接把文字顯示出來。</p>
+
+<!-- ============================================================ -->
+<h2 id="header">6. header：請求和回應的附加說明</h2>
+<p>header 是一行一個的「名稱: 值」，名稱不分大小寫。種類很多，寫 Web API 常遇到的是這幾個：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>header</th><th>出現在</th><th>意思</th></tr>
+  <tr><td><code>Host</code></td><td>請求</td><td>我要找的主機和 port。同一台機器上可以有很多個網站，伺服器靠它分辨</td></tr>
+  <tr><td><code>Content-Type</code></td><td>請求、回應</td><td>body 是什麼格式。JSON 是 <code>application/json</code></td></tr>
+  <tr><td><code>Accept</code></td><td>請求</td><td>我希望回應是什麼格式。<code>*/*</code> 是都可以</td></tr>
+  <tr><td><code>User-Agent</code></td><td>請求</td><td>我是哪一種用戶端</td></tr>
+  <tr><td><code>Authorization</code></td><td>請求</td><td>我的身分證明，例如登入後拿到的 Token</td></tr>
+  <tr><td><code>Cookie</code>／<code>Set-Cookie</code></td><td>請求／回應</td><td>伺服器請瀏覽器記住的小資料，之後每個請求自動帶上。見「<a href="http-cookie.html">Cookie</a>」</td></tr>
+  <tr><td><code>Location</code></td><td>回應</td><td>請去這個網址。和 201、301、302 這些狀態碼一起出現</td></tr>
+  <tr><td><code>Cache-Control</code></td><td>請求、回應</td><td>這份回應可以留著重複用多久。見「<a href="http-caching.html">HTTP 快取</a>」</td></tr>
+</table>
+</div>
+
+<h3>Content-Type 決定伺服器怎麼讀 body</h3>
+<p>body 只是一串位元組，伺服器要靠 <code>Content-Type</code> 才知道該當成什麼來讀。小網站的 <code>/items</code> 要求 body 是 JSON。同一段內容，只換 <code>Content-Type</code>（實測）：</p>
+<div class="compare">
+<div class="bad">
+<p class="compare-label">✗ 說 body 是純文字</p>
+<pre><code class="nohighlight">POST /items
+Content-Type: text/plain
+
+{"name":"cherry"}
+
+→ HTTP/1.1 415 Unsupported Media Type</code></pre>
+<p>內容明明是 JSON 的樣子，但請求自己說它是純文字，伺服器就不當 JSON 讀，回 415：這個格式我不收。</p>
+</div>
+<div class="good">
+<p class="compare-label">✓ 說 body 是 JSON</p>
+<pre><code class="nohighlight">POST /items
+Content-Type: application/json
+
+{"name":"cherry"}
+
+→ HTTP/1.1 200 OK
+收到 Item，Name = cherry</code></pre>
+<p>伺服器照 JSON 讀，取出 <code>name</code>。</p>
+</div>
+</div>
+<p>用工具送 JSON 卻收到 415，先檢查 <code>Content-Type</code>。Postman 在 Body 分頁把格式選成 JSON，就會自動加上這個 header。</p>
+
+<!-- ============================================================ -->
+<h2 id="verbs">7. 動詞：重送一次會不會出事</h2>
+<p class="lead">動詞除了表達「要做哪一種事」，還約定了兩個性質。它們決定<mark class="key">請求失敗或沒回應時，能不能直接再送一次</mark>。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>動詞</th><th>用途</th><th>會改伺服器上的資料嗎</th><th>同一個請求送兩次</th></tr>
+  <tr><td><code>GET</code></td><td>拿資料</td><td>不會</td><td>結果一樣，可以放心重送</td></tr>
+  <tr><td><code>PUT</code></td><td>把某一筆改成指定的內容</td><td>會</td><td>結果一樣：第二次還是改成同樣的內容</td></tr>
+  <tr><td><code>DELETE</code></td><td>刪除某一筆</td><td>會</td><td>結果一樣：那一筆最後都是不存在（第二次可能回 404）</td></tr>
+  <tr><td><code>POST</code></td><td>新增</td><td>會</td><td><mark class="caution">可能多出一筆</mark></td></tr>
+</table>
+</div>
+<p>「不會改資料」叫<strong>安全</strong>（safe），「送幾次結果都一樣」叫<strong>冪等</strong>（idempotent）。這是約定，伺服器的程式要照著寫才成立：</p>
+<ul>
+  <li>瀏覽器、快取、搜尋引擎的爬蟲都假設 GET 是安全的，會自己重送、預先讀取。所以<mark class="caution">不要用 GET 做刪除或修改</mark>，例如 <code>GET /items/1/delete</code></li>
+  <li>在送出 POST 的頁面按重新整理，瀏覽器會先問「要重新送出表單嗎」，就是因為 POST 重送可能多一筆</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="stateless">8. 伺服器不記得你是誰</h2>
+<p class="lead">HTTP 是<mark class="key">無狀態</mark>的：每個請求各自獨立，伺服器回應完就結束了。下一個請求進來，伺服器不知道它和上一個是不是同一個人送的。</p>
+<p>對小網站連送兩次同樣的請求，終端機印出兩行一模一樣的紀錄，沒有任何東西把它們連在一起：</p>
+<pre><code class="nohighlight">收到請求：GET /echo/hello
+收到請求：GET /echo/hello</code></pre>
+<p>這帶來兩件事：</p>
+<ul>
+  <li>伺服器需要的資訊，<strong>每個請求都要自己帶</strong>。上一個請求說過的事，這個請求要再說一次</li>
+  <li>「登入之後就一直是登入狀態」不是 HTTP 本身有的功能。做法是登入時伺服器發一個識別，之後用戶端每個請求都帶上它：放在 <code>Cookie</code> header 或 <code>Authorization</code> header。見「<a href="http-cookie.html">Cookie</a>」</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="browser">9. 瀏覽器比其他工具多做的事</h2>
+<p><code>curl</code> 和 Postman 是你叫它送什麼，它就送什麼。瀏覽器在背後多做了不少事，同一個網址用瀏覽器和用工具打，看到的可能不一樣。</p>
+<div class="table-wrap">
+<table>
+  <tr><th>瀏覽器會做的事</th><th>看得到的現象</th></tr>
+  <tr><td>自己多送請求</td><td>打開一個網頁，HTML 裡提到的圖片、CSS、JavaScript 各送一個請求；另外通常還會要網站圖示 <code>/favicon.ico</code>。伺服器的紀錄裡會多出不是你打的網址</td></tr>
+  <tr><td>自動帶上 header</td><td><code>User-Agent</code>、<code>Accept</code>、<code>Accept-Language</code>，以及這個網站之前發的 <code>Cookie</code></td></tr>
+  <tr><td>看到 3xx 自動跟著去</td><td>網址列直接變成新的網址，看不到中間那個 301／302</td></tr>
+  <tr><td>把回應留著重複用（快取）</td><td>改了伺服器的內容，重新整理卻還是舊的</td></tr>
+  <tr><td>限制網頁裡的 JavaScript 跨站讀資料</td><td>Postman 打得通的 API，網頁裡的 JavaScript 卻被擋</td></tr>
+</table>
+</div>
+
+<h3>用開發人員工具看每一個請求</h3>
+<p>瀏覽器按 F12 打開開發人員工具，切到 <strong>Network</strong>（網路）分頁，再重新整理頁面。這個頁面送出的每個請求各佔一列，點進去可以看到請求和回應的第一行、header、body。之後 API 不如預期時，先來這裡看實際送了什麼、回了什麼。</p>
+
+<h3>Postman 打得通，網頁卻被擋</h3>
+<p>瀏覽器有一條規則：網頁裡的 JavaScript 向<strong>另一個來源</strong>送請求時，伺服器要在回應的 header 裡明確表示允許，瀏覽器才把回應交給 JavaScript。來源是指「協定＋主機＋port」，三個有一個不同就算另一個來源，所以 <code>http://localhost:3000</code> 的網頁呼叫 <code>http://localhost:5062</code> 的 API 也算。</p>
+<p>這個機制叫 <strong>CORS</strong>。它是瀏覽器在擋，不是伺服器在擋，所以 <code>curl</code>、Postman 不受影響。前端網頁和後端 API 分開放在不同網址時，一定會遇到；解法是在後端設定允許哪些來源。</p>
+
+<!-- ============================================================ -->
+<h2 id="https">10. HTTP 和 HTTPS</h2>
+<p class="lead">HTTPS 是<mark class="key">加密過的 HTTP</mark>。請求和回應的內容、格式完全一樣，只是傳送前先加密，中間經過的網路設備看不到內容，也改不了。</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>HTTP</th><th>HTTPS</th></tr>
+  <tr><td>網址開頭</td><td><code>http://</code></td><td><code>https://</code></td></tr>
+  <tr><td>預設 port</td><td>80</td><td>443</td></tr>
+  <tr><td>傳送的內容</td><td>明文，中途的人看得到，包含密碼和 Cookie</td><td>加密</td></tr>
+  <tr><td>伺服器要準備什麼</td><td>不用</td><td>一張憑證，證明「我真的是這個網域的伺服器」</td></tr>
+</table>
+</div>
+<p>什麼時候用哪一個：</p>
+<ul>
+  <li>放上網路給別人用的網站和 API，一律用 HTTPS</li>
+  <li>在自己電腦上開發，用 HTTP 連 <code>localhost</code> 就可以，請求沒有離開這台電腦。這頁的小網站就是這樣</li>
+  <li>開發時也想用 HTTPS，需要一張開發用的憑證。瀏覽器不認得這張憑證時會顯示「連線不安全」的警告，以 .NET 為例，執行一次 <code>dotnet dev-certs https --trust</code> 讓這台電腦信任它</li>
+</ul>
+
+<nav class="footer-nav">
+  <a href="../index.html#projects">← 回目錄</a>
+  <a href="http-url-querystring.html">下一篇：網址與 query string →</a>
+</nav>
+
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>

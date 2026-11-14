@@ -22,14 +22,14 @@
 
 <section id="zone-roadmap">
 <h2 id="roadmap-title">學習路線</h2>
-<p class="zone-hint">一列是一個專案，由左到右照號碼做，做完一個專案再往下一列。每做完一課，在下面那張卡片按「標記為做完」，這張圖就會記住你做到哪裡。</p>
+<p class="zone-hint">由上往下、由左到右照號碼走。第一列是動手之前要先有的觀念，之後一列是一個專案，做完一列再往下一列。每做完一課，在下面那張卡片按「標記為做完」，這張圖就會記住你做到哪裡。</p>
 <div id="roadmap" class="roadmap"></div>
 <p class="roadmap-legend">
   <span class="legend-dot done">✓</span>做完了
   <span class="legend-dot next">2</span>下一步
   <span class="legend-dot ready">3</span>已寫好，可以做
   <span class="legend-dot locked">4</span>課文還沒寫
-  <span class="legend-note">進度只存在這台電腦的這個瀏覽器裡。觀念庫不在路線上，做到卡住時再從那一課連過去。</span>
+  <span class="legend-note">進度只存在這台電腦的這個瀏覽器裡。觀念庫不在路線上，每一課的卡片會列出它用到哪幾篇，遇到時再連過去。</span>
 </p>
 </section>
 
@@ -37,14 +37,14 @@
 <p id="empty" class="empty">找不到符合的課程，換個關鍵字試試。</p>
 
 <section id="zone-projects">
-<h2 id="projects">專案主線</h2>
-<p class="zone-hint">要動手做的課。由上往下，專案一個比一個大，同一個專案裡照步驟順序做。</p>
+<h2 id="projects">學習主線</h2>
+<p class="zone-hint">照順序讀、照順序做的課。先讀「起步」把 HTTP 看懂，再由上往下做專案，專案一個比一個大，同一個專案裡照步驟順序做。</p>
 <div id="project-list"></div>
 </section>
 
 <section id="zone-concepts">
 <h2 id="concepts">觀念庫</h2>
-<p class="zone-hint">不用動專案的觀念頁，依主題分類，沒有閱讀順序。從主線連過來時再讀，或用上面的搜尋找。</p>
+<p class="zone-hint">不用動專案的觀念頁，依主題分類。每一類裡由淺到深排列，前面的不用先會後面的。可以從主線連過來時再讀，也可以整類由上往下讀。</p>
 <div id="concept-list"></div>
 </section>
 
@@ -98,22 +98,37 @@
 // short: 被別張卡片引用時顯示的短名稱；tags 只給搜尋用，搜尋命中時才顯示
 // brief: 主線課在「學習路線」圖上顯示的簡稱
 var projects = [
+  { id: "basics", title: "起步｜先懂 HTTP", hint: "還沒寫程式之前先讀。瀏覽器和伺服器之間傳了什麼：請求、回應、網址、狀態碼。每一篇都有一個可以直接跑的小網站。" },
   { id: "warmup", title: "熱身｜待辦事項 API", hint: "不接資料庫、不用 Docker，資料先放在記憶體裡。只學一件事：一個 HTTP 請求怎麼變成你寫的那個方法。" },
   { id: "blog", title: "部落格 API", hint: "主要的專案。從一張文章表開始，一步加一個功能：關聯、分層、驗證與測試、效能、登入。" },
   { id: "shop", title: "購物網站", hint: "把部落格學到的全部搬過來，再補上訂單才會遇到的交易、庫存、上傳、部署。" }
 ];
 
 var topics = [
-  { id: "csharp", title: "C# 語法", hint: "每一篇都是可以單獨執行的小程式，不需要專案也不需要資料庫。" },
-  { id: "http", title: "HTTP 與 Web", hint: "瀏覽器和 API 之間傳了什麼：網址、編碼、快取、Cookie。" },
+  { id: "csharp", title: "C# 語法", hint: "每一篇都是可以單獨執行的小程式，不需要專案也不需要資料庫。由上往下是建議的閱讀順序。" },
+  { id: "http", title: "HTTP 與 Web", hint: "「起步」三篇之後的進階主題：Cookie、快取、編碼。" },
   { id: "data", title: "EF Core 與資料庫", hint: "LINQ 怎麼變成 SQL、查詢怎麼寫才對。" },
   { id: "tools", title: "工具與整合", hint: "log、呼叫別人的 API、訊息佇列、即時推播、伺服器端快取。每一篇都能單獨讀。" }
 ];
 
 var lessons = [
+  { id: "http-reqres", kind: "project", project: "basics", short: "請求與回應", brief: "請求與回應",
+    title: "HTTP 請求與回應（瀏覽器和伺服器之間傳了什麼）", file: "lessons/http-request-response.html",
+    tags: ["HTTP", "request", "response", "請求", "回應", "用戶端", "伺服器", "DNS", "IP", "port", "localhost", "header", "body", "Content-Type", "415", "GET POST PUT DELETE", "冪等", "idempotent", "無狀態", "HTTPS", "CORS", "開發人員工具", "Network", "curl", "favicon", "file-based app"] },
+
+  { id: "http-url", kind: "project", project: "basics", short: "網址與 query string", brief: "網址怎麼讀",
+    title: "網址與 query string（路徑、?、&、怎麼變成方法參數）", file: "lessons/http-url-querystring.html",
+    needs: ["http-reqres"], note: "先讀第 1、2 節；第 3 節之後用到 ASP.NET Core，做完熱身再回來",
+    tags: ["URL", "網址", "query string", "查詢字串", "路徑", "Path", "?", "&", "FromQuery", "Model Binding", "Minimal API", "MapGet", "StringValues", "Request.Query", "%20", "URL 編碼", "fragment", "路由約束", "file-based app"] },
+
+  { id: "http-status", kind: "project", project: "basics", short: "HTTP 狀態碼", brief: "狀態碼",
+    title: "HTTP 狀態碼（200、201、404 這些數字在說什麼）", file: "lessons/http-status-codes.html",
+    needs: ["http-reqres"],
+    tags: ["狀態碼", "status code", "2xx", "3xx", "4xx", "5xx", "200", "201", "204", "301", "302", "304", "400", "401", "403", "404", "405", "409", "500", "503", "Location", "Allow", "curl", "file-based app"] },
+
   { id: "w1", kind: "project", project: "warmup", short: "熱身", brief: "第一支 Web API",
     title: "熱身｜待辦事項 API：第一支 Web API（不接資料庫）", file: "lessons/w1-todo-api.html",
-    uses: ["http-status", "cs-class", "cs-attribute", "cs-signature", "http-url", "cs-json"],
+    needs: ["http-reqres", "http-url", "http-status"], uses: ["cs-class", "cs-attribute", "cs-signature", "cs-json"],
     tags: ["Web API", "Controller", "路由", "Routing", "HTTP 動詞", "GET POST PUT DELETE", "ControllerBase", "ApiController", "Model Binding", "狀態碼", "200", "201", "204", "404", "405", "launchSettings", "Program.cs", "CreateBuilder", "Build", "Run", "Postman", "記憶體", "List", "static", "TodoApi"] },
 
   { id: "00", kind: "project", project: "blog", short: "00", brief: "Docker 跑 MSSQL",
@@ -188,50 +203,38 @@ var lessons = [
     title: "類別與物件（this、建構子、static、繼承、介面）", file: "lessons/csharp-class-object.html",
     tags: ["類別", "物件", "new", "this", "static", "建構子", "constructor", "物件初始設定式", "readonly", "record", "init", "with", "主要建構子", "primary constructor", "繼承", "base", "protected", "virtual", "override", "abstract", "介面", "interface", "file-based app"] },
 
-  { id: "cs-attribute", kind: "concept", topic: "csharp", short: "Attribute",
-    title: "Attribute（貼在程式碼上的標記）", file: "lessons/csharp-attribute.html",
-    needs: ["cs-class"],
-    tags: ["attribute", "特性", "方括號", "標記", "Obsolete", "Required", "AttributeUsage", "GetCustomAttribute", "reflection", "反射", "CS0182", "CS0592", "CS0618", "file-based app"] },
-
   { id: "cs-signature", kind: "concept", topic: "csharp", short: "方法簽章",
     title: "看懂方法簽章（方法、擴充方法、委派 Action / Func）", file: "lessons/csharp-delegates-signature.html",
     needs: ["cs-class"],
     tags: ["方法簽章", "static", "this", "擴充方法", "extension method", "泛型", "where", "選擇性參數", "委派", "delegate", "Action", "Func", "lambda", "file-based app"] },
 
-  { id: "cs-async", kind: "concept", topic: "csharp", short: "async / await",
-    title: "Task 與 async / await", file: "lessons/csharp-async-await.html",
-    needs: ["cs-signature"],
-    tags: ["Task", "Task<T>", "async", "await", "非同步", "執行緒", "Task.Delay", "Task.WhenAll", "Thread.Sleep", ".Result", "async void", "CS4014", "IsCompleted", "IsFaulted", "file-based app"] },
+  { id: "cs-attribute", kind: "concept", topic: "csharp", short: "Attribute",
+    title: "Attribute（貼在程式碼上的標記）", file: "lessons/csharp-attribute.html",
+    needs: ["cs-class"],
+    tags: ["attribute", "特性", "方括號", "標記", "Obsolete", "Required", "AttributeUsage", "GetCustomAttribute", "reflection", "反射", "CS0182", "CS0592", "CS0618", "file-based app"] },
 
-  { id: "cs-json", kind: "concept", topic: "csharp", short: "JSON",
-    title: "JSON（格式、轉成物件、轉成 Dictionary）", file: "lessons/csharp-json.html",
-    note: "第 6 節會用到 Dictionary，第一次讀可以先跳過那一節",
-    tags: ["JSON", "JsonSerializer", "Serialize", "Deserialize", "序列化", "反序列化", "PropertyNameCaseInsensitive", "camelCase", "JsonException", "JsonElement", "JsonNode", "Dictionary", "ISO 8601", "null", "FromBody"] },
+  { id: "cs-nullable", kind: "concept", topic: "csharp", short: "default 與可空型別",
+    title: "default、可空型別、?. 與會加工的屬性", file: "lessons/csharp-default-nullable.html",
+    tags: ["default", "== default", "可空型別", "Nullable", "?.", "??", "??=", "field", "屬性 setter", "泛型", "where T : struct, Enum"] },
 
   { id: "cs-dict", kind: "concept", topic: "csharp", short: "Dictionary",
     title: "Dictionary（key 與 value）", file: "lessons/csharp-dictionary.html",
     tags: ["Dictionary", "key", "value", "KeyValuePair", "pair.Key", "pair.Value", "TryGetValue", "GetValueOrDefault", "ContainsKey", "KeyNotFoundException", "ToDictionary", "GroupBy", "對應表", "反查"] },
+
+  { id: "cs-json", kind: "concept", topic: "csharp", short: "JSON",
+    title: "JSON（格式、轉成物件、轉成 Dictionary）", file: "lessons/csharp-json.html",
+    needs: ["cs-dict"],
+    tags: ["JSON", "JsonSerializer", "Serialize", "Deserialize", "序列化", "反序列化", "PropertyNameCaseInsensitive", "camelCase", "JsonException", "JsonElement", "JsonNode", "Dictionary", "ISO 8601", "null", "FromBody"] },
 
   { id: "cs-enum", kind: "concept", topic: "csharp", short: "enum",
     title: "enum（程式裡是名字，資料庫裡是數字）", file: "lessons/csharp-enum-db.html",
     needs: ["cs-dict", "lab"], note: "會用到 LINQ 實驗室的小商店 schema",
     tags: ["enum", "列舉", "underlying type", "byte", "tinyint", "Enum.GetValues", "Enum.IsDefined", "Enum.Parse", "HasConversion", "JsonStringEnumConverter", "IN", "對應表", "Dictionary", "EF Core"] },
 
-  { id: "cs-nullable", kind: "concept", topic: "csharp", short: "default 與可空型別",
-    title: "default、可空型別、?. 與會加工的屬性", file: "lessons/csharp-default-nullable.html",
-    tags: ["default", "== default", "可空型別", "Nullable", "?.", "??", "??=", "field", "屬性 setter", "泛型", "where T : struct, Enum"] },
-
-  { id: "http-url", kind: "concept", topic: "http", short: "網址與 query string",
-    title: "網址與 query string（路徑、?、&、怎麼變成方法參數）", file: "lessons/http-url-querystring.html",
-    tags: ["URL", "網址", "query string", "查詢字串", "路徑", "Path", "?", "&", "FromQuery", "Model Binding", "Minimal API", "MapGet", "StringValues", "Request.Query", "%20", "URL 編碼", "fragment", "路由約束", "file-based app"] },
-
-  { id: "http-status", kind: "concept", topic: "http", short: "HTTP 狀態碼",
-    title: "HTTP 狀態碼（200、201、404 這些數字在說什麼）", file: "lessons/http-status-codes.html",
-    tags: ["狀態碼", "status code", "2xx", "3xx", "4xx", "5xx", "200", "201", "204", "301", "302", "304", "400", "401", "403", "404", "405", "409", "500", "503", "Location", "Allow", "curl", "file-based app"] },
-
-  { id: "encoding", kind: "concept", topic: "http", short: "編碼器與 XSS",
-    title: "編碼器（Encoder）、解碼（Decode）與 XSS", file: "lessons/encoding-json-html.html",
-    tags: ["Encoder", "Decode", "解碼", "白名單", "JSON", "\\u 編碼", "HtmlEncoder", "JavaScriptEncoder", "UrlEncoder", "UnicodeRanges", "AddJsonOptions", "XSS", "HtmlDecode", "UnescapeDataString", "file-based app"] },
+  { id: "cs-async", kind: "concept", topic: "csharp", short: "async / await",
+    title: "Task 與 async / await", file: "lessons/csharp-async-await.html",
+    needs: ["cs-signature"],
+    tags: ["Task", "Task<T>", "async", "await", "非同步", "執行緒", "Task.Delay", "Task.WhenAll", "Thread.Sleep", ".Result", "async void", "CS4014", "IsCompleted", "IsFaulted", "file-based app"] },
 
   { id: "http-cookie", kind: "concept", topic: "http", short: "Cookie",
     title: "Cookie 是什麼，還有哪些類似的東西（Session、Token、localStorage）", file: "lessons/http-cookie.html",
@@ -240,6 +243,10 @@ var lessons = [
   { id: "http-caching", kind: "concept", topic: "http", short: "HTTP 快取",
     title: "HTTP 快取（瀏覽器與 CDN 怎麼決定要不要重新要資料）", file: "lessons/http-caching.html",
     tags: ["快取", "Cache", "HTTP 快取", "Cache-Control", "max-age", "no-cache", "no-store", "private", "public", "s-maxage", "ETag", "If-None-Match", "304", "GET 與 POST", "ResponseCache", "NoCache", "瀏覽器快取", "CDN", "反向代理", "purge", "ERR_UNSAFE_PORT", "前端快取", "Service Worker", "TanStack Query", "file-based app"] },
+
+  { id: "encoding", kind: "concept", topic: "http", short: "編碼器與 XSS",
+    title: "編碼器（Encoder）、解碼（Decode）與 XSS", file: "lessons/encoding-json-html.html",
+    tags: ["Encoder", "Decode", "解碼", "白名單", "JSON", "\\u 編碼", "HtmlEncoder", "JavaScriptEncoder", "UrlEncoder", "UnicodeRanges", "AddJsonOptions", "XSS", "HtmlDecode", "UnescapeDataString", "file-based app"] },
 
   { id: "lab", kind: "concept", topic: "data", short: "LINQ 實驗室",
     title: "LINQ ↔ SQL 實驗室（01b）：先寫 LINQ、猜 SQL、再對實測結果", file: "lessons/01b-linq-sql-lab.html",
