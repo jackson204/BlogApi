@@ -319,8 +319,41 @@ Content-Type: application/json
 <p>瀏覽器按 F12 打開開發人員工具，切到 <strong>Network</strong>（網路）分頁，再重新整理頁面。這個頁面送出的每個請求各佔一列，點進去可以看到請求和回應的第一行、header、body。之後 API 不如預期時，先來這裡看實際送了什麼、回了什麼。</p>
 
 <h3>Postman 打得通，網頁卻被擋</h3>
-<p>瀏覽器有一條規則：網頁裡的 JavaScript 向<strong>另一個來源</strong>送請求時，伺服器要在回應的 header 裡明確表示允許，瀏覽器才把回應交給 JavaScript。來源是指「協定＋主機＋port」，三個有一個不同就算另一個來源，所以 <code>http://localhost:3000</code> 的網頁呼叫 <code>http://localhost:5062</code> 的 API 也算。</p>
-<p>這個機制叫 <strong>CORS</strong>。它是瀏覽器在擋，不是伺服器在擋，所以 <code>curl</code>、Postman 不受影響。前端網頁和後端 API 分開放在不同網址時，一定會遇到；解法是在後端設定允許哪些來源。</p>
+<p class="lead">瀏覽器有一條規則：網頁裡的 JavaScript 向<mark class="key">另一個來源</mark>送請求時，伺服器要在回應的 header 裡明確表示允許，瀏覽器才把回應交給 JavaScript。</p>
+<p>來源是網址最前面的三段：<span class="seg s1">協定</span>、<span class="seg s2">主機</span>、<span class="seg s3">port</span>。路徑和後面的部分不算在內。</p>
+<pre><code class="nohighlight"><span class="seg s1">http</span>://<span class="seg s2">localhost</span>:<span class="seg s3">3000</span>/api/items
+<span class="seg s1">\__/</span>   <span class="seg s2">\_______/</span> <span class="seg s3">\__/</span>
+<span class="seg s1">協定</span>     <span class="seg s2">主機</span>     <span class="seg s3">port</span>      ← 這三段合起來是「來源」</code></pre>
+<p>三段裡<mark class="caution">有一段不同，就算另一個來源</mark>。</p>
+<p>以 <code>http://localhost:3000</code> 的網頁為例，它要呼叫下面四個網址：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>網頁要呼叫的網址</th><th>哪一段不同</th><th>算不算另一個來源</th></tr>
+  <tr><td><code>http://localhost:3000/api/items</code></td><td>三段都一樣，只有路徑不同</td><td><span class="hl b">不算</span></td></tr>
+  <tr><td><code>http://localhost:<span class="seg s3">5062</span>/echo/hello</code></td><td><span class="seg s3">port</span> 不同</td><td><span class="hl c">算</span></td></tr>
+  <tr><td><code><span class="seg s1">https</span>://localhost:3000/api/items</code></td><td><span class="seg s1">協定</span> 不同</td><td><span class="hl c">算</span></td></tr>
+  <tr><td><code>http://<span class="seg s2">example.com</span>:3000/api/items</code></td><td><span class="seg s2">主機</span> 不同</td><td><span class="hl c">算</span></td></tr>
+</table>
+</div>
+<p>這個機制叫 <mark class="key">CORS</mark>。同一支 API 用三種方式送，結果不一樣：</p>
+<div class="diagram">
+<img src="../images/cors.svg" alt="CORS 的三種情況。一，用 curl 或 Postman 送請求：API 回 200，回應直接拿到。二，網頁裡的 JavaScript 送請求、API 沒有設定：瀏覽器在請求加上 Origin header，API 照常處理並回 200，但回應裡沒有 Access-Control-Allow-Origin，瀏覽器不把回應交給 JavaScript。三，API 設定允許這個來源：回應多了 Access-Control-Allow-Origin，瀏覽器把回應交給 JavaScript" style="width:100%;height:auto">
+<div class="diagram-caption">三列的 API 都回 200。差別在第 2 列的回應少了一行 header，瀏覽器就不把回應交給 JavaScript</div>
+</div>
+<p>第 2 列裡<mark class="caution">擋的是瀏覽器，不是伺服器</mark>。可以用 <code>curl</code> 假裝成那個網頁來確認：自己加上瀏覽器會加的 <code>Origin</code> header，送給第 2 節的實驗程式（實測）：</p>
+<pre><code class="nohighlight">curl -i -H "Origin: http://localhost:3000" http://localhost:5062/echo/hello
+
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Date: Sat, 14 Nov 2026 11:51:24 GMT
+Server: Kestrel
+Transfer-Encoding: chunked
+
+動詞：GET
+路徑：/echo/hello
+…</code></pre>
+<p>伺服器回了 200，內容也在。回應的 header 裡沒有 <code>Access-Control-Allow-Origin</code> 這一行，瀏覽器就是看到少了這一行，才不把內容交給網頁裡的 JavaScript。<code>curl</code> 不檢查這一行，所以照樣印出內容。</p>
+<p>前端網頁和後端 API 分開放在不同網址時，一定會遇到 CORS。解法是在後端設定允許哪些來源，讓回應帶上那一行 header（圖的第 3 列）。</p>
 
 <!-- ============================================================ -->
 <h2 id="https">10. HTTP 和 HTTPS</h2>

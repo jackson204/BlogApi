@@ -518,36 +518,49 @@ GET /api/todos/abc         → 400 {"type":"…","title":"One or more validation
 <!-- 題 5 -->
 <div class="exercise">
 <h3>題 5：新增一筆，POST /api/todos</h3>
-<p class="aim">接收前端送來的 JSON，新增成功回 <mark class="key">201</mark>，不合格的資料交給框架擋掉。</p>
+<p class="aim">接收前端送來的 JSON，新增成功回 <mark class="key">201</mark>。先寫完全不檢查的版本，看不合格的資料會怎樣，再一次加一個檢查。</p>
 <p>需求：</p>
 <ul>
   <li>前端送 JSON <code>{"title":"寫第一支 API"}</code>，後端新增一筆待辦事項</li>
   <li>前端<strong>只能傳</strong> <code>title</code>。<code>Id</code> 由後端決定（接著現有的編號往下排），<code>IsDone</code> 一律是 <code>false</code></li>
-  <li><code>title</code> 必填、最多 100 字，不符合要回 400</li>
   <li>成功時回 201，回應內容是新增的那一筆</li>
+  <li><code>title</code> 必填、最多 100 字，不符合要回 400（第 3、4 步才加）</li>
 </ul>
+<p>分四步做，每一步都重新執行再送請求：</p>
+<ol>
+  <li><strong>不做任何檢查</strong>：寫一個只有 <code>Title</code> 的 <code>record</code> 和 <code>Create</code> 方法，送 <code>{"title":"寫第一支 API"}</code>，要回 201。</li>
+  <li><strong>程式不改，送四個不合格的請求</strong>，記下各自回幾號，再 <code>GET /api/todos</code> 看清單多了什麼：
+    <ul>
+      <li><code>{}</code>（沒有 title）</li>
+      <li><code>{"title":""}</code>（title 是空字串）</li>
+      <li><code>{"title":"   "}</code>（title 只有空白）</li>
+      <li>title 是 101 個字</li>
+    </ul>
+  </li>
+  <li><strong>加上 <code>[Required]</code></strong>，重送那四個請求，看哪幾個的結果變了。</li>
+  <li><strong>再加上 <code>[MaxLength(100)]</code></strong>，重送一次。另外送一個剛好 100 個字的。</li>
+</ol>
 <div class="callout">
-<p>接收 JSON 和回 201 的寫法：</p>
+<p>接收 JSON、回 201、加檢查的寫法：</p>
 <ul>
   <li>從 JSON 拿值：方法參數是一個類別（或 record）時，框架會把請求 body 的 JSON 轉成那個型別的物件，JSON 的欄位名稱對得上屬性名稱就填進去</li>
   <li>「前端只能傳 title」：另外寫一個只有 <code>Title</code> 的 <code>record</code> 當參數型別，不要直接用 <code>TodoItem</code>。<code>record</code> 是一種寫起來比較短的類別：<code>public record CreateTodoRequest(string Title);</code></li>
-  <li>「必填、最多 100 字」：在 record 的參數前面加 <code>[Required, MaxLength(100)]</code>（要 <code>using System.ComponentModel.DataAnnotations;</code>）。不符合時框架自動回 400</li>
   <li>回 201：<code>return CreatedAtAction(nameof(GetById), new { id = todo.Id }, todo);</code>。三個參數的意思是「新資料可以用 <code>GetById</code> 這個方法查到、它的 <code>id</code> 是多少、回應內容是什麼」</li>
   <li>下一個編號：用一個 <code>int</code> 欄位記著，用掉一個就加 1</li>
+  <li>第 3、4 步的檢查：<code>[Required]</code>、<code>[MaxLength(100)]</code> 是 <a href="csharp-attribute.html">attribute</a>，寫在 record 參數的型別前面：<code>[Required] string Title</code>。兩個一起寫是 <code>[Required, MaxLength(100)] string Title</code>。檔案最上面要加 <code>using System.ComponentModel.DataAnnotations;</code></li>
+  <li>101 個字的 title：在 PowerShell 執行 <code>'a' * 101</code> 會印出 101 個 <code>a</code>，複製貼進 JSON</li>
 </ul>
 </div>
-<p class="accept">✅ 驗收：送出後回 201，回應內容是新增的那一筆；送 <code>{}</code> 回 400</p>
+<p class="accept">✅ 驗收（第 4 步做完）：正常的 title 回 201，回應內容是新增的那一筆；<code>{}</code>、空字串、只有空白、101 個字都回 400；剛好 100 個字回 201</p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
+<p><strong>第 1 步：不做任何檢查</strong></p>
 <p class="file-label">TodoApi/Models/TodoRequests.cs</p>
-<pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
-
-namespace TodoApi.Models;
+<pre><code class="language-csharp">namespace TodoApi.Models;
 
 // 新增時前端只能傳標題
-public record CreateTodoRequest(
-    [Required, MaxLength(100)] string Title);</code></pre>
+public record CreateTodoRequest(string Title);</code></pre>
 <p class="file-label">TodoApi/Controllers/TodosController.cs（新增一個欄位和一個方法）</p>
 <pre><code class="language-csharp">    // 放在 Todos 清單下面：下一筆要用的編號
     private int _nextId = 3;
@@ -577,12 +590,6 @@ Content-Type: application/json
   "title": "寫第一支 API"
 }
 
-### 沒有 title → 400
-POST http://localhost:5298/api/todos
-Content-Type: application/json
-
-{}
-
 ### 多帶 id 和 isDone → 201，但後端不理它們
 POST http://localhost:5298/api/todos
 Content-Type: application/json
@@ -598,15 +605,59 @@ Content-Type: application/json
 → 201  Location: http://localhost:5298/api/Todos/3
        {"id":3,"title":"寫第一支 API","isDone":false}
 
-POST /api/todos  {}
+POST /api/todos  {"title":"多帶欄位","id":999,"isDone":true}
+→ 201  {"id":3,"title":"多帶欄位","isDone":false}</code></pre>
+<p>201 的回應多了一個 <code>Location</code> header：這就是 <code>CreatedAtAction</code> 那三個參數的用途，它告訴前端「剛新增的那一筆，網址在這裡」。</p>
+
+<p><strong>第 2 步：不合格的請求，沒有任何檢查時的結果</strong>（實測）</p>
+<pre><code class="nohighlight">POST /api/todos  {}
 → 400  {"type":"…","title":"One or more validation errors occurred.","status":400,
         "errors":{"Title":["The Title field is required."]},"traceId":"…"}
 
-POST /api/todos  {"title":"多帶欄位","id":999,"isDone":true}
-→ 201  {"id":3,"title":"多帶欄位","isDone":false}</code></pre>
+POST /api/todos  {"title":""}
+→ 201  {"id":3,"title":"","isDone":false}
+
+POST /api/todos  {"title":"   "}
+→ 201  {"id":3,"title":"   ","isDone":false}
+
+POST /api/todos  {"title":"aaaa…（101 個 a）"}
+→ 201  {"id":3,"title":"aaaa…（101 個 a）","isDone":false}</code></pre>
 <ul>
-  <li><strong>201 的回應多了一個 <code>Location</code> header</strong>：這就是 <code>CreatedAtAction</code> 那三個參數的用途，它告訴前端「剛新增的那一筆，網址在這裡」</li>
-  <li><strong>送 <code>{}</code> 回 400，而且 <code>Create</code> 方法沒有被呼叫</strong>：清單裡沒有多出一筆空標題的資料。驗證失敗時框架在進方法之前就回 400 了</li>
+  <li><mark class="key">什麼檢查都沒寫，<code>{}</code> 就已經回 400</mark>。原因在型別：參數寫的是 <code>string Title</code>，不是 <code>string? Title</code>，意思是「<code>Title</code> 不可以是 <code>null</code>」。JSON 裡沒有 <code>title</code> 時，<code>Title</code> 沒有值可以填，會是 <code>null</code>，框架就回 400，<code>Create</code> 方法沒有被呼叫。</li>
+  <li><mark class="caution">空字串、只有空白、101 個字都回 201</mark>，清單裡多了沒有標題和標題過長的待辦事項。空字串 <code>""</code> 是一個長度為 0 的字串，不是 <code>null</code>，所以上面那個檢查擋不住它。</li>
+</ul>
+
+<p><strong>第 3 步：加上 <code>[Required]</code></strong></p>
+<pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
+
+namespace TodoApi.Models;
+
+// 新增時前端只能傳標題
+public record CreateTodoRequest(
+    [Required] string Title);</code></pre>
+<p><strong>第 4 步：再加上 <code>[MaxLength(100)]</code></strong></p>
+<pre><code class="language-csharp">public record CreateTodoRequest(
+    [Required, MaxLength(100)] string Title);</code></pre>
+<p>三個版本對同一批請求的結果（實測）：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>請求的 body</th><th>第 2 步：沒有檢查</th><th>第 3 步：<code>[Required]</code></th><th>第 4 步：<code>[Required, MaxLength(100)]</code></th></tr>
+  <tr><td><code>{}</code></td><td>400</td><td>400</td><td>400</td></tr>
+  <tr><td><code>{"title":""}</code></td><td>201</td><td><strong>400</strong></td><td>400</td></tr>
+  <tr><td><code>{"title":"   "}</code></td><td>201</td><td><strong>400</strong></td><td>400</td></tr>
+  <tr><td>title 101 個字</td><td>201</td><td>201</td><td><strong>400</strong></td></tr>
+  <tr><td>title 100 個字</td><td>201</td><td>201</td><td>201</td></tr>
+</table>
+</div>
+<pre><code class="nohighlight">POST /api/todos  {"title":""}                 （第 3 步之後）
+→ 400  "errors":{"Title":["The Title field is required."]}
+
+POST /api/todos  {"title":"aaaa…（101 個 a）"}   （第 4 步之後）
+→ 400  "errors":{"Title":["The field Title must be a string or array type with a maximum length of '100'."]}</code></pre>
+<ul>
+  <li><strong><code>[Required]</code> 在這裡多擋的是空字串和只有空白的字串</strong>。沒有 <code>title</code> 的情況，<code>string Title</code> 這個型別已經擋掉了。</li>
+  <li><strong><code>[MaxLength(100)]</code> 擋的是超過 100 個字</strong>，剛好 100 個字會通過。</li>
+  <li><strong>回 400 的時候 <code>Create</code> 方法都沒有被呼叫</strong>：清單裡不會多出一筆，<code>_nextId</code> 也沒有加 1。檢查是框架在呼叫方法之前做的，哪個欄位、違反哪一條規則寫在回應的 <code>errors</code> 裡。</li>
   <li><strong>多帶的 <code>id: 999</code>、<code>isDone: true</code> 沒有作用</strong>：回應裡 <code>id</code> 是 3、<code>isDone</code> 是 <code>false</code>。因為 <code>CreateTodoRequest</code> 只有 <code>Title</code> 一個屬性，JSON 裡其他欄位沒有地方可以填，就被丟掉了</li>
 </ul>
 <p>前端多傳欄位、改到不該由它決定的資料，這個問題叫 <mark class="key">over-posting</mark>。兩種參數型別放在一起比：</p>
@@ -933,23 +984,34 @@ DELETE http://localhost:5298/api/todos/1</code></pre>
 <p class="file-label">Program.cs</p>
 <pre><code class="language-csharp">var builder = WebApplication.CreateBuilder(args);   // 準備階段（這一節最後「Program.cs 的四個階段」）
 
-builder.Services.AddControllers();   // (1) 登記：這個專案要用 Controller
+builder.Services.AddControllers();   // 登記：這個專案要用 Controller（題 2 加的第一行）
 
 var app = builder.Build();           // 登記定案，做出 app
-app.MapControllers();                // (2) 掃描所有 Controller，建一張路由表
+app.MapControllers();                // (2) 掃描所有 Controller，建一張路由表（題 2 加的第二行）
 app.Run();                           // 開始聽 port，卡在這行直到關掉</code></pre>
 <p class="file-label">Controllers/WeatherForecastController.cs</p>
-<pre><code class="language-csharp">[ApiController]                                          // (4) 幫 API 自動做幾件事（下方「ApiController 做了什麼」）
-[Route("[controller]")]                                  // (3) 路徑：[controller] 換成類別名去掉 Controller → weatherforecast
-public class WeatherForecastController : ControllerBase  // (5) 繼承 ControllerBase：拿到 Ok()、NotFound() 這些回傳方法
+<pre><code class="language-csharp">[ApiController]                                          // (5) 幫 API 自動做幾件事
+[Route("[controller]")]                                  // (1)(2) 路徑：[controller] 換成類別名去掉 Controller → weatherforecast
+public class WeatherForecastController : ControllerBase  // (4) 繼承 ControllerBase：拿到 Ok()、NotFound() 這些回傳方法
 {
-    [HttpGet(Name = "GetWeatherForecast")]               // (3) 動詞：GET。所以這支 API 是 GET /weatherforecast
-    public IEnumerable&lt;WeatherForecast&gt; Get()
+    [HttpGet(Name = "GetWeatherForecast")]               // (1) 動詞：GET。所以這支 API 是 GET /weatherforecast
+    public IEnumerable&lt;WeatherForecast&gt; Get()            // (3) 參數：括號裡是空的，這個方法不收參數
     {
         return Enumerable.Range(1, 5).Select(index =&gt; new WeatherForecast { … }).ToArray();
     }
 }</code></pre>
-<p>(1) 到 (5) 分成下面五段講。<code>CreateBuilder</code>、<code>Build()</code>、<code>Run()</code> 各是什麼、port 從哪裡來，在這一節最後的「<a href="#program-lifecycle">Program.cs 的四個階段</a>」和「<a href="#launchsettings">launchSettings.json</a>」。</p>
+<p>註解裡的 (1) 到 (5) 對應下面五段，每一段的標題開頭有同樣的編號，段落開頭也會把它講的那幾行再列一次：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>編號</th><th>講的是哪幾行</th><th>看哪一段</th></tr>
+  <tr><td>(1)</td><td><code>[Route("[controller]")]</code>、<code>[HttpGet(…)]</code></td><td><a href="#verbs">一支 API = 動詞 + 路徑</a></td></tr>
+  <tr><td>(2)</td><td><code>app.MapControllers()</code>、<code>[Route("[controller]")]</code></td><td><a href="#routing">路由：請求怎麼找到你的方法</a></td></tr>
+  <tr><td>(3)</td><td><code>Get()</code> 的括號</td><td><a href="#binding">參數從哪裡來</a></td></tr>
+  <tr><td>(4)</td><td><code>: ControllerBase</code></td><td><a href="#controllerbase">為什麼繼承 ControllerBase</a></td></tr>
+  <tr><td>(5)</td><td><code>[ApiController]</code></td><td><a href="#apicontroller">[ApiController] 做了什麼</a></td></tr>
+</table>
+</div>
+<p><code>CreateBuilder</code>、<code>Build()</code>、<code>Run()</code> 各是什麼、port 從哪裡來，在這一節最後的「<a href="#program-lifecycle">Program.cs 的四個階段</a>」和「<a href="#launchsettings">launchSettings.json</a>」。</p>
 <p>範本的 <code>Program.cs</code> 另外還有幾行，上面省略了。各自做的事：</p>
 <ul>
   <li><code>AddOpenApi()</code> 和 <code>MapOpenApi()</code>：產生一份 JSON 文件，列出這個專案有哪些 API、各自收什麼參數。程式跑起來之後開 <code>/openapi/v1.json</code> 看得到。</li>
@@ -958,7 +1020,10 @@ public class WeatherForecastController : ControllerBase  // (5) 繼承 Controlle
 </ul>
 <p>範本還會產生一個 <code>.http</code> 檔（裡面是寫好的請求），用 Postman 的話用不到。</p>
 
-<h3 id="verbs">一支 API = 動詞 + 路徑</h3>
+<h3 id="verbs">(1) 一支 API = 動詞 + 路徑</h3>
+<p class="file-label">這一段講標 (1) 的兩行 · Controllers/WeatherForecastController.cs</p>
+<pre><code class="language-csharp">[Route("[controller]")]                    // 路徑：/weatherforecast
+[HttpGet(Name = "GetWeatherForecast")]     // 動詞：GET</code></pre>
 <p class="lead">同一筆資料要能查、改、刪，光靠網址分不出要做哪一件，所以一支 API 是由<mark class="key">動詞＋路徑</mark>一起決定的：動詞說做什麼（<code>GET</code> 拿、<code>POST</code> 新增、<code>PUT</code> 整筆換掉、<code>DELETE</code> 刪），路徑說對誰做。路徑一樣、動詞不同，就是不同的 API。</p>
 <p>HTTP 請求的第一行就是「動詞 路徑」，例如 <code>GET /weatherforecast</code>。這一課的 API 用到四個動詞：</p>
 <div class="table-wrap">
@@ -972,7 +1037,10 @@ public class WeatherForecastController : ControllerBase  // (5) 繼承 Controlle
 </div>
 <p><code>GET /api/todos/5</code> 和 <code>DELETE /api/todos/5</code> 路徑一樣，但是兩支不同的 API，各自對應 Controller 裡不同的方法。對範本實測：對 <code>/weatherforecast</code> 送 <code>POST</code> 會回 <code>405 Method Not Allowed</code>，意思是「這條路徑有人認領，但沒有方法接 POST」。</p>
 
-<h3 id="routing">路由：請求怎麼找到你的方法</h3>
+<h3 id="routing">(2) 路由：請求怎麼找到你的方法</h3>
+<p class="file-label">這一段講標 (2) 的兩行 · Program.cs 和 Controllers/WeatherForecastController.cs</p>
+<pre><code class="language-csharp">app.MapControllers();        // Program.cs：程式啟動時建路由表
+[Route("[controller]")]      // Controller 類別上：這個類別的路徑</code></pre>
 <p class="lead">請求進來時，由<mark class="key">路由</mark>決定該呼叫哪個方法。程式啟動時把每個方法的「動詞＋路徑」登記成一張表，請求進來就查表：路徑查不到回 <mark class="key">404</mark>，動詞不對回 <mark class="key">405</mark>。在方法上寫 <code>[HttpGet("{id}")]</code> 就完成登記，不用自己判斷網址。</p>
 <p>分兩個時間點。<strong>程式啟動時</strong>：你執行 <code>dotnet run</code>，<code>Program.cs</code> 從第一行往下跑，在開始接收請求之前，<code>app.MapControllers()</code> 把路由表建好，整個執行期間只做這一次。<strong>每個請求進來時</strong>：框架只查這張表。</p>
 <div class="diagram">
@@ -997,7 +1065,9 @@ GET  /weatherforecast/5     → 404   範本的 Get() 沒有宣告 {id}，所以
 POST /weatherforecast       → 405   路徑有，但沒有方法標 [HttpPost]</code></pre>
 <p>打開 <code>/</code> 看到 404 不代表伺服器壞了：伺服器有在跑，只是 <code>/</code> 這條路徑沒有任何方法認領。</p>
 
-<h3 id="binding">參數從哪裡來</h3>
+<h3 id="binding">(3) 參數從哪裡來</h3>
+<p class="file-label">這一段講標 (3) 的那一行 · Controllers/WeatherForecastController.cs</p>
+<pre><code class="language-csharp">public IEnumerable&lt;WeatherForecast&gt; Get()    // 括號裡寫的就是參數，範本這裡是空的</code></pre>
 <p class="lead">請求裡的值散在路徑、<code>?</code> 後面、body 的 JSON 三個地方，框架會取出來變成方法的參數。它<mark class="key">看參數的長相</mark>決定去哪裡拿：名稱在路徑樣板裡就從路徑拿，簡單型別從 query string 拿，物件型別從 body 的 JSON 拿。參數的名稱和型別寫對，值就會自動填進來。</p>
 <p>範本的 <code>Get()</code> 沒有參數。題 4、題 5、題 7 會用到三種參數，各自從請求的不同地方來：</p>
 <div class="table-wrap">
@@ -1010,7 +1080,9 @@ POST /weatherforecast       → 405   路徑有，但沒有方法標 [HttpPost]<
 </div>
 <p>這套「看參數長相決定去哪裡拿」的規則是 <code>[ApiController]</code> 提供的，所以這幾題都不用寫 <code>[FromRoute]</code>、<code>[FromQuery]</code>、<code>[FromBody]</code>；只有想要和規則不同時才寫。JSON 文字變成 C# 物件這一步叫<strong>反序列化</strong>，字串和中文怎麼處理見「<a href="encoding-json-html.html">編碼器</a>」。</p>
 
-<h3 id="controllerbase">為什麼繼承 ControllerBase</h3>
+<h3 id="controllerbase">(4) 為什麼繼承 ControllerBase</h3>
+<p class="file-label">這一段講標 (4) 的那一行 · Controllers/WeatherForecastController.cs</p>
+<pre><code class="language-csharp">public class WeatherForecastController : ControllerBase</code></pre>
 <p class="lead">繼承 <code>ControllerBase</code> 之後，類別裡就有 <code>Ok()</code>、<code>NotFound()</code>、<code>CreatedAtAction()</code>、<code>NoContent()</code> 這些<mark class="key">回傳方法</mark>可以呼叫，回 404、201 這些結果時不用自己 <code>new</code> 結果物件。API 的 Controller 都繼承它。</p>
 <p>ASP.NET Core 有兩個 Controller 父類別可以選：</p>
 <div class="table-wrap">
@@ -1071,7 +1143,10 @@ GET /hello    → 200  hello
 GET /nope     → 404  Nope 沒被認成 Controller，它的方法不在路由表裡</code></pre>
 <p>所以「繼承 <code>ControllerBase</code>」不是被掃到的必要條件；它真正的用處是那些回傳方法。對照 <code>PocoController</code> 和 <code>Hello</code> 就看得出來：一個要自己 <code>new NotFoundResult()</code>，一個直接 <code>return Ok(…)</code>。實務上 API 的 Controller 名稱以 <code>Controller</code> 結尾、也繼承 <code>ControllerBase</code>，兩條都符合，範本的 <code>WeatherForecastController</code> 就是這樣。</p>
 
-<h3 id="apicontroller">[ApiController] 做了什麼</h3>
+<h3 id="apicontroller">(5) [ApiController] 做了什麼</h3>
+<p class="file-label">這一段講標 (5) 的那一行 · Controllers/WeatherForecastController.cs</p>
+<pre><code class="language-csharp">[ApiController]
+public class WeatherForecastController : ControllerBase</code></pre>
 <p class="lead"><code>[ApiController]</code> 加在 Controller 類別上，讓你不用在每個方法開頭自己檢查送來的資料合不合格：<mark class="key">驗證失敗自動回 400</mark>，方法不會被呼叫；物件型別的參數自動從 body 的 JSON 拿；錯誤回應統一成 ProblemDetails 格式。每個 API 的 Controller 類別上都要加。</p>
 <p>下面兩個 Controller 的方法內容一樣，差別只在有沒有 <code>[ApiController]</code>，用來實測這三件事：</p>
 <pre><code class="language-csharp">public class CreateRequest

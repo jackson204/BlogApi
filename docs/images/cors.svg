@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" role="img" aria-label="CORS 的三種情況。一，用 curl 或 Postman 送請求：API 回 200，回應直接拿到。二，網頁裡的 JavaScript 送請求、API 沒有設定：瀏覽器在請求加上 Origin header，API 照常處理並回 200，但回應裡沒有 Access-Control-Allow-Origin，瀏覽器不把回應交給 JavaScript。三，API 設定允許這個來源：回應多了 Access-Control-Allow-Origin，瀏覽器把回應交給 JavaScript">
+<style>
+  svg {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --soft: #f6f8fa;
+    --c1: #0969da; --c1-s: #ddf4ff; --ok: #1a7f37; --ok-s: #dcfce7; --bad: #cf222e; --bad-s: #ffebe9;
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    svg {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --border: #3d444d; --soft: #151b23;
+      --c1: #58a6ff; --c1-s: #0c2d4a; --ok: #3fb950; --ok-s: #12261b; --bad: #f85149; --bad-s: #3c1618;
+    }
+  }
+  .bg { fill: var(--bg); }
+  text { fill: var(--fg); font-size: 13px; }
+  .h { font-size: 15px; font-weight: 700; }
+  .t { font-size: 14px; font-weight: 700; }
+  .n { font-size: 13px; font-weight: 700; fill: var(--bg); }
+  .sm { font-size: 12px; fill: var(--muted); }
+  .mono { font-family: "Cascadia Code", Consolas, "Courier New", monospace; font-size: 11.5px; }
+  .k-ok { fill: var(--ok); font-weight: 700; } .k-bad { fill: var(--bad); font-weight: 700; } .k1 { fill: var(--c1); font-weight: 700; }
+  .box { fill: var(--soft); stroke: var(--muted); stroke-width: 1.5; }
+  .box-b { fill: var(--c1-s); stroke: var(--c1); stroke-width: 1.5; }
+  .num { fill: var(--muted); } .num-ok { fill: var(--ok); } .num-bad { fill: var(--bad); }
+  .sep { stroke: var(--border); stroke-width: 1; }
+  .a { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .a-ok { fill: none; stroke: var(--ok); stroke-width: 2; }
+  .a-bad { fill: none; stroke: var(--bad); stroke-width: 2; stroke-dasharray: 5 4; }
+  .x { fill: none; stroke: var(--bad); stroke-width: 3; stroke-linecap: round; }
+  .f-m { fill: var(--muted); } .f-ok { fill: var(--ok); }
+</style>
+<defs>
+  <marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-m" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="c2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="f-ok" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" x="0" y="0" width="1000" height="560" rx="12"/>
+<text class="h" x="500" y="30" text-anchor="middle">同一支 API，三種送法</text>
+
+<circle class="num" cx="42" cy="66" r="11"/><text class="n" x="42" y="70.5" text-anchor="middle">1</text>
+<text class="t" x="62" y="71">用 curl 或 Postman 送</text>
+<rect class="box" x="30" y="86" width="180" height="76" rx="8"/>
+<text class="t" x="120.0" y="119" text-anchor="middle">curl／Postman</text>
+<text class="sm mono" x="120.0" y="140" text-anchor="middle">沒有瀏覽器</text>
+<rect class="box" x="800" y="86" width="170" height="76" rx="8"/>
+<text class="t" x="885.0" y="119" text-anchor="middle">API 伺服器</text>
+<text class="sm mono" x="885.0" y="140" text-anchor="middle">http://localhost:5062</text>
+<text class="mono" x="505" y="104" text-anchor="middle">GET /echo/hello</text>
+<path class="a" d="M216,110 H794" marker-end="url(#c1)"/>
+<path class="a-ok" d="M794,140 H216" marker-end="url(#c2)"/>
+<text class="mono" x="505" y="156" text-anchor="middle">200 OK ＋ 內容</text>
+<text class="k-ok" x="30" y="188">✓ 回應直接拿到</text><text class="sm" x="150" y="188">CORS 是瀏覽器的規則，這些工具沒有這一關</text>
+<path class="sep" d="M30,206 H970"/>
+<circle class="num-bad" cx="42" cy="236" r="11"/><text class="n" x="42" y="240.5" text-anchor="middle">2</text>
+<text class="t" x="62" y="241">網頁裡的 JavaScript 送，API 沒有設定</text>
+<rect class="box" x="30" y="256" width="180" height="76" rx="8"/>
+<text class="t" x="120.0" y="289" text-anchor="middle">網頁裡的 JavaScript</text>
+<text class="sm mono" x="120.0" y="310" text-anchor="middle">http://localhost:3000</text>
+<rect class="box-b" x="262" y="256" width="120" height="76" rx="8"/>
+<text class="t" x="322.0" y="289" text-anchor="middle">瀏覽器</text>
+<text class="sm mono" x="322.0" y="310" text-anchor="middle"></text>
+<rect class="box" x="800" y="256" width="170" height="76" rx="8"/>
+<text class="t" x="885.0" y="289" text-anchor="middle">API 伺服器</text>
+<text class="sm mono" x="885.0" y="310" text-anchor="middle">照常處理，回 200</text>
+<path class="a" d="M214,280 H256" marker-end="url(#c1)"/>
+<text class="mono" x="591" y="274" text-anchor="middle">GET /echo/hello　<tspan class="k1">Origin: http://localhost:3000</tspan></text>
+<path class="a" d="M388,280 H794" marker-end="url(#c1)"/>
+<path class="a" d="M794,310 H388" marker-end="url(#c1)"/>
+<text class="mono" x="591" y="326" text-anchor="middle">200 OK　<tspan class="k-bad">沒有 Access-Control-Allow-Origin</tspan></text>
+<path class="a-bad" d="M256,310 H222"/>
+<path class="x" d="M230,303 l12,14 M242,303 l-12,14"/>
+<text class="k-bad" x="30" y="358">✗ 瀏覽器收到回應，但不交給 JavaScript</text><text class="sm" x="290" y="358">請求有送到，API 也處理了；被擋住的是「JavaScript 讀回應」這一步</text>
+<path class="sep" d="M30,376 H970"/>
+<circle class="num-ok" cx="42" cy="406" r="11"/><text class="n" x="42" y="410.5" text-anchor="middle">3</text>
+<text class="t" x="62" y="411">API 設定了「允許 http://localhost:3000」</text>
+<rect class="box" x="30" y="426" width="180" height="76" rx="8"/>
+<text class="t" x="120.0" y="459" text-anchor="middle">網頁裡的 JavaScript</text>
+<text class="sm mono" x="120.0" y="480" text-anchor="middle">http://localhost:3000</text>
+<rect class="box-b" x="262" y="426" width="120" height="76" rx="8"/>
+<text class="t" x="322.0" y="459" text-anchor="middle">瀏覽器</text>
+<text class="sm mono" x="322.0" y="480" text-anchor="middle"></text>
+<rect class="box" x="800" y="426" width="170" height="76" rx="8"/>
+<text class="t" x="885.0" y="459" text-anchor="middle">API 伺服器</text>
+<text class="sm mono" x="885.0" y="480" text-anchor="middle">回應多一行 header</text>
+<path class="a" d="M214,450 H256" marker-end="url(#c1)"/>
+<text class="mono" x="591" y="444" text-anchor="middle">GET /echo/hello　<tspan class="k1">Origin: http://localhost:3000</tspan></text>
+<path class="a" d="M388,450 H794" marker-end="url(#c1)"/>
+<path class="a" d="M794,480 H388" marker-end="url(#c1)"/>
+<text class="mono" x="591" y="496" text-anchor="middle">200 OK　<tspan class="k-ok">Access-Control-Allow-Origin: http://localhost:3000</tspan></text>
+<path class="a-ok" d="M256,480 H216" marker-end="url(#c2)"/>
+<text class="k-ok" x="30" y="528">✓ 瀏覽器把回應交給 JavaScript</text><text class="sm" x="240" y="528">瀏覽器看到回應裡寫的來源和網頁的來源一樣，才放行</text>
+</svg>
