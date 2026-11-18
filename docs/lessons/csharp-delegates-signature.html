@@ -38,32 +38,167 @@
 
 <!-- ============================================================ -->
 <h2 id="method">1. 方法簽章是什麼</h2>
-<p>這頁說的<strong>簽章（signature）</strong>，就是一個方法「怎麼呼叫它、它回什麼」：名稱、參數、回傳型別。大括號裡的本體不算，你呼叫別人的方法時也看不到本體，看得到的只有簽章。先用一個簡單的方法認識五個部分：</p>
+<p class="lead"><mark class="key">簽章（signature）</mark>是一個方法「怎麼呼叫它、它回什麼」：名稱、參數、回傳型別。大括號裡的本體不算，呼叫別人的方法時也看不到本體，看得到的只有簽章。這一節從最短的簽章開始，一步加一個記號，每一步都看簽章多了什麼、呼叫的地方跟著怎麼變。</p>
+<p>程式裡的顏色：<span class="hl a">藍色</span>是這一步多出來的記號，<span class="hl b">綠色</span>是呼叫的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯的寫法。每一步的輸出和錯誤訊息都實際執行過。</p>
 
+<h3 id="step-object">第 1 步：最短的簽章，用物件呼叫</h3>
+<pre><code class="nohighlight">var tools = <span class="hl b">new StringTools()</span>;
+Console.WriteLine(<span class="hl b">tools</span>.Repeat("ab"));
+
+class StringTools
+{
+    <span class="hl a">public string Repeat(string text)</span>
+    {
+        return text + text;
+    }
+}
+
+// 輸出：
+// abab</code></pre>
+<p>藍色那一行就是簽章，有四段：</p>
+<ul>
+  <li><code>public</code>：誰都能呼叫</li>
+  <li><code>string</code>：回傳型別，呼叫完會拿到一個字串</li>
+  <li><code>Repeat</code>：名稱</li>
+  <li><code>(string text)</code>：一個參數，型別 <code>string</code>、名稱 <code>text</code></li>
+</ul>
+<p>呼叫前要先 <code>new</code> 一個 <code>StringTools</code> 物件，再用「物件.方法」呼叫。</p>
+
+<h3 id="step-static">第 2 步：方法加上 static，不用先 new</h3>
+<p><code>StringTools</code> 的物件裡沒有任何資料，<code>Repeat</code> 只靠參數就算得出結果。第 1 步的 <code>new</code> 只是為了能呼叫方法，沒有別的用處。方法加上 <code>static</code>，就可以用「類別名稱.方法」直接呼叫：</p>
+<pre><code class="nohighlight">Console.WriteLine(<span class="hl b">StringTools</span>.Repeat("ab"));     // 點前面是類別名稱，沒有 new
+
+class StringTools
+{
+    public <span class="hl a">static</span> string Repeat(string text)
+    {
+        return text + text;
+    }
+}
+
+// 輸出：
+// abab</code></pre>
+<p>有沒有 <code>static</code>，決定點前面要寫什麼。寫反了編譯不會過：</p>
+<pre><code class="nohighlight">// 方法有 static，卻用物件呼叫
+var tools = new StringTools();
+<span class="hl c">tools</span>.Repeat("ab");
+error CS0176: 成員 'StringTools.Repeat(string)' 無法以執行個體參考進行存取; 請改用類型名稱
+
+// 方法沒有 static，卻用類別名稱呼叫
+<span class="hl c">StringTools</span>.Repeat("ab");
+error CS0120: 需要有物件參考，才可使用非靜態欄位、方法或屬性 'StringTools.Repeat(string)'</code></pre>
+<p>錯誤訊息裡的「執行個體」就是物件，「類型名稱」就是類別名稱。</p>
+
+<h3 id="step-static-class">第 3 步：類別也加上 static，不能被 new</h3>
+<p>第 2 步之後，<code>new StringTools()</code> 還是寫得出來，只是 new 出來的物件什麼都不能做。類別裡只有 static 方法時，類別本身也標 <code>static</code>，明確表示它不是拿來 new 的：</p>
+<pre><code class="nohighlight"><span class="hl a">static</span> class StringTools
+{
+    public static string Repeat(string text)
+    {
+        return text + text;
+    }
+}
+
+var tools = <span class="hl c">new StringTools()</span>;
+error CS0712: 無法建立靜態類別 'StringTools' 的執行個體</code></pre>
+<p>static class 裡面的方法也都必須是 static，漏寫一個會得到 <code>error CS0708: 不可在靜態類別中宣告執行個體成員</code>。</p>
+<p><strong>什麼時候用 static</strong>：方法只靠參數就能算出結果，不需要記住任何東西，例如字串處理、數學計算這類工具方法。<strong>什麼時候不用</strong>：方法要用到物件自己的資料時，例如每個物件有自己的名稱、自己的清單。static 和物件的關係，在<a href="csharp-class-object.html#static">類別與物件頁第 4 節</a>。</p>
+
+<h3 id="step-params">第 4 步：多一個參數</h3>
+<p>想指定重複幾次，就多一個參數。參數之間用逗號隔開，呼叫時照順序給：</p>
+<pre><code class="nohighlight">Console.WriteLine(StringTools.Repeat("ab"<span class="hl b">, 3</span>));
+
+static class StringTools
+{
+    public static string Repeat(string text<span class="hl a">, int count</span>)
+    {
+        return string.Concat(Enumerable.Repeat(text, count));
+    }
+}
+
+// 輸出：
+// ababab</code></pre>
+<p>現在 <code>count</code> 一定要給。只給一個參數會編譯錯誤：</p>
+<pre><code class="nohighlight">StringTools.<span class="hl c">Repeat("ab")</span>;
+error CS7036: 未提供任何可對應到 'StringTools.Repeat(string, int)' 之必要參數 'count' 的引數</code></pre>
+
+<h3 id="step-optional">第 5 步：參數給預設值，可以不傳</h3>
+<p>大部分時候都是重複兩次，每次都要寫 <code>, 2</code> 很囉嗦。在參數後面寫 <code>= 2</code>，沒給的時候就用 2。這種參數叫<mark class="key">選擇性參數</mark>：</p>
+<pre><code class="nohighlight">Console.WriteLine(StringTools.Repeat(<span class="hl b">"ab"</span>));             // count 沒給，用預設值 2 → abab
+Console.WriteLine(StringTools.Repeat("ab"<span class="hl b">, 3</span>));          // 照順序給 → ababab
+Console.WriteLine(StringTools.Repeat("ab"<span class="hl b">, count: 1</span>));   // 用名稱指定 → ab
+
+static class StringTools
+{
+    public static string Repeat(string text, int count <span class="hl a">= 2</span>)
+    {
+        return string.Concat(Enumerable.Repeat(text, count));
+    }
+}</code></pre>
+<p>到這裡，一個簽章常見的五個部分都出現過了：</p>
 <div class="diagram">
 <img src="../images/signature-parts.svg" alt="一個方法簽章的五個部分：存取修飾與 static、回傳型別、名稱、參數、選擇性參數，以 public static string Repeat(string text, int count = 2) 為例" style="width:100%;height:auto">
 <div class="diagram-caption">呼叫時用得到的只有 ②③④⑤；① 決定誰能呼叫、要不要先 new 物件</div>
 </div>
 
-<p class="file-label">簡單範例：三種呼叫方式（實際執行過）</p>
-<pre><code class="language-csharp">Console.WriteLine(StringTools.Repeat("ab"));             // count 沒給，用預設值 2 → abab
-Console.WriteLine(StringTools.Repeat("ab", 3));          // 照順序給 → ababab
-Console.WriteLine(StringTools.Repeat("ab", count: 1));   // 用名稱指定 → ab
 
-static class StringTools
+<h3 id="step-void">第 6 步：回傳型別寫 void，不回傳</h3>
+<p>接下來三步看的都是回傳型別那一段。方法只做事、不給結果時，回傳型別寫 <code>void</code>：</p>
+<pre><code class="nohighlight">Printer.Print("hi");                // 單獨一行呼叫
+
+static class Printer
 {
-    public static string Repeat(string text, int count = 2)
+    public static <span class="hl a">void</span> Print(string text)
     {
-        return string.Concat(Enumerable.Repeat(text, count));
+        Console.WriteLine(text);
     }
-}</code></pre>
-<p><code>static</code> 的方法用「類別名稱.方法」呼叫，不用先 <code>new</code> 一個物件。<code>StringTools</code> 是放工具方法的類別，裡面只有 static 方法，所以類別也標 <code>static</code>，表示它不能被 new。static 和物件的關係，在<a href="csharp-class-object.html#static">類別與物件頁第 4 節</a>。</p>
+}
 
-<h3 id="yours">再看一個常見的簽章：async 方法</h3>
+<span class="hl c">var x =</span> Printer.Print("hi");
+error CS0815: 無法將 void 指派給隱含類型變數</code></pre>
+<p>呼叫完沒有值可以接。</p>
+
+<h3 id="step-nullable">第 7 步：型別後面有 ?，可能是 null</h3>
+<p>方法可能找不到東西時，回傳型別後面加 <code>?</code>，告訴呼叫的人「可能拿到 <code>null</code>」：</p>
+<pre><code class="nohighlight">string? name = FindName(5);
+<span class="hl b">if (name != null)</span>                  // 先檢查再用
+{
+    Console.WriteLine(name.Length);
+}
+
+static string<span class="hl a">?</span> FindName(int id)
+{
+    return id == 1 ? "first" : null;
+}
+
+Console.WriteLine(<span class="hl c">name.Length</span>);     // 不檢查就用
+warning CS8602: 可能 null 參考的取值 (dereference)。
+執行時 name 是 null，丟出 NullReferenceException</code></pre>
+<p><code>?</code> 寫在參數的型別後面，意思是這個方法允許你傳 <code>null</code>，例如 <code>Action&lt;…&gt;? configure = null</code>。</p>
+
+<h3 id="yours">第 8 步：回傳型別是 Task&lt;string&gt;，要 await</h3>
+<p>要等一段時間才有結果的方法（讀檔案、查資料庫、呼叫別的網站），回傳型別會包一層 <code>Task&lt;…&gt;</code>：</p>
+<pre><code class="nohighlight">var reader = new TitleReader();
+string title = <span class="hl b">await</span> reader.ReadTitleAsync(5);    // await 之後拿到的是 string
+Console.WriteLine(title);
+
+class TitleReader
+{
+    public async <span class="hl a">Task&lt;string&gt;</span> ReadTitleAsync(int id)
+    {
+        await Task.Delay(100);
+        return $"第 {id} 篇的標題";
+    }
+}
+
+// 輸出：
+// 第 5 篇的標題</code></pre>
+<p>等的時候發生什麼事，在 <a href="csharp-async-await.html">Task 與 async / await 頁</a>。把這個簽章拆開來看：</p>
+
 <pre><code class="nohighlight"><span class="seg s1">public</span> <span class="seg s5">async</span> <span class="seg s2">Task&lt;string&gt;</span> <span class="seg s3">ReadTitleAsync</span>(<span class="seg s4">int id</span>)
 <span class="seg s1">\____/</span> <span class="seg s5">\___/</span> <span class="seg s2">\__________/</span> <span class="seg s3">\____________/</span> <span class="seg s4">\____/</span>
 <span class="seg s1"> [1]  </span> <span class="seg s5"> [*] </span> <span class="seg s2">    [2]     </span> <span class="seg s3">     [3]      </span> <span class="seg s4"> [4]  </span></code></pre>
-<p>[1] 到 [4] 就是上面那張圖的 ① 到 ④，[*] 是多出來的一個字：</p>
+<p>[1] 到 [4] 就是第 5 步那張圖的 ① 到 ④，[*] 是多出來的一個字：</p>
 <ul>
   <li><span class="seg s1">[1]</span> <code>public</code>：誰都能呼叫。這裡沒有 <code>static</code>，所以要先有一個物件才能呼叫</li>
   <li><span class="seg s5">[*]</span> <code>async</code>：修飾詞，<mark class="caution">不是簽章的一部分</mark>。它告訴編譯器本體裡會有 <code>await</code>；呼叫的人看不到它，只看得到回傳型別是 <code>Task&lt;…&gt;</code></li>
@@ -72,7 +207,9 @@ static class StringTools
   <li><span class="seg s4">[4]</span> <code>int id</code>：一個參數，型別 <code>int</code>、名稱 <code>id</code></li>
 </ul>
 
-<h3 id="generic">名稱後面的角括號：泛型</h3>
+
+<h3 id="generic">第 9 步：名稱後面的 &lt;T&gt;，呼叫時填型別</h3>
+
 <p><code>List&lt;string&gt;</code> 就是這種寫法：寫 <code>List</code> 的人不知道你要裝什麼，所以留一個洞 <code>&lt;T&gt;</code>，<strong>用的人呼叫時才填型別</strong>。方法也可以有這種洞，而且可以用 <code>where</code> 限制洞裡能填什麼（實際執行過）：</p>
 <pre><code class="language-csharp">Console.WriteLine(Describe&lt;Staff&gt;(new Staff("小華", "編輯部")));   // 呼叫：填 Staff
 Console.WriteLine(Describe(new Author("小明")));                   // 編譯器從參數推出 T 是 Author，可以不寫
@@ -113,85 +250,123 @@ class Staff : Author
 // error CS0311: 類型 'string' 不可用做為泛型類型或方法 'Describe&lt;T&gt;(T)' 中的類型參數 'T'。沒有從 'string' 到 'Author' 的隱含參考轉換。</code></pre>
 <p>第 4 節的 <code>AddDbContext&lt;TContext&gt;(…) where TContext : DbContext</code> 讀法完全一樣：填進去的型別必須是 <code>DbContext</code> 或它的子類別。</p>
 
-<h3 id="method-table">看簽章時會遇到的記號</h3>
-<p>每個記號下面有兩段程式：上面是<strong>簽章</strong>，下面是<strong>呼叫的地方</strong>。顏色的意思：<span class="hl a">藍色</span>是這一段在講的記號，<span class="hl b">綠色</span>是它讓呼叫的地方變成怎麼寫，<span class="hl c">紅色</span>是不能這樣寫或會出錯的寫法。錯誤代碼都是實際編譯出來的。</p>
-<p><strong><code>static</code></strong>：不用先 <code>new</code> 物件，用<strong>類別名稱</strong>呼叫</p>
-<pre><code class="nohighlight">public <span class="hl a">static</span> string Repeat(string text, int count = 2)
 
-<span class="hl b">StringTools</span>.Repeat("ab");          // 點前面是類別名稱，不是物件</code></pre>
-<p><strong><code>void</code> 在回傳型別的位置</strong>：不回傳，呼叫完沒有值可以接</p>
-<pre><code class="nohighlight">public static <span class="hl a">void</span> Print(string text)
-
-Printer.Print("hi");                // 單獨一行呼叫
-<span class="hl c">var x =</span> Printer.Print("hi");        // error CS0815：無法將 void 指派給變數</code></pre>
-<p><strong>名稱後面的 <code>&lt;T&gt;</code></strong>：泛型參數，定義時留一個洞，<strong>呼叫時填型別</strong></p>
-<pre><code class="nohighlight">static string Describe<span class="hl a">&lt;T&gt;</span>(T item)
-
-Describe<span class="hl b">&lt;Staff&gt;</span>(new Staff(…));     // T 填 Staff
-Describe(new Author(…));            // 不寫也行，編譯器從參數推出 T 是 Author</code></pre>
-<p><strong><code>where T : 某型別</code></strong>：泛型限制，填進去的型別必須是那個型別或它的子類別</p>
-<pre><code class="nohighlight">static string Describe&lt;T&gt;(T item) <span class="hl a">where T : Author</span>
-
-Describe(new <span class="hl b">Staff</span>(…));             // Staff 繼承 Author，可以
-Describe(<span class="hl c">"x"</span>);                      // error CS0311：string 不是 Author</code></pre>
-<p><strong>參數後面的 <code>= 2</code>、<code>= null</code></strong>：選擇性參數，有預設值，呼叫時可以不給</p>
-<pre><code class="nohighlight">public static string Repeat(string text, int count <span class="hl a">= 2</span>)
-
-StringTools.Repeat("ab");             // 沒給 count，用預設值 2 → abab
-StringTools.Repeat("ab", <span class="hl b">count: 1</span>);   // 用名稱指定 → ab</code></pre>
-<p><strong>型別後面的 <code>?</code>，例如 <code>string?</code>、<code>Action&lt;…&gt;?</code></strong>：可能是 <code>null</code>。回傳型別有 <code>?</code>：接到值要先檢查；參數有 <code>?</code>：這個方法允許傳 <code>null</code></p>
-<pre><code class="nohighlight">static string<span class="hl a">?</span> FindName(int id)
-
-string? name = FindName(5);
-<span class="hl b">if (name != null)</span>                  // 先檢查再用
-{
-    Console.WriteLine(name.Length);
-}
-<span class="hl c">name.Length</span>                        // 不檢查：warning CS8602，執行時 name 是 null 就丟 NullReferenceException</code></pre>
-<p><strong><code>Task&lt;X&gt;</code> 在回傳型別</strong>：非同步方法，最後會給一個 <code>X</code>，要 <code>await</code> 才拿得到（等的時候發生什麼事，在 <a href="csharp-async-await.html">Task 與 async / await 頁</a>）</p>
-<pre><code class="nohighlight">static async <span class="hl a">Task&lt;string&gt;</span> GetTitleAsync(int id)
-
-string title = <span class="hl b">await</span> GetTitleAsync(5);   // await 之後拿到的是 string，不是 Task&lt;string&gt;</code></pre>
-<p><strong>第一個參數前面有 <code>this</code></strong>：擴充方法（下一節）。這個 <code>this</code> 是參數修飾詞，和類別裡代表「物件自己」的 <code>this</code> 不是同一件事（<a href="csharp-class-object.html#this">類別與物件頁第 2 節</a>）</p>
-<pre><code class="nohighlight">public static bool IsLongTitle(<span class="hl a">this</span> string title)
-
-<span class="hl b">"EF Core 入門"</span>.IsLongTitle();          // 點前面的字串，填進標 this 的那個參數</code></pre>
+<h3 id="method-table">九步出現過的記號</h3>
+<p>之後看到陌生的簽章，先找裡面有哪些記號：</p>
+<ul>
+  <li><code>static</code>：不用先 <code>new</code> 物件，用類別名稱呼叫。<a href="#step-static">第 2 步</a>、<a href="#step-static-class">第 3 步</a></li>
+  <li>參數後面的 <code>= 2</code>、<code>= null</code>：選擇性參數，可以不給。<a href="#step-optional">第 5 步</a></li>
+  <li><code>void</code> 在回傳型別的位置：不回傳。<a href="#step-void">第 6 步</a></li>
+  <li>型別後面的 <code>?</code>：可能是 <code>null</code>。<a href="#step-nullable">第 7 步</a></li>
+  <li><code>Task&lt;X&gt;</code> 在回傳型別的位置：要 <code>await</code> 才拿得到 <code>X</code>。<a href="#yours">第 8 步</a></li>
+  <li>名稱後面的 <code>&lt;T&gt;</code>：泛型參數，呼叫時填型別。<a href="#generic">第 9 步</a></li>
+  <li><code>where T : 某型別</code>：泛型限制，填進去的型別必須是那個型別或它的子類別。<a href="#generic">第 9 步</a></li>
+  <li>第一個參數前面有 <code>this</code>：擴充方法，<a href="#extension">下一節</a></li>
+</ul>
 
 <!-- ============================================================ -->
 <h2 id="extension">2. 擴充方法：第一個參數前面的 this</h2>
-<p>想對 <code>string</code> 加一個 <code>IsLongTitle()</code>，判斷標題夠不夠長。但 <code>string</code> 是 .NET 的類別，你改不了它的程式碼。C# 的解法是<strong>擴充方法（extension method）</strong>：方法寫在你自己的 static class 裡，只要第一個參數前面加 <code>this</code>，呼叫時就可以寫得像那個型別本來就有的方法。</p>
-<p>先講清楚：這裡的 <code>this</code> 是<strong>參數修飾詞</strong>，只是告訴編譯器「點前面的東西填進這個參數」。它和類別裡代表「這個物件自己」的 <code>this</code>（例如 <code>this.name = name</code>）不是同一件事，那個在<a href="csharp-class-object.html#this">類別與物件頁第 2 節</a>。</p>
+<p class="lead">想讓字串多一個 <code>IsLongTitle()</code> 方法，判斷標題夠不夠長，寫成 <code>"EF Core 入門".IsLongTitle()</code>。但 <code>string</code> 是 .NET 的類別，改不了它的程式碼。<mark class="key">擴充方法（extension method）</mark>可以做到，而且它只是一般的 static 方法多寫一個字。下面從一般的方法開始，一步加一樣東西。</p>
 
-<p class="file-label">簡單範例：對 string 加一個方法（實際執行過）</p>
-<pre><code class="language-csharp">Console.WriteLine("EF Core 入門".IsLongTitle());                     // 擴充方法的寫法
-Console.WriteLine(StringExtensions.IsLongTitle("EF Core 入門"));    // 編譯器實際翻成的樣子，也合法
+<h3>第 1 步：先寫成一般的 static 方法</h3>
+<p>改不了 <code>string</code>，就把方法寫在自己的類別裡，字串當參數傳進去（實際執行過）：</p>
+<pre><code class="language-csharp">Console.WriteLine(StringExtensions.IsLongTitle("EF Core 入門"));
+Console.WriteLine(StringExtensions.IsLongTitle("Hi"));
 
 static class StringExtensions
 {
-    // this string? title：第一個參數加 this，這個方法就能用 "…".IsLongTitle() 的寫法呼叫
-    public static bool IsLongTitle(this string? title)
+    public static bool IsLongTitle(string title)
     {
-        Console.WriteLine($"  IsLongTitle 被呼叫了，title 是 {(title is null ? "null" : $"「{title}」")}");
-        return title is not null &amp;&amp; title.Length &gt; 5;
+        return title.Length &gt; 5;
     }
 }
 
 // 輸出：
-//   IsLongTitle 被呼叫了，title 是 「EF Core 入門」
 // True
-//   IsLongTitle 被呼叫了，title 是 「EF Core 入門」
-// True</code></pre>
-<p>兩種呼叫寫法跑的是同一個方法。<code>"EF Core 入門".IsLongTitle()</code> 只是編譯器幫你改寫成 <code>StringExtensions.IsLongTitle("EF Core 入門")</code>，<strong>點前面的東西變成第一個參數</strong>。所以擴充方法沒有魔法，它就是一個 static 方法加一個語法糖。</p>
+// False</code></pre>
+<p>功能有了。這是第 1 節講過的 static 方法，用「類別名稱.方法」呼叫。</p>
 
-<h3 id="ext-rules">寫法的三個條件</h3>
-<div class="table-wrap">
-<table>
-  <tr><th>條件</th><th>為什麼</th></tr>
-  <tr><td>放在 <code>static class</code> 裡</td><td>擴充方法是工具方法，不需要物件</td></tr>
-  <tr><td>方法本身是 <code>static</code></td><td>同上</td></tr>
-  <tr><td>第一個參數前面加 <code>this</code></td><td>告訴編譯器「點前面的東西填到這裡」。<code>this</code> 後面的型別，就是這個方法能掛在誰身上</td></tr>
-</table>
+<h3>第 2 步：這種寫法哪裡不方便</h3>
+<p>呼叫的人要先知道方法放在 <code>StringExtensions</code> 這個類別裡。連續呼叫兩個方法時，還得從裡面往外讀。假設類別裡另外有 <code>TrimTitle</code>（去掉前後空白）和 <code>Shorten</code>（太長就截短）：</p>
+<div class="compare">
+<div class="bad">
+<p class="compare-label">✗ 一般的 static 方法：從裡面往外讀</p>
+<pre><code class="language-csharp">StringExtensions.Shorten(
+    StringExtensions.TrimTitle(title))</code></pre>
+<p>先做的 <code>TrimTitle</code> 寫在裡面，後做的 <code>Shorten</code> 寫在外面，順序和閱讀方向相反。</p>
 </div>
+<div class="good">
+<p class="compare-label">✓ 想要的寫法：從左往右讀</p>
+<pre><code class="language-csharp">title.TrimTitle().Shorten()</code></pre>
+<p>先做的寫在前面，而且不用寫類別名稱。</p>
+</div>
+</div>
+<p>但第 1 步的程式直接這樣呼叫，編譯不會過（實際編譯過）：</p>
+<pre><code class="nohighlight">Console.WriteLine("EF Core 入門".<span class="hl c">IsLongTitle</span>());
+
+error CS1061: 'string' 未包含 'IsLongTitle' 的定義，也找不到可接受類型 'string' 第一個引數的可存取擴充方法 'IsLongTitle'</code></pre>
+<p>編譯器在 <code>string</code> 裡找不到 <code>IsLongTitle</code>。它不知道 <code>StringExtensions</code> 裡那個方法是要給字串用的。</p>
+
+<h3>第 3 步：第一個參數前面加一個字 this</h3>
+<p>只多寫 <code>this</code> 這一個字，其他都不動（實際執行過）：</p>
+<pre><code class="nohighlight">Console.WriteLine(<span class="hl b">"EF Core 入門"</span>.IsLongTitle());                    // 新的寫法：現在可以編譯了
+Console.WriteLine(StringExtensions.IsLongTitle("EF Core 入門"));   // 第 1 步的寫法：照樣可以用
+
+static class StringExtensions
+{
+    public static bool IsLongTitle(<span class="hl a">this</span> string title)
+    {
+        return title.Length &gt; 5;
+    }
+}
+
+// 輸出：
+// True
+// True</code></pre>
+<p><code>this</code> 告訴編譯器：這個方法可以用「字串.方法」的寫法呼叫，<mark class="key">點前面的東西填進這個參數</mark>。編譯器看到新的寫法，會把它改寫成第 1 步的寫法：</p>
+<pre><code class="nohighlight"><span class="hl b">"EF Core 入門"</span>.IsLongTitle()     →     StringExtensions.IsLongTitle(<span class="hl b">"EF Core 入門"</span>)</code></pre>
+<p>兩種寫法跑的是同一個方法。第 2 步想要的連續呼叫也可以寫了：三個方法的第一個參數都加上 <code>this</code> 之後，<code>title.TrimTitle().Shorten()</code> 和 <code>StringExtensions.Shorten(StringExtensions.TrimTitle(title))</code> 的結果一樣（實際執行過）。</p>
+<p>這裡的 <code>this</code> 是<strong>參數修飾詞</strong>。它和類別裡代表「這個物件自己」的 <code>this</code>（例如 <code>this.name = name</code>）<mark class="caution">不是同一件事</mark>，那個在<a href="csharp-class-object.html#this">類別與物件頁第 2 節</a>。</p>
+
+<h3 id="ext-rules">第 4 步：整理成一條格式</h3>
+<p>擴充方法都長這樣，有顏色的三個地方是固定要寫的：</p>
+<pre><code class="nohighlight"><span class="seg s1">static</span> class 類別名稱
+{
+    public <span class="seg s2">static</span> 回傳型別 方法名稱(<span class="seg s3">this</span> <span class="seg s4">要掛上去的型別</span> 參數名稱, 其他參數)
+    {
+        …
+    }
+}</code></pre>
+<ul>
+  <li><span class="seg s1">static</span> 類別是 <code>static</code></li>
+  <li><span class="seg s2">static</span> 方法是 <code>static</code></li>
+  <li><span class="seg s3">this</span> 寫在<strong>第一個</strong>參數前面</li>
+  <li><span class="seg s4">要掛上去的型別</span> <code>this</code> 後面的型別，決定這個方法可以掛在誰身上。寫 <code>this string</code> 就是每個字串都能呼叫</li>
+</ul>
+<p>呼叫的寫法也是固定的對應，點前面的東西變成第一個參數，括號裡的往後排：</p>
+<pre><code class="nohighlight"><span class="hl b">x</span>.方法(a, b)     等於     類別名稱.方法(<span class="hl b">x</span>, a, b)</code></pre>
+<p>三個固定要寫的地方，各拿掉一次會怎樣（錯誤訊息都是實際編譯出來的）：</p>
+<p><strong>類別拿掉 <code>static</code></strong></p>
+<pre><code class="nohighlight"><span class="hl c">class</span> StringExtensions
+{
+    public static bool IsLongTitle(this string title) { … }
+}
+
+error CS1106: 擴充方法必須在非泛型靜態類別中定義</code></pre>
+<p><strong>方法拿掉 <code>static</code></strong></p>
+<pre><code class="nohighlight">static class StringExtensions
+{
+    <span class="hl c">public bool</span> IsLongTitle(this string title) { … }
+}
+
+error CS1105: 擴充方法必須為靜態</code></pre>
+<p><strong><code>this</code> 寫在第二個參數前面</strong></p>
+<pre><code class="nohighlight">static class StringExtensions
+{
+    public static bool IsLongerThan(string title, <span class="hl c">this</span> int length) { … }
+}
+
+error CS1100: 方法 'IsLongerThan' 具有參數修飾元 'this'，但其不在第一個參數上</code></pre>
 
 <h3 id="ext-used">.NET 裡到處都是擴充方法</h3>
 <p>下面這些常用的方法，全都不是那個型別自己的，是別的套件用擴充方法掛上去的：</p>
@@ -238,6 +413,15 @@ static class ListExtensions
   <tr><td>點前面的東西是 <code>null</code></td><td><strong>照樣進到方法裡</strong>，因為它只是第一個參數。一般的實例成員對 null 呼叫會直接炸（實際執行過，見下）</td></tr>
 </table>
 </div>
+<p>最後一列用程式看。先把 <code>IsLongTitle</code> 的參數改成 <code>string?</code>（可以是 <code>null</code>），方法裡加上 null 的檢查，再多印一行訊息，好看出方法有沒有被呼叫（實際執行過）：</p>
+<pre><code class="language-csharp">static class StringExtensions
+{
+    public static bool IsLongTitle(this string? title)
+    {
+        Console.WriteLine($"  IsLongTitle 被呼叫了，title 是 {(title is null ? "null" : $"「{title}」")}");
+        return title is not null &amp;&amp; title.Length &gt; 5;
+    }
+}</code></pre>
 <pre><code class="language-csharp">string? nothing = null;
 Console.WriteLine(nothing.IsLongTitle());   // 擴充方法：照樣進到方法裡
 try
@@ -253,7 +437,7 @@ catch (NullReferenceException ex)
 //   IsLongTitle 被呼叫了，title 是 null
 // False
 // NullReferenceException: Object reference not set to an instance of an object.</code></pre>
-<p>所以擴充方法的第一個參數宣告成 <code>string?</code>，方法裡面要自己處理 null。</p>
+<p>所以點前面的東西可能是 <code>null</code> 時，擴充方法的第一個參數要宣告成 <code>string?</code>，方法裡面自己處理 null。</p>
 
 <!-- ============================================================ -->
 <h2 id="delegate">3. 委派：Action 和 Func</h2>
@@ -378,20 +562,6 @@ RunLater(text =&gt; Console.WriteLine($"action 執行了：{text}"));
   <li><code>[DynamicallyAccessedMembers(…)]</code>：掛在 <code>TContext</code> 上的屬性，是給「裁剪（trimming）」和 AOT 編譯用的標記，告訴工具這個型別的建構子會被反射用到、不能砍掉。看簽章時可以略過，它不影響你怎麼呼叫</li>
   <li><code>=&gt; AddDbContext&lt;TContext, TContext&gt;(…)</code>：方法本體。這個多載自己不做事，只是把四個參數原封不動轉交給另一個有兩個泛型參數的多載（第一個是「要注入的型別」、第二個是「實際建的型別」，兩個填一樣就是我們的情況）。<code>=&gt;</code> 在這裡是「方法本體只有一句 return」的簡寫，不是 lambda</li>
 </ul>
-
-<h3 id="signature-table">簽章怎麼讀：逐一對照</h3>
-<div class="table-wrap">
-<table>
-  <tr><th>看到什麼</th><th>代表什麼</th><th>在哪一節</th><th>對應到例子那一行</th></tr>
-  <tr><td><code>static</code> + 第一個參數有 <code>this</code></td><td>擴充方法</td><td><a href="#extension">第 2 節</a></td><td><code>this IServiceCollection</code> → 所以寫成 <code>builder.Services.AddDbContext(…)</code></td></tr>
-  <tr><td>方法名稱後面的 <code>&lt;TContext&gt;</code></td><td>泛型參數，呼叫時填型別</td><td><a href="#generic">第 1 節</a></td><td><code>AddDbContext&lt;BlogDbContext&gt;</code></td></tr>
-  <tr><td><code>where TContext : DbContext</code></td><td>泛型限制</td><td><a href="#generic">第 1 節</a></td><td><code>BlogDbContext : DbContext</code>，所以可以；填 <code>string</code> 會編譯錯誤</td></tr>
-  <tr><td><code>Action&lt;DbContextOptionsBuilder&gt;</code></td><td>委派：「一個收 <code>DbContextOptionsBuilder</code>、沒有回傳值的方法」，用 lambda 寫</td><td><a href="#delegate">第 3 節</a></td><td><code>options =&gt; options.UseSqlServer(…)</code>，這裡的 <code>options</code> 型別就是 <code>DbContextOptionsBuilder</code></td></tr>
-  <tr><td><code>= null</code>、<code>= ServiceLifetime.Scoped</code></td><td>選擇性參數，沒傳就用預設值</td><td><a href="#method-table">第 1 節</a></td><td>例子只傳了 lambda，所以生命週期都是 <code>Scoped</code>（一個請求一個）</td></tr>
-  <tr><td><code>string?</code></td><td>可能是 <code>null</code></td><td><a href="#method-table">第 1 節</a></td><td>連線字串名稱打錯時，<code>GetConnectionString</code> 回傳 <code>null</code>，程式啟動後第一次連資料庫就會出現 <code>Value cannot be null</code> 的例外</td></tr>
-  <tr><td>回傳型別和 <code>this</code> 參數型別相同</td><td>可以<strong>串接</strong>呼叫（Fluent API）</td><td></td><td><code>UseSqlServer</code> 回傳 <code>DbContextOptionsBuilder</code>，後面還能再接 <code>.LogTo(…)</code> 這類設定</td></tr>
-</table>
-</div>
 
 <div class="callout">
 <p>🔍 <strong>在 Rider 裡自己查簽章</strong></p>
