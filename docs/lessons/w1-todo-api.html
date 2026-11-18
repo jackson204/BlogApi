@@ -45,7 +45,7 @@
 
 <!-- ============================================================ -->
 <h2 id="goal">1. 這一課要做出什麼</h2>
-<p class="lead">這一課做出一個<mark class="key">待辦事項 API</mark>，可以查清單、新增、修改、刪除。資料先不放資料庫：部落格的第一課要同時學 Web API 和資料庫，東西太多，所以這裡先把 Web API 這一半單獨學會。建立專案、寫 Controller、決定網址和狀態碼這幾件事，到部落格專案照樣用。</p>
+<p class="lead">這一課做出一個<mark class="key">待辦事項 API</mark>，可以查清單、新增、修改、刪除。資料先不放資料庫，放在<mark class="key">程式記憶體裡的一個清單</mark>，不用安裝任何東西：部落格的第一課要同時學 Web API 和資料庫，東西太多，所以這裡先把 Web API 這一半單獨學會。建立專案、寫 Controller、決定網址和狀態碼這幾件事，到部落格專案照樣用。</p>
 <p>前端（這一課用 Postman 代替）送請求過來，後端要提供這六支 API：</p>
 <div class="table-wrap">
 <table>
@@ -89,39 +89,13 @@
   <tr><td><code>405 Method Not Allowed</code></td><td>網址有，但不接受這個動詞</td><td>對只接受 GET 的網址送 POST</td></tr>
 </table>
 </div>
-<p>做題目時每送一個請求，先看狀態碼是不是預期的那一個，再看內容。看到 <mark class="caution">404 不代表伺服器壞了</mark>：伺服器有回應，只是它說「沒有這個網址」。伺服器真的沒啟動時，Postman 顯示的是連不上，沒有任何狀態碼。</p>
+<p>做題目時每送一個請求，<mark class="key">先看狀態碼</mark>是不是預期的那一個，再看內容。</p>
+<p>看到 <mark class="caution">404 不代表伺服器壞了</mark>。分辨的方法是看有沒有狀態碼：</p>
+<ul>
+  <li>有狀態碼（例如 404）：伺服器有回應，只是它說「沒有這個網址」</li>
+  <li>沒有任何狀態碼，Postman 顯示連不上：伺服器沒有啟動</li>
+</ul>
 <p class="more">狀態碼的完整分類和其他常用的幾個：<a href="http-status-codes.html">HTTP 狀態碼</a></p>
-
-<h3 id="memory">不接資料庫，那資料存在哪裡？</h3>
-<p class="lead">資料放在 Controller 的一個 <code>List&lt;TodoItem&gt;</code> 裡，新增、查詢都是在操作這個清單，所以不用安裝資料庫也有地方放資料，可以先專心學 API。代價是<mark class="caution">程式一關資料就消失</mark>，下一個專案才要換成資料庫。</p>
-<p>那個清單在<mark class="key">程式的記憶體</mark>裡，就是 Controller 裡的一個變數：</p>
-<pre><code class="language-csharp">List&lt;TodoItem&gt; Todos = new()
-{
-    new TodoItem { Id = 1, Title = "買牛奶", IsDone = false },
-    new TodoItem { Id = 2, Title = "裝 .NET SDK", IsDone = true }
-};</code></pre>
-<p><code>List&lt;TodoItem&gt;</code> 是一個可以一直往裡面加東西的清單。整個「資料庫」就是這個清單：</p>
-<div class="table-wrap">
-<table>
-  <tr><th>什麼時候</th><th>記憶體裡發生什麼</th></tr>
-  <tr><td>程式啟動</td><td>作業系統分一塊記憶體給這個程式。上面那一行執行時，清單在這塊記憶體裡建立出來，裡面有寫死的兩筆</td></tr>
-  <tr><td>新增（POST）</td><td><code>Todos.Add(…)</code>：往清單裡多放一個物件</td></tr>
-  <tr><td>查詢（GET）</td><td>從清單裡找出來回傳</td></tr>
-  <tr><td>修改、刪除</td><td>改清單裡那個物件的屬性，或把它從清單拿掉</td></tr>
-  <tr><td>程式關掉</td><td>那塊記憶體還給作業系統，<strong>清單連同裡面的資料一起消失</strong>。下次啟動又是寫死的那兩筆</td></tr>
-</table>
-</div>
-<p>從頭到尾沒有任何東西寫到硬碟，所以不用安裝資料庫，也不用 Docker。代價就是資料留不住。三種放資料的地方比一比：</p>
-<div class="table-wrap">
-<table>
-  <tr><th>資料放在</th><th>程式關掉之後</th><th>特性</th><th>哪裡用</th></tr>
-  <tr><td><strong>記憶體</strong>（變數、<code>List</code>）</td><td>消失</td><td>不用安裝任何東西，讀寫不經過硬碟和網路</td><td>這一課</td></tr>
-  <tr><td>檔案（例如一個 <code>.json</code> 檔）</td><td>還在</td><td>要自己處理讀檔寫檔；兩個請求同時寫容易寫壞；資料一多，要找「已完成的那幾筆」得整個檔案讀進來</td><td>這份筆記不用</td></tr>
-  <tr><td>資料庫（SQL Server）</td><td>還在</td><td>專門處理「很多人同時讀寫」和「依條件查詢」，但要另外安裝、另外學怎麼連線</td><td>部落格專案，從 00 開始</td></tr>
-</table>
-</div>
-<p>對 Controller 來說，這一課的 <code>List</code> 就是資料庫的替身。到了部落格，<code>Todos.Add(…)</code> 會換成「寫進資料表」，<code>Todos.Where(…)</code> 會換成「查詢資料表」，但網址、JSON、狀態碼這些 API 的外觀完全不變。所以現在先用最簡單的 <code>List</code> 把 API 這一半學會，資料庫那一半留給下一個專案。</p>
-<p>資料會不見這件事，題 6 會親眼看一次。</p>
 
 <!-- ============================================================ -->
 <h2 id="exercise">2. 動手做</h2>
@@ -377,7 +351,7 @@ app.Run();</code></pre>
 <p>需求：</p>
 <ul>
   <li>建立類別 <code>TodoItem</code>，有三個屬性：<code>Id</code>（<code>int</code>）、<code>Title</code>（<code>string</code>）、<code>IsDone</code>（<code>bool</code>）</li>
-  <li>建立 <code>TodosController</code>，裡面放一個 <code>List&lt;TodoItem&gt;</code>，先寫死兩筆資料</li>
+  <li>建立 <code>TodosController</code>，裡面放一個 <code>List&lt;TodoItem&gt;</code>（可以一直往裡面加 <code>TodoItem</code> 的清單），先寫死兩筆資料</li>
   <li><code>GET /api/todos</code> 回傳整個清單</li>
 </ul>
 <div class="callout">
@@ -610,11 +584,39 @@ POST /api/todos  {"title":"多帶欄位","id":999,"isDone":true}
 <p>201 的回應多了一個 <code>Location</code> header：這就是 <code>CreatedAtAction</code> 那三個參數的用途，它告訴前端「剛新增的那一筆，網址在這裡」。</p>
 
 <p><strong>第 2 步：不合格的請求，沒有任何檢查時的結果</strong>（實測）</p>
-<pre><code class="nohighlight">POST /api/todos  {}
-→ 400  {"type":"…","title":"One or more validation errors occurred.","status":400,
-        "errors":{"Title":["The Title field is required."]},"traceId":"…"}
+<p>四個請求分成兩組看：第一個被擋下來，後面三個都通過。</p>
 
-POST /api/todos  {"title":""}
+<p><strong>① <code>{}</code>：回 400</strong></p>
+<pre><code class="nohighlight">POST /api/todos  {}
+→ 400  Content-Type: application/problem+json; charset=utf-8
+       {
+         "type": "…",
+         "title": "One or more validation errors occurred.",
+         "status": 400,
+         "errors": {
+           "Title": [ "The Title field is required." ]
+         },
+         "traceId": "…"
+       }</code></pre>
+<p><mark class="key">什麼檢查都沒寫，就已經回 400</mark>，還附上一段說明哪裡錯的 JSON。這個回應裡的三樣東西，各是誰做的：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>回應裡的哪一部分</th><th>誰做的</th></tr>
+  <tr><td><code>400</code>，而且 <code>Create</code> 沒有被呼叫</td><td><code>TodosController</code> 類別上的 <code>[ApiController]</code>（題 3 寫的）。有它，框架在呼叫 <code>Create</code> 之前會先檢查參數，不合格就直接回 400</td></tr>
+  <tr><td><code>"The Title field is required."</code></td><td>規則來自型別。<code>string Title</code> 的意思是「不可以是 <code>null</code>」，<code>string? Title</code> 才是「可以是 <code>null</code>」。JSON 裡沒有 <code>title</code>，<code>Title</code> 沒有值可以填，會是 <code>null</code>，框架就當成「必填的欄位沒填」</td></tr>
+  <tr><td>整段 JSON 的格式</td><td>也是 <code>[ApiController]</code>。它把錯誤整理成固定的格式：<code>status</code> 是狀態碼，<code>errors</code> 列出哪個欄位違反哪條規則。這個格式叫 ProblemDetails，所以 <code>Content-Type</code> 是 <code>application/problem+json</code></td></tr>
+</table>
+</div>
+<p>「沒有 <code>?</code> 的 <code>string</code> 不可以是 <code>null</code>」這條規則，要專案檔 <code>TodoApi.csproj</code> 裡有 <code>&lt;Nullable&gt;enable&lt;/Nullable&gt;</code> 才成立，<code>dotnet new</code> 建的專案預設就有這一行。</p>
+<p>想親眼確認是型別造成的，可以把 <code>string Title</code> 改成 <code>string? Title</code>，重新執行，再送一次 <code>{}</code>（看完記得改回來）。實測結果：</p>
+<pre><code class="nohighlight">public record CreateTodoRequest(string? Title);
+
+POST /api/todos  {}
+→ 201  {"id":3,"title":null,"isDone":false}</code></pre>
+<p>多了一個 <code>?</code>，同一個請求就從 400 變成 201，清單裡多一筆 <code>title</code> 是 <code>null</code> 的資料。建置時還會多一個警告 <code>CS8601</code>，指的是 <code>Title = request.Title</code> 那一行：可能把 <code>null</code> 放進不可以是 <code>null</code> 的 <code>TodoItem.Title</code>。</p>
+
+<p><strong>② 空字串、只有空白、101 個字：都回 201</strong></p>
+<pre><code class="nohighlight">POST /api/todos  {"title":""}
 → 201  {"id":3,"title":"","isDone":false}
 
 POST /api/todos  {"title":"   "}
@@ -622,10 +624,8 @@ POST /api/todos  {"title":"   "}
 
 POST /api/todos  {"title":"aaaa…（101 個 a）"}
 → 201  {"id":3,"title":"aaaa…（101 個 a）","isDone":false}</code></pre>
-<ul>
-  <li><mark class="key">什麼檢查都沒寫，<code>{}</code> 就已經回 400</mark>。原因在型別：參數寫的是 <code>string Title</code>，不是 <code>string? Title</code>，意思是「<code>Title</code> 不可以是 <code>null</code>」。JSON 裡沒有 <code>title</code> 時，<code>Title</code> 沒有值可以填，會是 <code>null</code>，框架就回 400，<code>Create</code> 方法沒有被呼叫。</li>
-  <li><mark class="caution">空字串、只有空白、101 個字都回 201</mark>，清單裡多了沒有標題和標題過長的待辦事項。空字串 <code>""</code> 是一個長度為 0 的字串，不是 <code>null</code>，所以上面那個檢查擋不住它。</li>
-</ul>
+<p><mark class="caution">這三個都通過了</mark>，清單裡多了沒有標題和標題過長的待辦事項。空字串 <code>""</code> 是一個長度為 0 的字串，不是 <code>null</code>，所以 ① 的型別那一關擋不住它；長度也沒有任何規則在管。這三種要靠第 3、4 步加的 attribute。</p>
+<p>完整的規則在第 4 節：<a href="#apicontroller">[ApiController] 做了什麼</a>。</p>
 
 <p><strong>第 3 步：加上 <code>[Required]</code></strong></p>
 <pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
@@ -766,6 +766,16 @@ GET  /api/todos/3             → 200 {"id":3,"title":"A","isDone":false}</code>
   <li>要讓資料「明天還在」，得把它寫到程式外面去。這就是資料庫要做的事，也是下一個專案從 <a href="00-docker-mssql.html">00｜用 Docker 跑 MSSQL</a> 開始的原因</li>
 </ul>
 </div>
+<p>資料可以放的地方有三種，差別在程式關掉之後還在不在：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>資料放在</th><th>程式關掉之後</th><th>特性</th><th>哪裡用</th></tr>
+  <tr><td><strong>記憶體</strong>（變數、<code>List</code>）</td><td>消失</td><td>不用安裝任何東西，讀寫不經過硬碟和網路</td><td>這一課</td></tr>
+  <tr><td>檔案（例如一個 <code>.json</code> 檔）</td><td>還在</td><td>要自己處理讀檔寫檔；兩個請求同時寫容易寫壞；資料一多，要找「已完成的那幾筆」得整個檔案讀進來</td><td>這份筆記不用</td></tr>
+  <tr><td>資料庫（SQL Server）</td><td>還在</td><td>專門處理「很多人同時讀寫」和「依條件查詢」，但要另外安裝、另外學怎麼連線</td><td>部落格專案，從 00 開始</td></tr>
+</table>
+</div>
+<p>對 Controller 來說，這一課的 <code>List</code> 是資料庫的替身。到了部落格，<code>Todos.Add(…)</code> 會換成「寫進資料表」，<code>Todos.Where(…)</code> 會換成「查詢資料表」，但網址、JSON、狀態碼這些 API 的外觀完全不變。</p>
 </div>
 </details>
 <p class="more">類別、物件、建構子、<code>static</code> 的完整說明：<a href="csharp-class-object.html">類別與物件</a></p>
@@ -1212,6 +1222,16 @@ POST /without/body   body: {}
 {
     return BadRequest(ModelState);
 }</code></pre>
+<p>沒寫 <code>[Required]</code> 也可能被當成必填，看的是參數的型別有沒有 <code>?</code>。同一個方法換三種參數寫法，都送 <code>{}</code>（實測，專案檔有 <code>&lt;Nullable&gt;enable&lt;/Nullable&gt;</code>）：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>參數寫法</th><th>送 <code>{}</code></th><th>送 <code>{"title":""}</code></th><th>原因</th></tr>
+  <tr><td><code>string Title</code></td><td>400</td><td>通過</td><td>型別不允許 <code>null</code>，框架自動當成必填；空字串不是 <code>null</code>，所以通過</td></tr>
+  <tr><td><code>string? Title</code></td><td>通過，<code>Title</code> 是 <code>null</code></td><td>通過</td><td>型別允許 <code>null</code>，沒有任何規則</td></tr>
+  <tr><td><code>[Required] string? Title</code></td><td>400</td><td>400</td><td><code>[Required]</code> 不看型別，<code>null</code>、空字串、只有空白都擋</td></tr>
+</table>
+</div>
+<p>把專案檔改成 <code>&lt;Nullable&gt;disable&lt;/Nullable&gt;</code> 再測第一列，<code>{}</code> 會通過、<code>Title</code> 是 <code>null</code>：框架只有在 <code>Nullable</code> 開著的時候，才把沒有 <code>?</code> 的 <code>string</code> 當成必填。</p>
 
 <p><strong>② 自動推斷參數來源</strong></p>
 <p>這次送有 <code>title</code> 的 JSON：</p>
