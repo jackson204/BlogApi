@@ -52,25 +52,49 @@ Content-Type: application/json    ← header
   <tr><td><code>5xx</code></td><td><strong>伺服器自己出錯</strong></td><td>請求沒有錯，不用改。等伺服器修好或晚一點再試</td></tr>
 </table>
 </div>
-<p>最重要的是分清楚 <mark class="key"><code>4xx</code> 是送的人的問題，<code>5xx</code> 是伺服器的問題</mark>。寫 API 的人選錯這兩類，用戶端就會往錯的方向找原因。</p>
+
+<h3>4xx 和 5xx：問題在哪一邊</h3>
+<p class="lead">五類裡最重要的是分清楚這兩類：<mark class="key"><code>4xx</code> 是送請求的人的問題，<code>5xx</code> 是伺服器的問題</mark>。</p>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th><mark class="caution">4xx</mark></th><th><span class="hl c">5xx</span></th></tr>
+  <tr><td>問題在誰那邊</td><td>送出請求的這一邊（用戶端）</td><td>收到請求的那一邊（伺服器）</td></tr>
+  <tr><td>請求本身</td><td>有問題：網址、動詞、帶的資料、身分，其中一樣不對</td><td>沒有問題</td></tr>
+  <tr><td>原樣再送一次</td><td>結果一樣</td><td>伺服器修好之後就會成功</td></tr>
+  <tr><td>該做什麼</td><td>改請求再送</td><td>請求不用改，要修的是伺服器</td></tr>
+</table>
+</div>
+<p>「伺服器」是誰的，看你站在哪一邊。同一個狀態碼，兩種身分該做的事不同：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>你是</th><th>看到 <mark class="caution">4xx</mark></th><th>看到 <span class="hl c">5xx</span></th></tr>
+  <tr><td>呼叫別人的 API</td><td>自己送錯了，改請求</td><td>對方的伺服器出問題。自己不用改，等對方修好或晚一點再試</td></tr>
+  <tr><td>寫 API 的人，正在測自己的 API</td><td>測試時送的請求不對；或者這個回應本來就是預期的，例如故意查一筆不存在的資料</td><td><mark class="caution">自己的程式出錯了</mark>。去看伺服器終端機印出來的錯誤訊息</td></tr>
+</table>
+</div>
+<p>寫 API 的人選錯這兩類，用戶端就會往錯的方向找原因。</p>
 
 <!-- ============================================================ -->
 <h2 id="common">3. 常用的狀態碼</h2>
 <div class="table-wrap">
 <table>
   <tr><th>狀態碼</th><th>意思</th><th>典型情況</th></tr>
+  <tr><th colspan="3"><code>2xx</code> 成功</th></tr>
   <tr><td><code>200 OK</code></td><td>成功，內容就是要的資料</td><td>查詢資料</td></tr>
   <tr><td><code>201 Created</code></td><td>成功，而且新增了一筆資料</td><td>新增。通常附一個 <code>Location</code> header，寫新資料的網址</td></tr>
   <tr><td><code>204 No Content</code></td><td>成功，沒有內容要回</td><td>修改、刪除</td></tr>
+  <tr><th colspan="3"><code>3xx</code> 要的東西在別的地方，或手上的還能用</th></tr>
   <tr><td><code>301 Moved Permanently</code></td><td>這個網址永久搬到別處</td><td>網站改網址。新網址寫在 <code>Location</code> header</td></tr>
   <tr><td><code>302 Found</code></td><td>這一次先去另一個網址</td><td>登入後導回原本的頁面</td></tr>
   <tr><td><code>304 Not Modified</code></td><td>你手上那一份還是最新的，不重傳</td><td>瀏覽器快取，見「<a href="http-caching.html">HTTP 快取</a>」</td></tr>
+  <tr><th colspan="3"><mark class="caution">4xx</mark> 送來的請求有問題</th></tr>
   <tr><td><code>400 Bad Request</code></td><td>請求的格式或內容不對</td><td>必填欄位沒填、JSON 寫壞了</td></tr>
   <tr><td><code>401 Unauthorized</code></td><td>不知道你是誰</td><td>沒登入、登入過期</td></tr>
   <tr><td><code>403 Forbidden</code></td><td>知道你是誰，但你不能做這件事</td><td>一般使用者呼叫管理員的功能</td></tr>
   <tr><td><code>404 Not Found</code></td><td>沒有這個網址，或這筆資料不存在</td><td>網址打錯、查一筆已經刪掉的資料</td></tr>
   <tr><td><code>405 Method Not Allowed</code></td><td>網址有，但不接受這個動詞</td><td>對只接受 GET 的網址送 POST</td></tr>
   <tr><td><code>409 Conflict</code></td><td>請求本身沒錯，但和現有的資料衝突</td><td>註冊時帳號已經有人用了</td></tr>
+  <tr><th colspan="3"><span class="hl c">5xx</span> 伺服器自己出錯</th></tr>
   <tr><td><code>500 Internal Server Error</code></td><td>伺服器的程式出錯</td><td>程式丟出沒有人處理的例外</td></tr>
   <tr><td><code>503 Service Unavailable</code></td><td>伺服器暫時沒辦法服務</td><td>維護中、負載太高</td></tr>
 </table>
