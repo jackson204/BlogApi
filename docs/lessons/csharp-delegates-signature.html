@@ -60,17 +60,17 @@ static class StringTools
 <p><code>static</code> 的方法用「類別名稱.方法」呼叫，不用先 <code>new</code> 一個物件。<code>StringTools</code> 是放工具方法的類別，裡面只有 static 方法，所以類別也標 <code>static</code>，表示它不能被 new。static 和物件的關係，在<a href="csharp-class-object.html#static">類別與物件頁第 4 節</a>。</p>
 
 <h3 id="yours">再看一個常見的簽章：async 方法</h3>
-<pre><code class="language-csharp">public async Task&lt;string&gt; ReadTitleAsync(int id)</code></pre>
-<div class="table-wrap">
-<table>
-  <tr><th>片段</th><th>是哪個部分</th><th>意思</th></tr>
-  <tr><td><code>public</code></td><td>①</td><td>誰都能呼叫；沒有 <code>static</code>，所以要先有一個物件才能呼叫</td></tr>
-  <tr><td><code>async</code></td><td>修飾詞，<strong>不是</strong>簽章的一部分</td><td>告訴編譯器本體裡會有 <code>await</code>。呼叫的人看不到它，只看得到回傳型別是 <code>Task&lt;…&gt;</code></td></tr>
-  <tr><td><code>Task&lt;string&gt;</code></td><td>②</td><td>不是直接給你 string，是「一件還在做的事，做完會給你一個 string」。呼叫的人要 <code>await</code> 才拿得到 string</td></tr>
-  <tr><td><code>ReadTitleAsync</code></td><td>③</td><td>名稱；非同步方法習慣用 Async 結尾</td></tr>
-  <tr><td><code>int id</code></td><td>④</td><td>一個參數，型別 int、名稱 id</td></tr>
-</table>
-</div>
+<pre><code class="nohighlight"><span class="seg s1">public</span> <span class="seg s5">async</span> <span class="seg s2">Task&lt;string&gt;</span> <span class="seg s3">ReadTitleAsync</span>(<span class="seg s4">int id</span>)
+<span class="seg s1">\____/</span> <span class="seg s5">\___/</span> <span class="seg s2">\__________/</span> <span class="seg s3">\____________/</span> <span class="seg s4">\____/</span>
+<span class="seg s1"> [1]  </span> <span class="seg s5"> [*] </span> <span class="seg s2">    [2]     </span> <span class="seg s3">     [3]      </span> <span class="seg s4"> [4]  </span></code></pre>
+<p>[1] 到 [4] 就是上面那張圖的 ① 到 ④，[*] 是多出來的一個字：</p>
+<ul>
+  <li><span class="seg s1">[1]</span> <code>public</code>：誰都能呼叫。這裡沒有 <code>static</code>，所以要先有一個物件才能呼叫</li>
+  <li><span class="seg s5">[*]</span> <code>async</code>：修飾詞，<mark class="caution">不是簽章的一部分</mark>。它告訴編譯器本體裡會有 <code>await</code>；呼叫的人看不到它，只看得到回傳型別是 <code>Task&lt;…&gt;</code></li>
+  <li><span class="seg s2">[2]</span> <code>Task&lt;string&gt;</code>：回傳型別。不是直接給你 <code>string</code>，是「一件還在做的事，做完會給你一個 <code>string</code>」。呼叫的人要 <code>await</code> 才拿得到 <code>string</code></li>
+  <li><span class="seg s3">[3]</span> <code>ReadTitleAsync</code>：名稱。非同步方法習慣用 <code>Async</code> 結尾</li>
+  <li><span class="seg s4">[4]</span> <code>int id</code>：一個參數，型別 <code>int</code>、名稱 <code>id</code></li>
+</ul>
 
 <h3 id="generic">名稱後面的角括號：泛型</h3>
 <p><code>List&lt;string&gt;</code> 就是這種寫法：寫 <code>List</code> 的人不知道你要裝什麼，所以留一個洞 <code>&lt;T&gt;</code>，<strong>用的人呼叫時才填型別</strong>。方法也可以有這種洞，而且可以用 <code>where</code> 限制洞裡能填什麼（實際執行過）：</p>
@@ -114,19 +114,48 @@ class Staff : Author
 <p>第 4 節的 <code>AddDbContext&lt;TContext&gt;(…) where TContext : DbContext</code> 讀法完全一樣：填進去的型別必須是 <code>DbContext</code> 或它的子類別。</p>
 
 <h3 id="method-table">看簽章時會遇到的記號</h3>
-<div class="table-wrap">
-<table>
-  <tr><th>看到什麼</th><th>代表什麼</th><th>讀法</th></tr>
-  <tr><td><code>static</code></td><td>不用 new 物件，用類別名稱呼叫</td><td><code>StringTools.Repeat(…)</code></td></tr>
-  <tr><td><code>void</code> 在回傳型別的位置</td><td>不回傳</td><td>呼叫完沒有值可以接</td></tr>
-  <tr><td>名稱後面的 <code>&lt;T&gt;</code></td><td>泛型參數，呼叫時填型別</td><td><code>Describe&lt;Staff&gt;(…)</code></td></tr>
-  <tr><td><code>where T : 某型別</code></td><td>泛型限制</td><td>填進去的型別必須是那個型別或它的子類別</td></tr>
-  <tr><td>參數後面的 <code>= 2</code>、<code>= null</code></td><td>選擇性參數，有預設值</td><td>可以不給；要跳過前面的用名稱指定 <code>count: 1</code></td></tr>
-  <tr><td><code>string?</code>、<code>Action&lt;…&gt;?</code></td><td>可能是 <code>null</code></td><td>接到值要先檢查，或知道這個方法允許你傳 null</td></tr>
-  <tr><td><code>Task&lt;X&gt;</code> 在回傳型別</td><td>非同步方法，最後會給你一個 X</td><td>要 <code>await</code> 才拿得到 X（等的時候發生什麼事，在 <a href="csharp-async-await.html">Task 與 async / await 頁</a>）</td></tr>
-  <tr><td>第一個參數前面有 <code>this</code></td><td>擴充方法</td><td>下一節。這個 <code>this</code> 是參數修飾詞，和類別裡代表「物件自己」的 <code>this</code> 不是同一件事（<a href="csharp-class-object.html#this">類別與物件頁第 2 節</a>）</td></tr>
-</table>
-</div>
+<p>每個記號下面有兩段程式：上面是<strong>簽章</strong>，下面是<strong>呼叫的地方</strong>。顏色的意思：<span class="hl a">藍色</span>是這一段在講的記號，<span class="hl b">綠色</span>是它讓呼叫的地方變成怎麼寫，<span class="hl c">紅色</span>是不能這樣寫或會出錯的寫法。錯誤代碼都是實際編譯出來的。</p>
+<p><strong><code>static</code></strong>：不用先 <code>new</code> 物件，用<strong>類別名稱</strong>呼叫</p>
+<pre><code class="nohighlight">public <span class="hl a">static</span> string Repeat(string text, int count = 2)
+
+<span class="hl b">StringTools</span>.Repeat("ab");          // 點前面是類別名稱，不是物件</code></pre>
+<p><strong><code>void</code> 在回傳型別的位置</strong>：不回傳，呼叫完沒有值可以接</p>
+<pre><code class="nohighlight">public static <span class="hl a">void</span> Print(string text)
+
+Printer.Print("hi");                // 單獨一行呼叫
+<span class="hl c">var x =</span> Printer.Print("hi");        // error CS0815：無法將 void 指派給變數</code></pre>
+<p><strong>名稱後面的 <code>&lt;T&gt;</code></strong>：泛型參數，定義時留一個洞，<strong>呼叫時填型別</strong></p>
+<pre><code class="nohighlight">static string Describe<span class="hl a">&lt;T&gt;</span>(T item)
+
+Describe<span class="hl b">&lt;Staff&gt;</span>(new Staff(…));     // T 填 Staff
+Describe(new Author(…));            // 不寫也行，編譯器從參數推出 T 是 Author</code></pre>
+<p><strong><code>where T : 某型別</code></strong>：泛型限制，填進去的型別必須是那個型別或它的子類別</p>
+<pre><code class="nohighlight">static string Describe&lt;T&gt;(T item) <span class="hl a">where T : Author</span>
+
+Describe(new <span class="hl b">Staff</span>(…));             // Staff 繼承 Author，可以
+Describe(<span class="hl c">"x"</span>);                      // error CS0311：string 不是 Author</code></pre>
+<p><strong>參數後面的 <code>= 2</code>、<code>= null</code></strong>：選擇性參數，有預設值，呼叫時可以不給</p>
+<pre><code class="nohighlight">public static string Repeat(string text, int count <span class="hl a">= 2</span>)
+
+StringTools.Repeat("ab");             // 沒給 count，用預設值 2 → abab
+StringTools.Repeat("ab", <span class="hl b">count: 1</span>);   // 用名稱指定 → ab</code></pre>
+<p><strong>型別後面的 <code>?</code>，例如 <code>string?</code>、<code>Action&lt;…&gt;?</code></strong>：可能是 <code>null</code>。回傳型別有 <code>?</code>：接到值要先檢查；參數有 <code>?</code>：這個方法允許傳 <code>null</code></p>
+<pre><code class="nohighlight">static string<span class="hl a">?</span> FindName(int id)
+
+string? name = FindName(5);
+<span class="hl b">if (name != null)</span>                  // 先檢查再用
+{
+    Console.WriteLine(name.Length);
+}
+<span class="hl c">name.Length</span>                        // 不檢查：warning CS8602，執行時 name 是 null 就丟 NullReferenceException</code></pre>
+<p><strong><code>Task&lt;X&gt;</code> 在回傳型別</strong>：非同步方法，最後會給一個 <code>X</code>，要 <code>await</code> 才拿得到（等的時候發生什麼事，在 <a href="csharp-async-await.html">Task 與 async / await 頁</a>）</p>
+<pre><code class="nohighlight">static async <span class="hl a">Task&lt;string&gt;</span> GetTitleAsync(int id)
+
+string title = <span class="hl b">await</span> GetTitleAsync(5);   // await 之後拿到的是 string，不是 Task&lt;string&gt;</code></pre>
+<p><strong>第一個參數前面有 <code>this</code></strong>：擴充方法（下一節）。這個 <code>this</code> 是參數修飾詞，和類別裡代表「物件自己」的 <code>this</code> 不是同一件事（<a href="csharp-class-object.html#this">類別與物件頁第 2 節</a>）</p>
+<pre><code class="nohighlight">public static bool IsLongTitle(<span class="hl a">this</span> string title)
+
+<span class="hl b">"EF Core 入門"</span>.IsLongTitle();          // 點前面的字串，填進標 this 的那個參數</code></pre>
 
 <!-- ============================================================ -->
 <h2 id="extension">2. 擴充方法：第一個參數前面的 this</h2>
