@@ -19,7 +19,8 @@
 </div>
 
 <div class="callout">
-<p>📌 <strong>這頁是 C# 語法</strong>，和專案無關。程式裡看到 <code>Dictionary&lt;…, …&gt;</code>、<code>pair.Key</code>、<code>pair.Value</code>、<code>TryGetValue</code> 看不懂時回來查。頁面上的輸出都是單檔程式實際執行的結果（.NET 10）。</p>
+<p>📌 <strong>這頁是 C# 語法</strong>，和專案無關。程式裡看到 <code>Dictionary&lt;…, …&gt;</code>、<code>pair.Key</code>、<code>pair.Value</code>、<code>TryGetValue</code> 看不懂時回來查。</p>
+<p>每一節都從最簡單的寫法開始，一步只多一樣東西。頁面上的輸出和例外訊息都是單檔程式實際執行的結果（.NET 10）。丟例外的地方，「輸出」只列例外的型別和訊息那一行；實際執行時那一行前面還有 <code>Unhandled exception.</code>，後面接著幾行出錯位置，程式在那裡結束。</p>
 </div>
 
 <nav class="toc">
@@ -37,18 +38,73 @@
 
 <!-- ============================================================ -->
 <h2 id="what">1. Dictionary 是什麼：用 key 找 value</h2>
-<p><code>List</code> 是「第幾個」找東西，<code>Dictionary</code> 是「用名字」找東西。每一筆是一對：<strong>key</strong>（用來找的）與 <strong>value</strong>（找到的內容）。</p>
-<pre><code class="language-csharp">var price = new Dictionary&lt;string, int&gt;      // key 是 string，value 是 int
-{
-    ["可樂"] = 30,
-    ["綠茶"] = 25,
-    ["咖啡"] = 60,
-};
+<p class="lead">要記三樣商品的價格，之後用商品名稱查價格。這一節先只用 <code>List</code> 做，看它哪裡不夠，再換成 <code>Dictionary</code>。</p>
+<p>程式裡的顏色：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
 
-Console.WriteLine(price["可樂"]);               // 30
-Console.WriteLine(price.Count);                 // 3
-Console.WriteLine(price.ContainsKey("咖啡"));   // True
-Console.WriteLine(price.ContainsKey("牛奶"));   // False</code></pre>
+<h3 id="what-list">第 1 步：用兩個 List，一個放名稱、一個放價格</h3>
+<p><code>List</code> 只能用「第幾個」拿東西。所以查價格要分兩段：先在名稱的清單裡找出咖啡排第幾個，再用同一個位置到價格的清單拿。</p>
+<pre><code class="nohighlight">var names = new List&lt;string&gt; { "可樂", "綠茶", "咖啡" };
+var prices = new List&lt;int&gt; { 30, 25, 60 };
+
+int index = names.IndexOf("咖啡");     // 咖啡排第幾個 → 2
+Console.WriteLine(prices[index]);      // 價格清單的第 2 個
+
+// 輸出：
+// 60</code></pre>
+<p>查得到。但兩個清單要靠「位置一樣」才對得起來。只要其中一個清單少了一筆，另一個忘了跟著改，就會查到別人的價格：</p>
+<pre><code class="nohighlight"><span class="hl c">names.Remove("綠茶");</span>                  // 名稱清單拿掉綠茶，價格清單忘了拿
+
+index = names.IndexOf("咖啡");         // 咖啡現在排第 1 個
+Console.WriteLine(prices[index]);      // 價格清單的第 1 個是綠茶的 25
+
+// 輸出：
+// 25</code></pre>
+<p>咖啡變成 25 元，而且<mark class="caution">沒有任何錯誤訊息</mark>。問題出在名稱和價格分開放在兩個地方。</p>
+
+<h3 id="what-dictionary">第 2 步：改用 Dictionary，名稱和價格放在同一筆</h3>
+<p><code>Dictionary</code> 的每一筆是一對：<mark class="key">key</mark>（用來找的）與 <mark class="key">value</mark>（找到的內容）。商品名稱當 key，價格當 value，兩個一起放進去：</p>
+<pre><code class="nohighlight">var price = <span class="hl a">new Dictionary&lt;string, int&gt;()</span>;
+<span class="hl a">price["可樂"] = 30;</span>
+<span class="hl a">price["綠茶"] = 25;</span>
+<span class="hl a">price["咖啡"] = 60;</span>
+
+Console.WriteLine(<span class="hl b">price["咖啡"]</span>);     // 直接用名稱查，不用先找位置
+
+// 輸出：
+// 60</code></pre>
+<ul>
+  <li><code>Dictionary&lt;string, int&gt;</code>：尖括號裡第一個是 key 的型別，第二個是 value 的型別。這裡 key 是 <code>string</code>（商品名稱），value 是 <code>int</code>（價格）。key 常見的是 <code>string</code>、<code>int</code>、enum</li>
+  <li><code>price["可樂"] = 30;</code>：放進一對，key 是 <code>"可樂"</code>、value 是 <code>30</code></li>
+  <li><code>price["咖啡"]</code>：中括號裡寫 key，拿到那個 key 的 value</li>
+</ul>
+<p>名稱和價格是同一筆，不會再有「位置對不上」的問題。</p>
+
+<h3 id="what-initializer">第 3 步：建立的時候一起寫內容</h3>
+<p>第 2 步每放一對就要寫一次 <code>price</code>。內容一開始就知道時，可以在 <code>new</code> 後面接大括號，一行寫一對：</p>
+<pre><code class="nohighlight">var price = new Dictionary&lt;string, int&gt;
+<span class="hl a">{</span>
+    <span class="hl a">["可樂"] = 30,</span>
+    <span class="hl a">["綠茶"] = 25,</span>
+    <span class="hl a">["咖啡"] = 60,</span>
+<span class="hl a">}</span>;
+
+Console.WriteLine(price["咖啡"]);
+
+// 輸出：
+// 60</code></pre>
+<p>做出來的 <code>price</code> 和第 2 步的一樣。這頁後面的範例都用這種寫法建立 <code>price</code>。</p>
+
+<h3 id="what-count">第 4 步：問有幾筆、有沒有某個 key</h3>
+<pre><code class="nohighlight">Console.WriteLine(price.<span class="hl a">Count</span>);                 // 有幾筆
+Console.WriteLine(price.<span class="hl a">ContainsKey</span>("咖啡"));   // 有沒有「咖啡」這個 key
+Console.WriteLine(price.<span class="hl a">ContainsKey</span>("牛奶"));
+
+// 輸出：
+// 3
+// True
+// False</code></pre>
+
+<h3 id="what-compare">List 和 Dictionary 的差別</h3>
 <div class="table-wrap">
 <table>
   <tr><th></th><th><code>List&lt;T&gt;</code></th><th><code>Dictionary&lt;TKey, TValue&gt;</code></th></tr>
@@ -58,100 +114,403 @@ Console.WriteLine(price.ContainsKey("牛奶"));   // False</code></pre>
   <tr><td>適合</td><td>一串有順序的東西</td><td>對照表、用編號或名稱查資料</td></tr>
 </table>
 </div>
-<p><code>Dictionary&lt;string, int&gt;</code> 尖括號裡第一個是 key 的型別，第二個是 value 的型別。key 常見的是 <code>string</code>、<code>int</code>、enum。</p>
 
 <!-- ============================================================ -->
 <h2 id="missing">2. key 不存在時：三種讀法</h2>
-<pre><code class="language-csharp">Console.WriteLine(price["牛奶"]);
-// KeyNotFoundException: The given key '牛奶' was not present in the dictionary.
+<p class="lead">店裡沒有賣牛奶，<code>price</code> 裡沒有 <code>"牛奶"</code> 這個 key。這一節看用中括號讀一個不存在的 key 會怎樣，再一步一步換成不會出錯的讀法。每一步用的都是第 1 節那個有可樂、綠茶、咖啡的 <code>price</code>。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
 
-if (price.TryGetValue("牛奶", out var p))     // 回傳 False，p 是 0
+<h3 id="missing-indexer">第 1 步：用中括號讀不存在的 key，程式停掉</h3>
+<pre><code class="nohighlight">Console.WriteLine(price["可樂"]);
+Console.WriteLine(<span class="hl c">price["牛奶"]</span>);
+
+// 輸出：
+// 30
+// KeyNotFoundException: The given key '牛奶' was not present in the dictionary.</code></pre>
+<p>中括號的讀法在 key 不存在時會丟出 <code>KeyNotFoundException</code>。沒有人接住這個例外，程式就停在這一行：實際執行時，在這一行後面再加一行 <code>Console.WriteLine</code>，它沒有印出來。</p>
+
+<h3 id="missing-containskey">第 2 步：先用 ContainsKey 問有沒有，再讀</h3>
+<p>第 1 節已經有 <code>ContainsKey</code>。先問一次，有才讀：</p>
+<pre><code class="nohighlight"><span class="hl a">if (price.ContainsKey("牛奶"))</span>
+{
+    Console.WriteLine(price["牛奶"]);
+}
+else
+{
+    Console.WriteLine("沒有賣牛奶");
+}
+
+// 輸出：
+// 沒有賣牛奶</code></pre>
+<p>不會丟例外了。但 <code>"牛奶"</code> 這個 key 寫了兩次，<code>Dictionary</code> 也找了兩次：<code>ContainsKey</code> 找一次，中括號再找一次。</p>
+
+<h3 id="missing-trygetvalue">第 3 步：TryGetValue，找一次就同時知道「有沒有」和「是多少」</h3>
+<p><code>TryGetValue</code> 一次給兩個結果。先不放進 <code>if</code>，把兩個結果分別印出來看：</p>
+<pre><code class="nohighlight">bool found = price.<span class="hl a">TryGetValue("牛奶", out var m)</span>;
+Console.WriteLine(found);     // 有沒有找到
+Console.WriteLine(m);         // 找到的 value
+
+bool found2 = price.<span class="hl a">TryGetValue("可樂", out var c)</span>;
+Console.WriteLine(found2);
+Console.WriteLine(c);
+
+// 輸出：
+// False
+// 0
+// True
+// 30</code></pre>
+<ul>
+  <li>回傳值是 <code>bool</code>：有沒有找到</li>
+  <li><code>out var m</code>：在這裡宣告一個變數 <code>m</code>，<code>TryGetValue</code> 把找到的 value 放進去。<code>out</code> 的意思是「這個參數是方法往外給結果用的」</li>
+  <li>找不到時 <code>m</code> 是 value 型別的 <code>default</code>，<code>int</code> 的 <code>default</code> 是 <code>0</code>（<a href="csharp-default-nullable.html">default 與可空型別那一頁</a>）。<mark class="caution">這個 0 不是牛奶的價格</mark>，所以要先看回傳值，是 <code>true</code> 才用 <code>m</code></li>
+</ul>
+<p>回傳值是 <code>bool</code>，可以直接放進 <code>if</code>。第 2 步改寫成：</p>
+<pre><code class="nohighlight">if (price.<span class="hl a">TryGetValue("牛奶", out var p)</span>)
+{
+    Console.WriteLine(<span class="hl b">p</span>);          // 這裡用 p，不用再寫 price["牛奶"]
+}
+else
+{
+    Console.WriteLine("沒有賣牛奶");
+}
+
+// 輸出：
+// 沒有賣牛奶</code></pre>
+<div class="compare">
+<div class="bad">
+<p class="compare-label">✗ 先 ContainsKey 再中括號</p>
+<pre><code class="language-csharp">if (price.ContainsKey("牛奶"))
+{
+    Console.WriteLine(price["牛奶"]);
+}</code></pre>
+<p>key 寫兩次，找兩次。</p>
+</div>
+<div class="good">
+<p class="compare-label">✓ TryGetValue</p>
+<pre><code class="language-csharp">if (price.TryGetValue("牛奶", out var p))
 {
     Console.WriteLine(p);
-}
-
-Console.WriteLine(price.GetValueOrDefault("牛奶"));       // 0
-Console.WriteLine(price.GetValueOrDefault("牛奶", -1));   // -1</code></pre>
-<div class="table-wrap">
-<table>
-  <tr><th>寫法</th><th>key 不存在時</th><th>什麼時候用</th></tr>
-  <tr><td><code>price[key]</code></td><td>丟 <code>KeyNotFoundException</code></td><td>確定一定有；沒有就代表程式有錯</td></tr>
-  <tr><td><code>price.TryGetValue(key, out var p)</code></td><td>回傳 <code>false</code>，<code>p</code> 是 value 型別的 <code>default</code></td><td>不確定有沒有，而且兩種情況要分開處理</td></tr>
-  <tr><td><code>price.GetValueOrDefault(key, 預設值)</code></td><td>回傳預設值</td><td>沒有就用預設值，不用分開處理</td></tr>
-</table>
+}</code></pre>
+<p>key 寫一次，找一次。</p>
 </div>
-<p><code>out var p</code>：這個方法有兩個結果要給你，「有沒有找到」用回傳值，「找到的內容」放進 <code>p</code>。找不到時 <code>p</code> 是 <code>default</code>（<a href="csharp-default-nullable.html">上一頁</a>），所以要先看回傳值再用 <code>p</code>。</p>
-<p>不要寫成先 <code>ContainsKey</code> 再 <code>price[key]</code>：那樣會找兩次，<code>TryGetValue</code> 一次就完成。</p>
-
-<!-- ============================================================ -->
-<h2 id="write">3. 新增、修改、移除</h2>
-<pre><code class="language-csharp">price["牛奶"] = 40;            // 沒有這個 key → 新增。Count 變成 4
-price["可樂"] = 35;            // 已經有這個 key → 改掉 value。Count 還是 4
-
-price.Add("可樂", 99);
-// ArgumentException: An item with the same key has already been added. Key: 可樂
-
-Console.WriteLine(price.TryAdd("可樂", 99));   // False，可樂還是 35
-Console.WriteLine(price.Remove("牛奶"));       // True，Count 變回 3</code></pre>
-<div class="table-wrap">
-<table>
-  <tr><th>寫法</th><th>key 已經存在時</th><th>key 不存在時</th></tr>
-  <tr><td><code>price[key] = 值</code></td><td>覆蓋</td><td>新增</td></tr>
-  <tr><td><code>price.Add(key, 值)</code></td><td>丟 <code>ArgumentException</code></td><td>新增</td></tr>
-  <tr><td><code>price.TryAdd(key, 值)</code></td><td>不動，回傳 <code>false</code></td><td>新增，回傳 <code>true</code></td></tr>
-</table>
 </div>
-<p>想要「有就改、沒有就加」用 <code>[key] = 值</code>；想要「重複就是錯誤，要立刻知道」用 <code>Add</code>。</p>
 
-<!-- ============================================================ -->
-<h2 id="loop">4. 逐筆走過：pair.Key 與 pair.Value</h2>
-<pre><code class="language-csharp">foreach (var pair in price)
+<h3 id="missing-default">第 4 步：GetValueOrDefault，沒有就用預設值</h3>
+<p>有時候不需要分「有」和「沒有」兩條路，只是想要「沒有就當成 0」。用第 3 步的寫法要這麼多行：</p>
+<pre><code class="nohighlight">int milk;
+if (price.TryGetValue("牛奶", out var found3))
 {
-    Console.WriteLine($"pair.Key = {pair.Key}, pair.Value = {pair.Value}");
+    milk = found3;
 }
-
-foreach (var (name, amount) in price)      // 直接拆成兩個變數
+else
 {
-    Console.WriteLine($"{name}：{amount}");
+    milk = 0;
 }
+Console.WriteLine(milk);
 
-Console.WriteLine(string.Join(", ", price.Keys));     // 可樂, 綠茶, 咖啡
-Console.WriteLine(string.Join(", ", price.Values));   // 35, 25, 60</code></pre>
-<pre><code class="nohighlight">pair.Key = 可樂, pair.Value = 35
-pair.Key = 綠茶, pair.Value = 25
-pair.Key = 咖啡, pair.Value = 60
-可樂：35
-綠茶：25
-咖啡：60</code></pre>
+// 輸出：
+// 0</code></pre>
+<p><code>GetValueOrDefault</code> 一行做完同一件事。第二個參數可以指定「沒有的時候要回傳什麼」：</p>
+<pre><code class="nohighlight">Console.WriteLine(price.<span class="hl a">GetValueOrDefault("牛奶")</span>);        // 沒有 → int 的 default
+Console.WriteLine(price.<span class="hl a">GetValueOrDefault("牛奶", -1)</span>);    // 沒有 → 自己指定的 -1
+Console.WriteLine(price.<span class="hl a">GetValueOrDefault("可樂", -1)</span>);    // 有 → 原本的 value
+
+// 輸出：
+// 0
+// -1
+// 30</code></pre>
+
+<h3 id="missing-when">三種讀法什麼時候用</h3>
 <ul>
-  <li><code>foreach</code> 每一圈拿到的是「一對」，型別是 <code>KeyValuePair&lt;string, int&gt;</code>。<code>pair</code> 這個名字是自己取的，<code>.Key</code> 是左邊、<code>.Value</code> 是右邊</li>
-  <li>之後在 LINQ 裡看到 <code>pair =&gt; pair.Value</code>，<code>pair</code> 就是這個東西</li>
-  <li><strong>不要依賴順序</strong>。這次印出來剛好是加入的順序，但 <code>Dictionary</code> 不保證。需要固定順序就自己排序：<code>price.OrderBy(pair =&gt; pair.Key)</code></li>
+  <li><code>price[key]</code>：key 不存在時丟 <code>KeyNotFoundException</code>。用在確定一定有的時候；沒有就代表程式有錯，停下來才看得到</li>
+  <li><code>price.TryGetValue(key, out var p)</code>：key 不存在時回傳 <code>false</code>，<code>p</code> 是 value 型別的 <code>default</code>。用在不確定有沒有，而且兩種情況要分開處理的時候</li>
+  <li><code>price.GetValueOrDefault(key, 預設值)</code>：key 不存在時回傳預設值。用在沒有就用預設值、不用分開處理的時候</li>
 </ul>
 
 <!-- ============================================================ -->
-<h2 id="linq">5. 用 LINQ 查：用 value 反過來找 key</h2>
-<p><code>Dictionary</code> 天生只能「用 key 找 value」。想反過來「哪些 key 的 value 符合條件」，把它當成一串 pair 用 LINQ 過濾：</p>
-<pre><code class="language-csharp">// 哪些商品超過 30 元
-var expensive = price.Where(pair =&gt; pair.Value &gt; 30).Select(pair =&gt; pair.Key);
-Console.WriteLine(string.Join(", ", expensive));   // 可樂, 咖啡
+<h2 id="write">3. 新增、修改、移除</h2>
+<p class="lead">第 1 節用 <code>price["可樂"] = 30;</code> 放東西進去。這一節看同一個寫法在 key 已經存在時會做什麼，再看另外兩個只新增、不覆蓋的方法，最後是移除。開頭的 <code>price</code> 是可樂 30、綠茶 25、咖啡 60，每一步接著上一步的結果往下做。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
 
-// 對應表：左邊是資料庫裡的狀態，右邊是顯示給使用者的文字
-var progress = new Dictionary&lt;string, string&gt;
+<h3 id="write-new">第 1 步：key 還沒有，中括號是新增</h3>
+<pre><code class="nohighlight"><span class="hl a">price["牛奶"] = 40;</span>
+
+Console.WriteLine(price.Count);
+Console.WriteLine(price["牛奶"]);
+
+// 輸出：
+// 4
+// 40</code></pre>
+<p>原本 3 筆，多了牛奶變成 4 筆。</p>
+
+<h3 id="write-overwrite">第 2 步：key 已經有，同一個寫法變成修改</h3>
+<pre><code class="nohighlight"><span class="hl a">price["可樂"] = 35;</span>
+
+Console.WriteLine(price.Count);
+Console.WriteLine(price["可樂"]);
+
+// 輸出：
+// 4
+// 35</code></pre>
+<p>還是 4 筆，可樂從 30 變成 35。中括號的規則是「沒有就新增，有就把 value 換掉」。</p>
+<p>要改價格時這很方便。但如果本意是「新增一樣新商品」，而那個名稱其實已經有了，<mark class="caution">原本的價格會直接被換掉，沒有任何提示</mark>。</p>
+
+<h3 id="write-add">第 3 步：Add，key 重複就丟例外</h3>
+<p><code>Add</code> 只做新增。key 已經存在時不覆蓋，直接丟例外：</p>
+<pre><code class="nohighlight">price.<span class="hl a">Add("紅茶", 20)</span>;            // 沒有紅茶 → 新增
+Console.WriteLine(price.Count);
+
+price.<span class="hl c">Add("可樂", 99)</span>;            // 已經有可樂
+
+// 輸出：
+// 5
+// ArgumentException: An item with the same key has already been added. Key: 可樂</code></pre>
+<p>接住這個例外之後再看，可樂還是 35，沒有被改成 99。</p>
+
+<h3 id="write-tryadd">第 4 步：TryAdd，key 重複就不動，用回傳值告訴你</h3>
+<p>重複不算錯誤、只是「已經有了就不用加」的時候，用 <code>TryAdd</code>。它不丟例外，回傳 <code>bool</code> 表示有沒有加進去：</p>
+<pre><code class="nohighlight">Console.WriteLine(price.<span class="hl a">TryAdd("可樂", 99)</span>);   // 已經有可樂 → 不動
+Console.WriteLine(price["可樂"]);
+
+Console.WriteLine(price.<span class="hl a">TryAdd("奶茶", 45)</span>);   // 沒有奶茶 → 新增
+Console.WriteLine(price["奶茶"]);
+
+// 輸出：
+// False
+// 35
+// True
+// 45</code></pre>
+
+<h3 id="write-remove">第 5 步：Remove，移除一筆</h3>
+<pre><code class="nohighlight">Console.WriteLine(price.<span class="hl a">Remove("牛奶")</span>);        // 有牛奶 → 移除
+Console.WriteLine(price.ContainsKey("牛奶"));
+
+Console.WriteLine(price.<span class="hl a">Remove("牛奶")</span>);        // 已經沒有牛奶了
+
+// 輸出：
+// True
+// False
+// False</code></pre>
+<p><code>Remove</code> 回傳有沒有移除到東西。key 不存在時回傳 <code>false</code>，不丟例外。</p>
+
+<h3 id="write-when">三種放進去的寫法什麼時候用</h3>
+<ul>
+  <li><code>price[key] = 值</code>：key 已經存在就覆蓋，不存在就新增。用在「有就改、沒有就加」</li>
+  <li><code>price.Add(key, 值)</code>：key 已經存在就丟 <code>ArgumentException</code>，不存在就新增。用在「重複就是錯誤，要立刻知道」</li>
+  <li><code>price.TryAdd(key, 值)</code>：key 已經存在就不動、回傳 <code>false</code>，不存在就新增、回傳 <code>true</code>。用在「已經有了就保留原本的」</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="loop">4. 逐筆走過：pair.Key 與 pair.Value</h2>
+<p class="lead">前面都是指定一個 key 去拿 value。這一節要把 <code>price</code> 裡的每一筆都走過一次。開頭的 <code>price</code> 重新用可樂 30、綠茶 25、咖啡 60。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
+
+<h3 id="loop-pair">第 1 步：foreach 每一圈拿到的是「一對」</h3>
+<pre><code class="nohighlight">foreach (var <span class="hl a">pair</span> in price)
+{
+    Console.WriteLine(pair);
+}
+
+// 輸出：
+// [可樂, 30]
+// [綠茶, 25]
+// [咖啡, 60]</code></pre>
+<p>對 <code>List&lt;int&gt;</code> 做 <code>foreach</code>，每一圈拿到一個 <code>int</code>。對 <code>Dictionary</code> 做 <code>foreach</code>，每一圈拿到的是 key 和 value 兩個一起。<code>pair</code> 這個名字是自己取的。</p>
+<p>直接印 <code>pair</code> 只能得到 <code>[可樂, 30]</code> 這種固定的樣子。想印成「可樂 賣 30 元」，要能分別拿到左邊和右邊。</p>
+
+<h3 id="loop-keyvalue">第 2 步：pair.Key 拿左邊，pair.Value 拿右邊</h3>
+<pre><code class="nohighlight">foreach (var pair in price)
+{
+    Console.WriteLine($"{<span class="hl a">pair.Key</span>} 賣 {<span class="hl a">pair.Value</span>} 元");
+}
+
+// 輸出：
+// 可樂 賣 30 元
+// 綠茶 賣 25 元
+// 咖啡 賣 60 元</code></pre>
+<p><code>pair</code> 的型別是 <mark class="key"><code>KeyValuePair&lt;string, int&gt;</code></mark>，它只有兩個屬性：<code>.Key</code> 和 <code>.Value</code>。不用 <code>var</code>、把型別寫出來就是 <code>foreach (KeyValuePair&lt;string, int&gt; pair in price)</code>，結果一樣。</p>
+<p>LINQ 裡的 <code>pair =&gt; pair.Value</code>，<code>pair</code> 就是這個東西。</p>
+
+<h3 id="loop-deconstruct">第 3 步：在 foreach 裡直接拆成兩個變數</h3>
+<p>每次都寫 <code>pair.Key</code>、<code>pair.Value</code> 看不出左邊和右邊各是什麼。可以在 <code>foreach</code> 的括號裡直接給兩個名字：</p>
+<pre><code class="nohighlight">foreach (var <span class="hl a">(name, amount)</span> in price)
+{
+    Console.WriteLine($"{<span class="hl b">name</span>} 賣 {<span class="hl b">amount</span>} 元");
+}
+
+// 輸出：
+// 可樂 賣 30 元
+// 綠茶 賣 25 元
+// 咖啡 賣 60 元</code></pre>
+<p>括號裡第一個名字拿到 key，第二個拿到 value。</p>
+
+<h3 id="loop-keys">第 4 步：只要 key，或只要 value</h3>
+<pre><code class="nohighlight">foreach (var name in price.<span class="hl a">Keys</span>)
+{
+    Console.WriteLine(name);
+}
+
+foreach (var amount in price.<span class="hl a">Values</span>)
+{
+    Console.WriteLine(amount);
+}
+
+// 輸出：
+// 可樂
+// 綠茶
+// 咖啡
+// 30
+// 25
+// 60</code></pre>
+
+<h3 id="loop-order">第 5 步：走過的順序不一定是放進去的順序</h3>
+<p>到目前為止，印出來的順序都剛好是放進去的順序。移除可樂、再放進牛奶，然後再走一次：</p>
+<pre><code class="nohighlight">price.Remove("可樂");
+price["牛奶"] = 40;               // 牛奶是最後才放進去的
+
+foreach (var pair in price)
+{
+    Console.WriteLine($"{pair.Key} 賣 {pair.Value} 元");
+}
+
+// 輸出：
+// 牛奶 賣 40 元
+// 綠茶 賣 25 元
+// 咖啡 賣 60 元</code></pre>
+<p>最後放進去的牛奶排在第一個。<mark class="caution">不要依賴 Dictionary 走過的順序</mark>，它不保證。</p>
+
+<h3 id="loop-orderby">第 6 步：需要固定順序時自己排序</h3>
+<pre><code class="nohighlight">foreach (var pair in price.<span class="hl a">OrderBy(pair =&gt; pair.Value)</span>)
+{
+    Console.WriteLine($"{pair.Key} 賣 {pair.Value} 元");
+}
+
+// 輸出：
+// 綠茶 賣 25 元
+// 牛奶 賣 40 元
+// 咖啡 賣 60 元</code></pre>
+<p><code>OrderBy(pair =&gt; pair.Value)</code> 的意思是「每一對用它的 value 來比，由小排到大」。要照 key 排就寫 <code>price.OrderBy(pair =&gt; pair.Key)</code>。</p>
+
+<!-- ============================================================ -->
+<h2 id="linq">5. 用 LINQ 查：用 value 反過來找 key</h2>
+<p class="lead"><code>Dictionary</code> 只能用 key 找 value。這一節要做反方向的事：給一個 value，找出哪些 key 對到它。先用 <code>foreach</code> 寫，再一步換一段成 LINQ。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
+<p>範例是一張對應表：左邊是資料庫裡的狀態，右邊是顯示給使用者的文字。每一步都用這個 <code>progress</code>：</p>
+<pre><code class="language-csharp">var progress = new Dictionary&lt;string, string&gt;
 {
     ["Pending"] = "進行中",
     ["Paid"] = "進行中",
     ["Shipped"] = "已完成",
     ["Cancelled"] = "已取消",
-};
+};</code></pre>
 
-Console.WriteLine(progress["Paid"]);     // 進行中          ← 正方向：用 key 找 value
+<h3 id="linq-forward">第 1 步：正方向，用 key 找 value</h3>
+<pre><code class="nohighlight">Console.WriteLine(progress["Paid"]);
 
-var keys = progress
-    .Where(pair =&gt; pair.Value == "進行中")   // ① 只留下 value 是「進行中」的那幾對
-    .Select(pair =&gt; pair.Key)                // ② 取出它們的 key
-    .ToList();                               // ③ 收成清單
-Console.WriteLine(string.Join(", ", keys));  // Pending, Paid   ← 反方向：用 value 找 key</code></pre>
+// 輸出：
+// 進行中</code></pre>
+
+<h3 id="linq-wrong">第 2 步：反方向，把 value 寫進中括號行不通</h3>
+<p>現在問題反過來：哪些狀態會顯示成「進行中」？直接把 <code>"進行中"</code> 寫進中括號試試看：</p>
+<pre><code class="nohighlight">Console.WriteLine(<span class="hl c">progress["進行中"]</span>);
+
+// 輸出：
+// KeyNotFoundException: The given key '進行中' was not present in the dictionary.</code></pre>
+<p>中括號裡的東西一律被當成 key。<code>"進行中"</code> 是 value，不是 key，所以找不到。</p>
+
+<h3 id="linq-foreach">第 3 步：用 foreach 一對一對看，value 符合就記下 key</h3>
+<p>用第 4 節的 <code>foreach</code>：每一對都看它的 <code>pair.Value</code>，符合就把 <code>pair.Key</code> 加進一個清單。</p>
+<pre><code class="nohighlight">var keys = new List&lt;string&gt;();
+foreach (var pair in progress)
+{
+    if (<span class="hl a">pair.Value == "進行中"</span>)
+    {
+        keys.Add(<span class="hl a">pair.Key</span>);
+    }
+}
+
+foreach (var key in keys)
+{
+    Console.WriteLine(key);
+}
+
+// 輸出：
+// Pending
+// Paid</code></pre>
+<p>找到兩個。這段程式做了三件事：過濾（<code>if</code>）、取出 key（<code>pair.Key</code>）、放進清單（<code>keys.Add</code>）。LINQ 有三個方法各做其中一件，下面一次換一個。</p>
+
+<h3 id="linq-where">第 4 步：Where 做過濾</h3>
+<pre><code class="nohighlight">var matched = progress.<span class="hl a">Where(pair =&gt; pair.Value == "進行中")</span>;
+
+foreach (var pair in matched)
+{
+    Console.WriteLine(pair);
+}
+
+// 輸出：
+// [Pending, 進行中]
+// [Paid, 進行中]</code></pre>
+<p><code>Where</code> 把第 3 步的 <code>if</code> 條件搬進括號裡：只留下 value 是「進行中」的那幾對。留下來的<mark class="key">還是一對一對的 pair</mark>，key 和 value 都在。</p>
+
+<h3 id="linq-select">第 5 步：Select 從每一對取出 key</h3>
+<pre><code class="nohighlight">var matchedKeys = progress
+    .Where(pair =&gt; pair.Value == "進行中")
+    <span class="hl a">.Select(pair =&gt; pair.Key)</span>;
+
+foreach (var key in matchedKeys)
+{
+    Console.WriteLine(key);
+}
+
+// 輸出：
+// Pending
+// Paid</code></pre>
+<p><code>Select(pair =&gt; pair.Key)</code> 把留下來的每一對換成它的 key。現在走過的每一個是 <code>string</code>，不是 pair。</p>
+
+<h3 id="linq-tolist">第 6 步：ToList 收成清單</h3>
+<pre><code class="nohighlight">List&lt;string&gt; list = progress
+    .Where(pair =&gt; pair.Value == "進行中")    // ① 只留下 value 是「進行中」的那幾對
+    .Select(pair =&gt; pair.Key)                 // ② 取出它們的 key
+    <span class="hl a">.ToList()</span>;                                // ③ 收成清單
+
+Console.WriteLine(list.Count);
+Console.WriteLine(list[0]);
+Console.WriteLine(list[1]);
+
+// 輸出：
+// 2
+// Pending
+// Paid</code></pre>
+<p>結果和第 3 步的 <code>keys</code> 一樣，是一個 <code>List&lt;string&gt;</code>，可以用 <code>.Count</code> 和 <code>[位置]</code>。這裡的 <code>.ToList()</code> 只在記憶體裡跑，不連資料庫：它處理的是 <code>progress</code> 這個已經在記憶體裡的 <code>Dictionary</code>。</p>
+<p>找一個沒有任何 key 對到的 value：</p>
+<pre><code class="nohighlight">List&lt;string&gt; none = progress
+    .Where(pair =&gt; pair.Value == "退貨中")
+    .Select(pair =&gt; pair.Key)
+    .ToList();
+
+Console.WriteLine(none.Count);
+
+// 輸出：
+// 0</code></pre>
+<p>找不到時是空清單，不會丟例外。</p>
+
+<h3 id="linq-condition">第 7 步：條件可以換成別的</h3>
+<p><code>Where</code> 括號裡不一定要用 <code>==</code>。換回第 1 節的 <code>price</code>（可樂 30、綠茶 25、咖啡 60），找出比 28 元貴的商品：</p>
+<pre><code class="nohighlight">List&lt;string&gt; expensive = price
+    .Where(pair =&gt; <span class="hl a">pair.Value &gt; 28</span>)
+    .Select(pair =&gt; pair.Key)
+    .ToList();
+
+foreach (var name in expensive)
+{
+    Console.WriteLine(name);
+}
+
+// 輸出：
+// 可樂
+// 咖啡</code></pre>
+
+<h3 id="linq-directions">兩個方向的差別</h3>
 <div class="table-wrap">
 <table>
   <tr><th>方向</th><th>寫法</th><th>結果有幾個</th></tr>
@@ -159,46 +518,208 @@ Console.WriteLine(string.Join(", ", keys));  // Pending, Paid   ← 反方向：
   <tr><td>value → key</td><td><code>.Where(pair =&gt; pair.Value == …).Select(pair =&gt; pair.Key)</code></td><td>零個、一個或多個（value 可以重複）</td></tr>
 </table>
 </div>
-<ul>
-  <li>反方向可能找到多個，所以結果是清單。找不到時是空清單，不會丟例外</li>
-  <li>這裡的 <code>.ToList()</code> 只在記憶體裡跑，不連資料庫：它的主體是 <code>progress</code>（<a href="01b-linq-sql-lab.html#l4-07">LINQ 實驗室 L4-07</a>）</li>
-  <li>這個「反查」的實際用途：使用者選的是顯示用的狀態，要先換成資料庫裡的狀態才能查。見 <a href="csharp-enum-db.html#mapping">enum 那一頁第 7 節</a>與 <a href="01b-linq-sql-lab.html#l4-12">L4-12</a></li>
-</ul>
+<p>反查的實際用途：使用者選的是顯示用的狀態，要先換成資料庫裡的狀態才能查。見 <a href="csharp-enum-db.html#mapping">enum 那一頁講對應表的那一節</a>。</p>
 
 <!-- ============================================================ -->
 <h2 id="build">6. 從清單做出 Dictionary</h2>
-<pre><code class="language-csharp">var products = new[] { new Product(1, "可樂", 30), new Product(2, "綠茶", 25), new Product(3, "咖啡", 60) };
+<p class="lead">資料常常一開始是一個清單，例如一串商品。這一節從「在清單裡找某個 Id 的商品」開始，一步一步走到用 <code>ToDictionary</code> 一行把清單轉成 <code>Dictionary</code>。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
+<p>每一步都用這份資料和這個類別：</p>
+<pre><code class="language-csharp">var products = new List&lt;Product&gt;
+{
+    new Product { Id = 1, Category = "飲料", Name = "可樂", Price = 30 },
+    new Product { Id = 2, Category = "飲料", Name = "綠茶", Price = 25 },
+    new Product { Id = 3, Category = "零食", Name = "餅乾", Price = 35 },
+};
 
-var byId = products.ToDictionary(p =&gt; p.Id);                      // key 是 Id，value 是整個 Product
-Console.WriteLine(byId[2].Name);                                  // 綠茶
+class Product
+{
+    public int Id { get; set; }
+    public string Category { get; set; } = "";
+    public string Name { get; set; } = "";
+    public int Price { get; set; }
+}</code></pre>
 
-var nameToPrice = products.ToDictionary(p =&gt; p.Name, p =&gt; p.Price);   // key 是名稱，value 只取價格
-Console.WriteLine(nameToPrice["咖啡"]);                           // 60
+<h3 id="build-scan">第 1 步：在清單裡找，要一筆一筆比</h3>
+<pre><code class="nohighlight">foreach (var p in products)
+{
+    if (<span class="hl a">p.Id == 2</span>)
+    {
+        Console.WriteLine(p.Name);
+    }
+}
 
-record Product(int Id, string Name, int Price);</code></pre>
-<p>用途：要在迴圈裡反覆「用 Id 找商品」時，先轉成 <code>Dictionary</code>，之後每次查都是直接跳到那一筆，不用每次從頭找。</p>
-<p>key 重複時 <code>ToDictionary</code> 會丟例外：</p>
-<pre><code class="nohighlight">ArgumentException: An item with the same key has already been added. Key: 1</code></pre>
-<p>一個 key 要對應到<strong>多個</strong>東西時，先分組再轉，value 放清單：</p>
-<pre><code class="language-csharp">var items = new[] { ("飲料", "可樂"), ("飲料", "綠茶"), ("零食", "餅乾") };
+// 輸出：
+// 綠茶</code></pre>
+<p>找得到。但每找一個 Id 都要從第一筆開始比。要找很多次時，同樣的迴圈就要跑很多次。</p>
 
-var groups = items
-    .GroupBy(x =&gt; x.Item1)
-    .ToDictionary(g =&gt; g.Key, g =&gt; g.Select(x =&gt; x.Item2).ToList());
-// 飲料 → [可樂, 綠茶]
-// 零食 → [餅乾]</code></pre>
+<h3 id="build-manual">第 2 步：先自己做一張「Id → 商品」的對照表</h3>
+<p>先把清單走過一次，每個商品用它的 <code>Id</code> 當 key 放進 <code>Dictionary</code>。之後要找哪個 Id，都用中括號直接拿：</p>
+<pre><code class="nohighlight"><span class="hl a">var byId = new Dictionary&lt;int, Product&gt;();</span>
+foreach (var p in products)
+{
+    <span class="hl a">byId[p.Id] = p;</span>
+}
+
+Console.WriteLine(<span class="hl b">byId[2]</span>.Name);
+Console.WriteLine(<span class="hl b">byId[3]</span>.Name);
+
+// 輸出：
+// 綠茶
+// 餅乾</code></pre>
+<p>這個 <code>Dictionary</code> 的 key 是 <code>int</code>（Id），value 是整個 <code>Product</code> 物件，所以 <code>byId[2]</code> 後面可以接 <code>.Name</code>。</p>
+
+<h3 id="build-todictionary">第 3 步：ToDictionary，一行做完第 2 步的迴圈</h3>
+<pre><code class="nohighlight">var byId = products.<span class="hl a">ToDictionary(p =&gt; p.Id)</span>;
+
+Console.WriteLine(byId[2].Name);
+Console.WriteLine(byId[3].Name);
+
+// 輸出：
+// 綠茶
+// 餅乾</code></pre>
+<p>括號裡的 <code>p =&gt; p.Id</code> 回答一個問題：<mark class="key">每一個商品要用什麼當 key</mark>。value 沒有指定，就是整個商品。得到的型別和第 2 步一樣，是 <code>Dictionary&lt;int, Product&gt;</code>。</p>
+
+<h3 id="build-value">第 4 步：value 只要其中一個屬性</h3>
+<p>只想要「名稱 → 價格」，不需要整個商品時，再給第二個 lambda，指定 value 要放什麼：</p>
+<pre><code class="nohighlight">var nameToPrice = products.ToDictionary(p =&gt; p.Name<span class="hl a">, p =&gt; p.Price</span>);
+
+Console.WriteLine(nameToPrice["餅乾"]);
+
+// 輸出：
+// 35</code></pre>
+<p>第一個 lambda 決定 key，第二個決定 value。得到的是 <code>Dictionary&lt;string, int&gt;</code>。</p>
+
+<h3 id="build-duplicate">第 5 步：key 重複時，ToDictionary 丟例外</h3>
+<p>改用 <code>Category</code> 當 key。可樂和綠茶都是「飲料」，key 會重複：</p>
+<pre><code class="nohighlight">var byCategory = products.ToDictionary(<span class="hl c">p =&gt; p.Category</span>);
+
+// 輸出：
+// ArgumentException: An item with the same key has already been added. Key: 飲料</code></pre>
+<p>訊息和第 3 節的 <code>Add</code> 一樣。如果用第 2 步那種迴圈加中括號的寫法（<code>byCategory[p.Category] = p;</code>），不會丟例外，但中括號遇到重複的 key 是覆蓋：實際執行的結果是只剩 2 筆，<code>byCategory["飲料"]</code> 是綠茶，可樂不見了。</p>
+<p>一個分類本來就有多個商品，問題不在重複，在於 value 只能放一個商品。</p>
+
+<h3 id="build-group-manual">第 6 步：一個 key 對到多個，value 改放清單</h3>
+<p>把 value 的型別改成 <code>List&lt;string&gt;</code>，一個分類對到一串商品名稱。先用迴圈寫：</p>
+<pre><code class="nohighlight">var groups = new Dictionary&lt;string, <span class="hl a">List&lt;string&gt;</span>&gt;();
+foreach (var p in products)
+{
+    // 這個分類第一次出現：先放一個空清單進去
+    if (!groups.ContainsKey(p.Category))
+    {
+        groups[p.Category] = <span class="hl a">new List&lt;string&gt;()</span>;
+    }
+
+    // 把商品名稱加進這個分類的清單
+    groups[p.Category]<span class="hl a">.Add(p.Name)</span>;
+}
+
+foreach (var pair in groups)
+{
+    Console.WriteLine($"{pair.Key}：{pair.Value.Count} 個");
+    foreach (var name in pair.Value)
+    {
+        Console.WriteLine($"  {name}");
+    }
+}
+
+// 輸出：
+// 飲料：2 個
+//   可樂
+//   綠茶
+// 零食：1 個
+//   餅乾</code></pre>
+<p>這裡 <code>pair.Value</code> 是一個 <code>List&lt;string&gt;</code>，所以可以 <code>.Count</code>，也可以再用一層 <code>foreach</code> 走過。</p>
+
+<h3 id="build-groupby">第 7 步：GroupBy 把商品照分類分組</h3>
+<p>第 6 步的迴圈做的事是「同一個分類的放在一起」。LINQ 的 <code>GroupBy</code> 就是做這件事。先只分組，把每一組印出來看：</p>
+<pre><code class="nohighlight">foreach (var g in products<span class="hl a">.GroupBy(p =&gt; p.Category)</span>)
+{
+    Console.WriteLine($"{<span class="hl a">g.Key</span>}：{g.Count()} 個");
+    foreach (var p in <span class="hl a">g</span>)
+    {
+        Console.WriteLine($"  {p.Name}");
+    }
+}
+
+// 輸出：
+// 飲料：2 個
+//   可樂
+//   綠茶
+// 零食：1 個
+//   餅乾</code></pre>
+<ul>
+  <li><code>GroupBy(p =&gt; p.Category)</code>：括號裡回答「每個商品要照什麼分組」。這裡分成兩組</li>
+  <li>外層 <code>foreach</code> 走過的每一個 <code>g</code> 是<mark class="key">一組</mark>，不是一個商品。<code>g.Key</code> 是這一組共同的分類名稱</li>
+  <li><code>g</code> 本身可以再用 <code>foreach</code> 走過，裡面是這一組的商品</li>
+</ul>
+
+<h3 id="build-group-todictionary">第 8 步：分好的組再接 ToDictionary</h3>
+<p>每一組的 <code>g.Key</code> 都不一樣，可以拿來當 key。用第 4 步的寫法，兩個 lambda 各決定 key 和 value，只是現在走過的每一個是一組：</p>
+<pre><code class="nohighlight">var groups = products
+    .GroupBy(p =&gt; p.Category)
+    <span class="hl a">.ToDictionary(g =&gt; g.Key, g =&gt; g.Select(p =&gt; p.Name).ToList())</span>;
+
+// 用第 6 步同一段 foreach 印出來，輸出：
+// 飲料：2 個
+//   可樂
+//   綠茶
+// 零食：1 個
+//   餅乾</code></pre>
+<ul>
+  <li>第一個 lambda <code>g =&gt; g.Key</code>：這一組的分類名稱當 key</li>
+  <li>第二個 lambda <code>g =&gt; g.Select(p =&gt; p.Name).ToList()</code>：這一組裡的每個商品取出名稱，收成清單，當 value。<code>Select</code> 和 <code>ToList</code> 是第 5 節用過的那兩個</li>
+</ul>
+<p>得到的型別和第 6 步一樣，是 <code>Dictionary&lt;string, List&lt;string&gt;&gt;</code>。key 不會重複，所以不會再有第 5 步的例外。</p>
 
 <!-- ============================================================ -->
 <h2 id="key">7. key 怎麼算「相同」</h2>
-<pre><code class="language-csharp">var a = new Dictionary&lt;string, int&gt; { ["Cola"] = 1 };
-Console.WriteLine(a.ContainsKey("cola"));    // False  ← 字串預設區分大小寫
+<p class="lead">兩個 key 要「相同」才會找到同一筆。這一節看字串當 key 時，大小寫不同算不算相同。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
 
-var b = new Dictionary&lt;string, int&gt;(StringComparer.OrdinalIgnoreCase) { ["Cola"] = 1 };
-Console.WriteLine(b.ContainsKey("cola"));    // True</code></pre>
+<h3 id="key-case">第 1 步：字串當 key，預設區分大小寫</h3>
+<pre><code class="nohighlight">var a = new Dictionary&lt;string, int&gt;
+{
+    ["Cola"] = 30,
+};
+
+Console.WriteLine(a.ContainsKey("Cola"));
+Console.WriteLine(a.ContainsKey(<span class="hl c">"cola"</span>));    // c 是小寫
+
+a[<span class="hl c">"cola"</span>] = 99;
+Console.WriteLine(a.Count);
+
+// 輸出：
+// True
+// False
+// 2</code></pre>
+<p><code>"Cola"</code> 和 <code>"cola"</code> 被當成兩個不同的 key：用小寫找不到，用小寫放進去會<mark class="caution">多出一筆</mark>，不是修改原本那筆。</p>
+
+<h3 id="key-comparer">第 2 步：建立時傳 StringComparer.OrdinalIgnoreCase，不分大小寫</h3>
+<pre><code class="nohighlight">var b = new Dictionary&lt;string, int&gt;<span class="hl a">(StringComparer.OrdinalIgnoreCase)</span>
+{
+    ["Cola"] = 30,
+};
+
+Console.WriteLine(b.ContainsKey("cola"));
+Console.WriteLine(b["COLA"]);
+
+b["cola"] = 99;
+Console.WriteLine(b.Count);
+Console.WriteLine(b["Cola"]);
+
+// 輸出：
+// True
+// 30
+// 1
+// 99</code></pre>
+<p>小括號裡傳的是「這個 <code>Dictionary</code> 要怎麼比較 key」。傳了 <code>StringComparer.OrdinalIgnoreCase</code> 之後，<code>"Cola"</code>、<code>"cola"</code>、<code>"COLA"</code> 都是同一個 key，所以 <code>b["cola"] = 99</code> 是修改原本那筆，還是 1 筆。</p>
+
+<h3 id="key-other">其他型別的 key，以及 null</h3>
 <ul>
-  <li>字串當 key 時預設區分大小寫。要不分大小寫，建立時傳 <code>StringComparer.OrdinalIgnoreCase</code></li>
   <li><code>int</code>、enum 當 key 最單純，值一樣就是同一個 key</li>
-  <li>key 不能是 <code>null</code>；value 可以</li>
+  <li>key 不能是 <code>null</code>：把 <code>null</code> 當 key 放進去，實際執行會丟 <code>ArgumentNullException: Value cannot be null. (Parameter 'key')</code></li>
+  <li>value 可以是 <code>null</code>：<code>Dictionary&lt;string, string?&gt;</code> 可以寫 <code>d["可樂"] = null;</code>，這一筆照樣算在 <code>Count</code> 裡</li>
   <li><code>Dictionary</code> 和 JSON 的物件長得很像（都是「名字：值」），兩者可以互轉，見 <a href="csharp-json.html#dictionary">JSON 那一頁第 6 節</a></li>
 </ul>
 

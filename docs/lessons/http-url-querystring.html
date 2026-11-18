@@ -70,7 +70,8 @@ Host: <span class="seg s2">example.com</span>:<span class="seg s3">5107</span></
 
 <!-- ============================================================ -->
 <h2 id="format">2. query string 的格式：?、名稱=值、&amp;</h2>
-<p>query string 從路徑後面的<strong>第一個 <code>?</code></strong> 開始，到網址結尾（或 <code>#</code> 之前）。裡面是一組或多組「<strong>名稱=值</strong>」，組和組之間用 <code>&amp;</code> 連接。下表每一列的右欄，是伺服器把 query string 拆開後實際得到的東西，用第 4 節的小網站測的：</p>
+<p>query string 從路徑後面的<strong>第一個 <code>?</code></strong> 開始，到網址結尾（或 <code>#</code> 之前）。裡面是一組或多組「<strong>名稱=值</strong>」，組和組之間用 <code>&amp;</code> 連接。</p>
+<p>下表每一列的右欄，是伺服器把 query string 拆開後實際得到的東西，用第 4 節的小網站測的：</p>
 <div class="table-wrap">
 <table>
   <tr><th>規則</th><th>寫法</th><th>伺服器拆出來的（實測）</th></tr>
@@ -122,7 +123,13 @@ Host: <span class="seg s2">example.com</span>:<span class="seg s3">5107</span></
 
 <!-- ============================================================ -->
 <h2 id="encoding">3. 值裡有空白、中文、&amp; 的時候</h2>
-<p>空白、<code>&amp;</code>、<code>=</code>、<code>?</code>、<code>#</code> 在網址裡各有工作（分隔參數、分隔名稱和值、開始 query string、開始 fragment），中文則不在網址允許的字元範圍內。這些字要放進值裡，得先寫成 <code>%</code> 加兩位十六進位的形式（百分比編碼）。這裡只看 query string 最常遇到的幾種寫法，右欄是伺服器解開之後拿到的值：</p>
+<p>有兩種字不能直接寫在值裡：</p>
+<ul>
+  <li>在網址裡已經有工作的符號：<code>&amp;</code> 分隔兩組參數、<code>=</code> 分隔名稱和值、<code>?</code> 開始 query string、<code>#</code> 開始 fragment</li>
+  <li>不在網址允許的字元範圍內的字：空白、中文</li>
+</ul>
+<p>這些字要放進值裡，得先寫成 <code>%</code> 加兩位十六進位的形式，叫<mark class="key">百分比編碼</mark>。</p>
+<p>這裡只看 query string 最常遇到的幾種寫法，右欄是伺服器解開之後拿到的值：</p>
 <div class="table-wrap">
 <table>
   <tr><th>送出的寫法</th><th>伺服器拿到的值（實測）</th><th>說明</th></tr>

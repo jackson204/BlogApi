@@ -46,7 +46,26 @@
 
 <!-- ============================================================ -->
 <h2 id="roundtrip">1. 編碼和解碼是一來一回</h2>
-<p>先把兩個詞定下來：</p>
+<p class="lead">把一段文字放進 HTML、JSON 或網址之前，要先把其中某些字<mark class="key">改寫成另一種寫法</mark>，這叫編碼；對方讀的時候再還原，叫解碼。一來一回之後，拿到的字串和原本一模一樣。</p>
+<p>先看最短的一趟：<code>&lt;b&gt;</code> 這三個字要放進 HTML（實際執行過）。</p>
+<pre><code class="language-csharp">using System.Net;
+using System.Text.Encodings.Web;
+
+string original = "&lt;b&gt;";
+
+string encoded = HtmlEncoder.Default.Encode(original);   // 編碼
+Console.WriteLine(encoded);
+
+string back = WebUtility.HtmlDecode(encoded);            // 解碼
+Console.WriteLine(back);
+Console.WriteLine(back == original);
+
+// 輸出：
+// &amp;lt;b&amp;gt;
+// &lt;b&gt;
+// True</code></pre>
+<p>第一行輸出是編碼後的樣子：<code>&lt;</code> 改寫成 <code>&amp;lt;</code>，<code>&gt;</code> 改寫成 <code>&amp;gt;</code>，<code>b</code> 沒有動。第二行是解碼後的樣子，和原本的字串相等。</p>
+<p>把兩個詞定下來：</p>
 <div class="table-wrap">
 <table>
   <tr><th>詞</th><th>做什麼</th><th>目的是什麼</th></tr>
@@ -54,10 +73,10 @@
   <tr><td><strong>解碼（Decode）</strong></td><td>把改寫的部分還原成原本的字，<code>\u6587</code> 還原成「文」</td><td>拿回和編碼前一模一樣的字串</td></tr>
 </table>
 </div>
-<p>編碼發生在「字串被寫進某個格式」的那一刻。在你的專案裡具體是這幾個地方：</p>
+<p>編碼發生在「字串被寫進某個格式」的那一刻。以 ASP.NET Core 為例，是這幾個地方：</p>
 <div class="table-wrap">
 <table>
-  <tr><th>你的程式做的事</th><th>字串被寫進哪裡</th><th>過哪個關卡</th></tr>
+  <tr><th>你的程式做的事</th><th>字串被寫進哪裡</th><th>用哪個編碼器</th></tr>
   <tr><td>Controller <code>return posts;</code></td><td>HTTP 回應的 body，格式是 JSON</td><td><code>JavaScriptEncoder</code></td></tr>
   <tr><td>Razor 網頁 <code>@Model.Title</code></td><td>HTTP 回應的 body，格式是 HTML</td><td><code>HtmlEncoder</code></td></tr>
   <tr><td>組查詢字串 <code>?keyword=入門</code></td><td>網址</td><td><code>UrlEncoder</code></td></tr>
@@ -216,28 +235,35 @@ string html = "&lt;h1&gt;" + post.Title + "&lt;/h1&gt;";
 string html = "&lt;h1&gt;" + HtmlEncoder.Default.Encode(post.Title) + "&lt;/h1&gt;";</code></pre>
 <p>瀏覽器收到的是 <code>&lt;h1&gt;&amp;lt;script&amp;gt;…&amp;lt;/script&amp;gt;&lt;/h1&gt;</code>。HTML 解析器看到 <code>&amp;lt;</code> 會還原成「<code>&lt;</code> 這個字」，而不是「標籤開始」，所以畫面上顯示的是 <code>&lt;script&gt;…</code> 這串文字，什麼都不會執行。</p>
 
-<p><strong>為什麼不乾脆在存入資料庫時就改寫？</strong>因為同一個標題之後會輸出到三種地方：HTML 網頁、JSON、網址，每一種的改寫規則不一樣。存入時先改成 HTML 的寫法，放進 JSON 就錯了。實際跑一次：</p>
-<div class="table-wrap">
-<table>
-  <tr><th>步驟</th><th>內容</th><th>結果</th></tr>
-  <tr><td>存入時先用 <code>HtmlEncoder</code> 改寫 <code>&lt;b&gt;</code></td><td><code>&amp;lt;b&amp;gt;</code></td><td>資料庫裡存的是這 8 個字</td></tr>
-  <tr><td>之後回傳 JSON 給前端</td><td><code>"&amp;lt;b&amp;gt;"</code></td><td>前端 <code>response.json()</code> 只會還原 JSON 的寫法，拿到的還是 <code>&amp;lt;b&amp;gt;</code> 這 8 個字；用 <code>textContent</code> 顯示，畫面出現 <code>&amp;lt;b&amp;gt;</code>，不是 <code>&lt;b&gt;</code></td></tr>
-  <tr><td>之後又輸出到 Razor 網頁</td><td><code>&amp;amp;lt;b&amp;amp;gt;</code></td><td>Razor 再編碼一次，畫面出現 <code>&amp;lt;b&amp;gt;</code></td></tr>
-</table>
-</div>
+<p><strong>為什麼不乾脆在存入資料庫時就改寫？</strong>因為同一個標題之後會輸出到三種地方：HTML 網頁、JSON、網址，每一種的改寫規則不一樣。存入時先改成 HTML 的寫法，放進 JSON 就錯了。拿 <code>&lt;b&gt;</code> 這三個字實際跑一次，一步一步看：</p>
+<ol>
+  <li>存入時先用 <code>HtmlEncoder</code> 改寫：資料庫裡存的變成 <code>&amp;lt;b&amp;gt;</code> 這 9 個字，不是原本的 3 個字。</li>
+  <li>之後回傳 JSON 給前端：回應裡是 <code>"&amp;lt;b&amp;gt;"</code>。前端 <code>response.json()</code> 只會還原 JSON 的寫法，拿到的還是 <code>&amp;lt;b&amp;gt;</code> 這 9 個字；用 <code>textContent</code> 顯示，畫面出現 <code>&amp;lt;b&amp;gt;</code>，不是 <code>&lt;b&gt;</code>。</li>
+  <li>之後又輸出到 Razor 網頁：Razor 再編碼一次，寫進 HTML 的是 <code>&amp;amp;lt;b&amp;amp;gt;</code>，畫面出現 <code>&amp;lt;b&amp;gt;</code>。</li>
+</ol>
 <p>所以規則是：<strong>資料庫存原文；輸出到哪裡，就在輸出那一刻用哪裡的編碼器</strong>。負責的是輸出的那一方，不是存入的那一方。</p>
 
 <h3 id="xss-code">3-3. 「原封不動寫進網頁」在程式裡長什麼樣</h3>
-<p>3-1 說的「原封不動」，對應到實際的程式碼是下面這幾種。前兩列有關卡，後面三列沒有：</p>
-<div class="table-wrap">
-<table>
-  <tr><th>寫法</th><th>有沒有關卡</th><th>說明</th></tr>
-  <tr><td>Razor：<code>&lt;h1&gt;@Model.Title&lt;/h1&gt;</code></td><td>有</td><td>Razor 自動呼叫 <code>HtmlEncoder</code>，這是 Razor 的預設行為</td></tr>
-  <tr><td>前端：<code>element.textContent = post.title</code></td><td>有</td><td>瀏覽器直接把字串當文字放進畫面，不解析 HTML，所以不用編碼也安全</td></tr>
-  <tr><td>Razor：<code>@Html.Raw(Model.Title)</code></td><td><strong>沒有</strong></td><td><code>Raw</code> 就是「原樣輸出、不要編碼」的意思，只能用在你自己寫的、確定安全的 HTML</td></tr>
-  <tr><td>Controller：<code>return Content("&lt;h1&gt;" + post.Title + "&lt;/h1&gt;", "text/html");</code></td><td><strong>沒有</strong></td><td>字串相接，沒有任何東西幫你過關卡</td></tr>
-  <tr><td>前端：<code>element.innerHTML = post.title</code></td><td><strong>沒有</strong></td><td>瀏覽器會把這個字串當 HTML 解析，<code>&lt;script&gt;</code> 就會變成真的標籤</td></tr>
-</table>
+<p>3-1 說的「原封不動」，對應到實際的程式碼是下面這幾種。左邊三種沒有關卡，右邊兩種有：</p>
+<div class="compare">
+<div class="bad">
+<p class="compare-label">✗ 沒有關卡</p>
+<pre><code class="language-html">@Html.Raw(Model.Title)</code></pre>
+<p>Razor。<code>Raw</code> 就是「原樣輸出、不要編碼」的意思，只能用在你自己寫的、確定安全的 HTML。</p>
+<pre><code class="language-csharp">return Content(
+    "&lt;h1&gt;" + post.Title + "&lt;/h1&gt;",
+    "text/html");</code></pre>
+<p>Controller。字串相接，沒有任何東西幫你過關卡。</p>
+<pre><code class="language-javascript">element.innerHTML = post.title</code></pre>
+<p>前端。瀏覽器會把這個字串當 HTML 解析，<code>&lt;script&gt;</code> 就會變成真的標籤。</p>
+</div>
+<div class="good">
+<p class="compare-label">✓ 有關卡</p>
+<pre><code class="language-html">&lt;h1&gt;@Model.Title&lt;/h1&gt;</code></pre>
+<p>Razor。自動呼叫 <code>HtmlEncoder</code>，這是 Razor 的預設行為。</p>
+<pre><code class="language-javascript">element.textContent = post.title</code></pre>
+<p>前端。瀏覽器直接把字串當文字放進畫面，不解析 HTML，所以不用編碼也安全。</p>
+</div>
 </div>
 <p>Web API 只回 JSON，不組 HTML，所以上面的事大多發生在<strong>前端</strong>：前端用 <code>innerHTML</code> 還是 <code>textContent</code>，決定了這個標題會不會變成標籤。後端的編碼器管不到那裡。</p>
 
@@ -353,15 +379,30 @@ internal static SystemTextJsonOutputFormatter CreateFormatter(JsonOptions jsonOp
 
 <!-- ============================================================ -->
 <h2 id="when">7. 什麼時候要自己設定</h2>
-<div class="table-wrap">
-<table>
-  <tr><th>情境</th><th style="white-space:nowrap">要不要設</th><th>怎麼設</th></tr>
-  <tr><td>Web API 的 Controller 回傳 JSON，想看到中文</td><td><strong>不用</strong></td><td>框架已經用寬鬆版（第 5 節）</td></tr>
-  <tr><td>自己呼叫 <code>JsonSerializer.Serialize</code> 寫 log 或檔案，想看到中文</td><td>要</td><td><code>new JsonSerializerOptions { Encoder = JavaScriptEncoder.Create(UnicodeRanges.All) }</code></td></tr>
-  <tr><td>Razor 網頁，想讓原始碼裡是中文而不是 <code>&amp;#x…;</code></td><td style="white-space:nowrap">看你要不要</td><td><code>builder.Services.AddSingleton(HtmlEncoder.Create(UnicodeRanges.All));</code></td></tr>
-  <tr><td>Web API 想比框架預設<strong>嚴格</strong>（<code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code> 也改寫）</td><td style="white-space:nowrap">多一層保險</td><td>下面的 <code>AddJsonOptions</code>（從瀏覽器看不出差別）</td></tr>
-</table>
-</div>
+<p>四種情境，從完全不用動的開始，一種一種看。</p>
+
+<p><strong>Web API 的 Controller 回傳 JSON，想看到中文</strong></p>
+<p>不用設。框架已經用寬鬆版（第 5 節）。</p>
+
+<p><strong>自己呼叫 <code>JsonSerializer.Serialize</code> 寫 log 或檔案，想看到中文</strong></p>
+<p>要設。沒有人幫你換編碼器，所以自己建一個 <code>JsonSerializerOptions</code>，把 <code>Encoder</code> 換掉，再傳進 <code>Serialize</code>（實際執行過）：</p>
+<pre><code class="language-csharp">string title = "Docker 入門 &lt;b&gt;&amp;&lt;/b&gt;";
+
+JsonSerializerOptions options = new JsonSerializerOptions
+{
+    Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+};
+Console.WriteLine(JsonSerializer.Serialize(title, options));
+
+// 輸出：中文原樣，&lt; &gt; &amp; 照樣改寫
+// "Docker 入門 \u003Cb\u003E\u0026\u003C/b\u003E"</code></pre>
+
+<p><strong>Razor 網頁，想讓原始碼裡是中文而不是 <code>&amp;#x…;</code></strong></p>
+<p>看你要不要。畫面本來就沒差（第 6 節），差在原始碼好不好讀。要的話在 <code>Program.cs</code> 登記一個放大白名單的 <code>HtmlEncoder</code>：</p>
+<pre><code class="language-csharp">builder.Services.AddSingleton(HtmlEncoder.Create(UnicodeRanges.All));</code></pre>
+
+<p><strong>Web API 想比框架預設嚴格（<code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code> 也改寫）</strong></p>
+<p>多一層保險，從瀏覽器看不出差別。寫法是下面的 <code>AddJsonOptions</code>。</p>
 
 <p class="file-label">正式語法：Program.cs（Web API 把編碼器換成 Create(UnicodeRanges.All)）</p>
 <pre><code class="language-csharp">using System.Text.Encodings.Web;   // JavaScriptEncoder
@@ -401,33 +442,37 @@ builder.Services.AddControllers()
 <pre><code class="language-powershell"># 放在任何「沒有 .csproj」的資料夾，例如 $HOME\lab\
 # 有 .csproj 的資料夾會改成執行那個專案，檔名只會被當成參數
 dotnet run encode-lab.cs</code></pre>
-<p>檔案最上面可以放 <code>#:</code> 開頭的指令，用來代替 csproj 裡的設定。實驗 1 需要這一行：</p>
-<pre><code class="language-csharp">// 單檔程式預設會以 Native AOT 的設定編譯，那組設定會關掉 JsonSerializer 的反射式序列化
-// 這一行把 AOT 關掉，JsonSerializer.Serialize 才能用
-#:property PublishAot=false</code></pre>
-<p>🧪 想看它在擋什麼：寫完實驗 1 之後把這一行拿掉再跑一次，看錯誤訊息怎麼說。</p>
+<p>檔案最上面可以放 <code>#:</code> 開頭的指令，用來代替 csproj 裡的設定。</p>
 
 <!-- 實驗 1 -->
 <div class="exercise">
 <h3>實驗 1：三種編碼器來回一趟</h3>
-<p>需求：</p>
-<ul>
-  <li>字串用 <code>Docker 入門 &lt;b&gt;&amp;&lt;/b&gt;</code></li>
-  <li>分別用 <code>HtmlEncoder</code>、<code>JsonSerializer.Serialize</code>、<code>UrlEncoder</code> 編碼，印出三種結果</li>
-  <li>再各自還原，用 <code>==</code> 和原字串比較，印出三個 <code>True</code></li>
-</ul>
+<p>字串用 <code>Docker 入門 &lt;b&gt;&amp;&lt;/b&gt;</code>。先只做一種編碼器，來回一趟都通了，再加下一種。每一步都執行一次。</p>
+
+<p><strong>第 1 步：用 <code>HtmlEncoder</code> 編碼，印出來</strong></p>
+<p class="accept">✅ 印出一行。「入門」和 <code>&lt; &gt; &amp;</code> 都被改寫了，寫法和第 4 節對照表的 <code>HtmlEncoder</code> 那一欄一致；<code>Docker</code> 和空白沒變</p>
+
+<p><strong>第 2 步：把第 1 步的結果還原，用 <code>==</code> 和原字串比</strong></p>
+<p class="accept">✅ 多印出一個 <code>True</code></p>
+
+<p><strong>第 3 步：加上 JSON 的來回</strong></p>
+<p>用 <code>JsonSerializer.Serialize</code> 編碼、印出來，再還原、比較。先直接加上去執行：HTML 那兩行照常印出來，接著程式丟出例外停掉。讀一下例外訊息怎麼說。</p>
+<p>原因：單檔程式預設會以 Native AOT 的設定編譯，那組設定會關掉 <code>JsonSerializer</code> 的反射式序列化。在檔案最上面加這一行，把 AOT 關掉，<code>JsonSerializer.Serialize</code> 才能用：</p>
+<pre><code class="language-csharp">#:property PublishAot=false</code></pre>
+<p class="accept">✅ 加上那一行之後，多印出 JSON 的結果（寫法和對照表的 <code>JavaScriptEncoder</code> 那一欄一致，外面多一對雙引號）和第二個 <code>True</code></p>
+
+<p><strong>第 4 步：加上網址的來回</strong></p>
+<p class="accept">✅ 多印出 <code>UrlEncoder</code> 的結果和第三個 <code>True</code>。這次連空白和 <code>/</code> 都被改寫了</p>
+
 <p><strong>💡 提示</strong></p>
-<div class="table-wrap">
-<table>
-  <tr><th>需求</th><th>用什麼</th><th>命名空間</th></tr>
-  <tr><td>HTML 寫法</td><td><code>HtmlEncoder.Default.Encode(字串)</code></td><td><code>System.Text.Encodings.Web</code></td></tr>
-  <tr><td>JSON 寫法</td><td><code>JsonSerializer.Serialize(字串)</code>，內部用的就是 <code>JavaScriptEncoder.Default</code>，而且會加上外面的雙引號</td><td><code>System.Text.Json</code></td></tr>
-  <tr><td>網址寫法</td><td><code>UrlEncoder.Default.Encode(字串)</code></td><td><code>System.Text.Encodings.Web</code></td></tr>
-  <tr><td>還原三種寫法</td><td>第 1 節「真的要自己還原時」那三個方法</td><td>見第 1 節的表</td></tr>
-  <tr><td>主控台中文變亂碼</td><td>第一行加 <code>Console.OutputEncoding = System.Text.Encoding.UTF8;</code></td><td></td></tr>
-</table>
-</div>
-<p class="accept">✅ 驗收：三行編碼結果和第 4 節的對照表一致；三個比較都印出 <code>True</code></p>
+<ul>
+  <li>HTML 寫法：<code>HtmlEncoder.Default.Encode(字串)</code>，命名空間 <code>System.Text.Encodings.Web</code></li>
+  <li>JSON 寫法：<code>JsonSerializer.Serialize(字串)</code>，命名空間 <code>System.Text.Json</code>。內部用的就是 <code>JavaScriptEncoder.Default</code>，而且會加上外面的雙引號</li>
+  <li>網址寫法：<code>UrlEncoder.Default.Encode(字串)</code>，命名空間 <code>System.Text.Encodings.Web</code></li>
+  <li>還原三種寫法：第 1 節「真的要自己還原時」那三個方法</li>
+  <li>主控台中文變亂碼：第一行加 <code>Console.OutputEncoding = System.Text.Encoding.UTF8;</code></li>
+</ul>
+<p class="accept">✅ 全部做完的驗收：三行編碼結果和第 4 節的對照表一致；三個比較都印出 <code>True</code></p>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
@@ -472,22 +517,22 @@ True</code></pre>
 <!-- 實驗 2 -->
 <div class="exercise">
 <h3>實驗 2：親眼看一次 XSS</h3>
-<p>需求：</p>
-<ul>
-  <li>標題字串用 <code>&lt;script&gt;alert('XSS')&lt;/script&gt;</code>（只會跳一個對話框，在自己電腦上開沒有風險）</li>
-  <li>產生兩個 HTML 檔：<code>xss-raw.html</code> 用字串相接把標題直接放進 <code>&lt;h1&gt;</code>；<code>xss-encoded.html</code> 放進去之前先過 <code>HtmlEncoder.Default.Encode</code></li>
-  <li>用瀏覽器打開兩個檔案比較</li>
-</ul>
+<p>標題字串用 <code>&lt;script&gt;alert('XSS')&lt;/script&gt;</code>（只會跳一個對話框，在自己電腦上開沒有風險）。先做沒有關卡的版本，看到問題，再加關卡。</p>
+
+<p><strong>第 1 步：字串相接，產生 <code>xss-raw.html</code></strong></p>
+<p>把標題直接放進 <code>&lt;h1&gt;</code>，寫成檔案，用瀏覽器打開。</p>
+<p class="accept">✅ <code>xss-raw.html</code> 一打開就跳出 XSS 對話框、標題是空的</p>
+
+<p><strong>第 2 步：放進去之前先過 <code>HtmlEncoder.Default.Encode</code>，產生 <code>xss-encoded.html</code></strong></p>
+<p>其他都不變，只多這一個呼叫。用瀏覽器打開，和第 1 步的檔案比較。</p>
+<p class="accept">✅ <code>xss-encoded.html</code> 不跳對話框，畫面上顯示 <code>&lt;script&gt;alert('XSS')&lt;/script&gt;</code> 這串文字</p>
+
 <p><strong>💡 提示</strong></p>
-<div class="table-wrap">
-<table>
-  <tr><th>需求</th><th>用什麼</th></tr>
-  <tr><td>寫檔案</td><td><code>File.WriteAllText("檔名", 內容)</code>，預設 UTF-8</td></tr>
-  <tr><td>HTML 骨架</td><td><code>&lt;!doctype html&gt;&lt;meta charset=utf-8&gt;&lt;h1&gt;…&lt;/h1&gt;</code> 就夠了</td></tr>
-  <tr><td>看瀏覽器怎麼解讀</td><td>打開後按 F12 看 Elements：一邊的 <code>&lt;h1&gt;</code> 裡是 <code>&lt;script&gt;</code> 元素，另一邊是一段文字</td></tr>
-</table>
-</div>
-<p class="accept">✅ 驗收：<code>xss-raw.html</code> 一打開就跳出 XSS 對話框、標題是空的；<code>xss-encoded.html</code> 不跳對話框，畫面上顯示 <code>&lt;script&gt;alert('XSS')&lt;/script&gt;</code> 這串文字</p>
+<ul>
+  <li>寫檔案：<code>File.WriteAllText("檔名", 內容)</code>，預設 UTF-8</li>
+  <li>HTML 骨架：<code>&lt;!doctype html&gt;&lt;meta charset=utf-8&gt;&lt;h1&gt;…&lt;/h1&gt;</code> 就夠了</li>
+  <li>看瀏覽器怎麼解讀：打開後按 F12 看 Elements。一邊的 <code>&lt;h1&gt;</code> 裡是 <code>&lt;script&gt;</code> 元素，另一邊是一段文字</li>
+</ul>
 <details class="answer">
 <summary>參考答案（寫完再打開）</summary>
 <div class="answer-body">
@@ -521,8 +566,8 @@ Console.WriteLine("寫好了，用瀏覽器打開 xss-raw.html 和 xss-encoded.h
 <h2 id="next">延伸問題</h2>
 <ol>
   <li>部落格的「搜尋關鍵字」走網址（<code>GET /api/posts?keyword=入門</code>）。前端送出時誰幫「入門」編碼成 <code>%E5%85%A5%E9%96%80</code>？Controller 的 <code>[FromQuery] string keyword</code> 拿到的是哪一種？</li>
-  <li>如果前端是 React，寫 <code>&lt;h1&gt;{post.title}&lt;/h1&gt;</code> 是 3-3 表格裡的哪一列？<code>dangerouslySetInnerHTML</code> 又是哪一列？</li>
-  <li>第 1 課的 <code>Title</code> 最多 200 字。3-1 那串攻擊字串不到 200 字，長度限制擋不住它；那「輸入驗證」在 XSS 這件事上能做什麼、不能做什麼？</li>
+  <li>如果前端是 React，寫 <code>&lt;h1&gt;{post.title}&lt;/h1&gt;</code> 是 3-3 的哪一種寫法？<code>dangerouslySetInnerHTML</code> 又是哪一種？</li>
+  <li>假設標題欄位限制最多 200 字。3-1 那串攻擊字串不到 200 字，長度限制擋不住它；那「輸入驗證」在 XSS 這件事上能做什麼、不能做什麼？</li>
 </ol>
 
 <div class="callout">

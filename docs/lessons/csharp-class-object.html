@@ -41,83 +41,157 @@
 
 <!-- ============================================================ -->
 <h2 id="class">1. 類別與物件：圖紙和成品</h2>
-<p><strong>類別（class）</strong>是圖紙，寫一次；<strong>物件（object）</strong>是照圖紙做出來的成品，<code>new</code> 一次做一個。同一張圖紙 new 幾次就有幾個物件，每個物件的屬性值各自獨立。</p>
+<p class="lead"><mark class="key">類別（class）</mark>是圖紙，寫一次；<mark class="key">物件（object）</mark>是照圖紙做出來的成品，<code>new</code> 一次做一個。這一節從沒有類別的寫法開始，一步加一樣東西。</p>
+<p>這一頁程式裡的顏色：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或有問題的寫法。輸出和錯誤訊息都實際執行過。</p>
 
+<h3 id="class-vars">第 1 步：沒有類別，資料散在變數裡</h3>
+<p>兩篇文章，各有標題和瀏覽次數：</p>
+<pre><code class="nohighlight">string <span class="hl c">title1</span> = "Docker 入門";
+int <span class="hl c">views1</span> = 120;
+string <span class="hl c">title2</span> = "Hi";
+int <span class="hl c">views2</span> = 3;
+
+Console.WriteLine($"{title1}，{views1} 次瀏覽");
+Console.WriteLine($"{title2}，{views2} 次瀏覽");
+
+// 輸出：
+// Docker 入門，120 次瀏覽
+// Hi，3 次瀏覽</code></pre>
+<p>一篇文章的資料分在兩個變數裡，只靠名稱後面的 1、2 知道誰和誰是一組。文章變成一百篇，或一篇文章多一個欄位，變數就多到管不住；<code>title1</code> 配到 <code>views2</code>，編譯器也不會說話。</p>
+
+<h3 id="class-one">第 2 步：寫一個類別，把一篇文章的資料放在一起</h3>
+<pre><code class="nohighlight">var post1 = <span class="hl b">new Post()</span>;
+post1.Title = "Docker 入門";
+post1.Views = 120;
+Console.WriteLine($"{post1.Title}，{post1.Views} 次瀏覽");
+
+<span class="hl a">class Post</span>
+{
+    public string Title = "";
+    public int Views;
+}
+
+// 輸出：
+// Docker 入門，120 次瀏覽</code></pre>
+<ul>
+  <li><code>class Post { … }</code> 是圖紙：寫明「一篇文章有 <code>Title</code> 和 <code>Views</code>」。寫了圖紙，還沒有任何一篇文章</li>
+  <li><code>new Post()</code> 照圖紙做出一個物件，放進變數 <code>post1</code></li>
+  <li>用「物件.名稱」讀寫它裡面的資料。類別裡宣告的變數叫<mark class="key">欄位</mark>；前面的 <code>public</code> 表示類別外面的程式也能讀寫</li>
+</ul>
+
+<h3 id="class-two">第 3 步：new 兩次，得到兩個互不影響的物件</h3>
+<pre><code class="nohighlight">var post1 = new Post();
+post1.Title = "Docker 入門";
+post1.Views = 120;
+
+var post2 = <span class="hl a">new Post()</span>;
+post2.Title = "Hi";
+post2.Views = 3;
+
+<span class="hl b">post1.Views = 121</span>;            // 只改 post1
+
+Console.WriteLine($"{post1.Title}，{post1.Views} 次瀏覽");
+Console.WriteLine($"{post2.Title}，{post2.Views} 次瀏覽");
+
+// 輸出：
+// Docker 入門，121 次瀏覽
+// Hi，3 次瀏覽</code></pre>
+<p>圖紙只有一張，<code>new</code> 幾次就有幾個物件。每個物件有自己的一份 <code>Title</code> 和 <code>Views</code>，改 <code>post1</code> 的，<code>post2</code> 的沒有動。</p>
+
+<h3 id="class-method">第 4 步：把「對這份資料做的事」也寫進類別</h3>
+<p>印出「標題，幾次瀏覽」那一行，每個物件都要寫一次，格式還得一樣。把它寫成類別裡的方法：</p>
+<pre><code class="nohighlight">Console.WriteLine(<span class="hl b">post1.Describe()</span>);
+Console.WriteLine(<span class="hl b">post2.Describe()</span>);
+
+class Post
+{
+    public string Title = "";
+    public int Views;
+
+    <span class="hl a">public string Describe()</span>
+    {
+        return $"{Title}，{Views} 次瀏覽";
+    }
+}
+
+// 輸出（post1、post2 的內容和第 3 步改之前一樣）：
+// Docker 入門，120 次瀏覽
+// Hi，3 次瀏覽</code></pre>
+<p><code>Describe()</code> 只寫了一份，對兩個物件呼叫卻印出不同的結果：方法裡的 <code>Title</code>、<code>Views</code> 讀的是「被呼叫的那個物件」的。</p>
 <div class="diagram">
 <img src="../images/class-object-this.svg" alt="類別 Post 是圖紙，new 兩次得到 post1（Title 是 Docker 入門）和 post2（Title 是 Hi）兩個物件；呼叫 post2.Describe() 時，方法本體裡的 this 就是 post2" style="width:100%;height:auto">
 <div class="diagram-caption">同一張圖紙 new 兩次，得到兩個互不相干的物件；方法只有一份，但 this 每次指向被呼叫的那個物件</div>
 </div>
 
-<p class="file-label">簡單範例：兩個物件互不影響（實際執行過）</p>
-<pre><code class="language-csharp">var post1 = new Post { Title = "Docker 入門" };
-var post2 = new Post { Title = "Hi" };
 
-post1.Title = "Docker 入門（修訂）";      // 只改 post1
+<!-- ============================================================ -->
+<h2 id="this">2. this：這個物件自己</h2>
+<p class="lead">方法裡的 <mark class="key"><code>this</code></mark> 就是「這次被呼叫的那個物件」。寫 <code>post2.Describe()</code>，方法執行時 <code>this</code> 就是 <code>post2</code>。</p>
 
-Console.WriteLine($"post1.Title = {post1.Title}");
-Console.WriteLine($"post2.Title = {post2.Title}");
-Console.WriteLine(post1.Describe());
+<h3 id="this-what">第 1 步：方法裡的 Title 其實是 this.Title</h3>
+<pre><code class="nohighlight">Console.WriteLine(post1.Describe());
 Console.WriteLine(post2.Describe());
+Console.WriteLine(post1.IsSame(<span class="hl b">post1</span>));
+Console.WriteLine(post1.IsSame(<span class="hl b">post2</span>));
 
 class Post
 {
-    public string Title { get; set; } = string.Empty;
+    public string Title = "";
 
     public string Describe()
     {
-        // this.Title 和 Title 是同一個東西：被呼叫的那個物件的 Title
-        return $"標題「{this.Title}」，長度 {Title.Length}";
+        // this.Title 和 Title 是同一個東西
+        return $"標題「<span class="hl a">{this.Title}</span>」，長度 {Title.Length}";
+    }
+
+    public bool IsSame(Post other)
+    {
+        // this 和 other 是不是同一個物件
+        return ReferenceEquals(<span class="hl a">this</span>, other);
     }
 }
+
+// 輸出（post1 的 Title 是 Docker 入門，post2 是 Hi）：
+// 標題「Docker 入門」，長度 9
+// 標題「Hi」，長度 2
+// True
+// False</code></pre>
+<p><code>this.Title</code> 和直接寫 <code>Title</code> 是同一件事，所以平常省略不寫。<code>post1.IsSame(post1)</code> 是 <code>True</code>：方法裡的 <code>this</code> 就是點前面的 <code>post1</code>。</p>
+
+<h3 id="this-when">第 2 步：一定要寫 this 的情況，參數和欄位同名</h3>
+<p>寫一個設定標題的方法，參數也叫 <code>title</code>：</p>
+<pre><code class="nohighlight">var post = new Post();
+post.SetTitle("Docker 入門");
+Console.WriteLine(post.Describe());
+
+class Post
+{
+    public string title = "";
+
+    public void SetTitle(string title)
+    {
+        <span class="hl c">title = title</span>;          // 兩邊都是參數，欄位沒被設定
+    }
+
+    public string Describe()
+    {
+        return $"標題「{title}」";
+    }
+}
+
+warning CS1717: 對同一個變數進行指派; 您是否想要指派別的東西?
 
 // 輸出：
-// post1.Title = Docker 入門（修訂）
-// post2.Title = Hi
-// 標題「Docker 入門（修訂）」，長度 13
-// 標題「Hi」，長度 2</code></pre>
-<p>改 <code>post1.Title</code>，<code>post2</code> 完全沒動。<code>Describe()</code> 這段程式只寫了一份，卻對兩個物件印出不同的結果，差別在方法裡的 <code>this</code> 每次指的物件不同。</p>
-<!-- ============================================================ -->
-<h2 id="this">2. this：這個物件自己</h2>
-<p>在實例方法裡，<code>this</code> 就是「<strong>這次被呼叫的那個物件</strong>」。寫 <code>post2.Describe()</code>，方法本體執行時 <code>this</code> 就是 post2；寫 <code>post1.Describe()</code>，<code>this</code> 就是 post1。<code>this.Title</code> 和直接寫 <code>Title</code> 是同一件事，所以平常都省略不寫。</p>
-
-<h3 id="this-when">一定要寫 this 的情況：參數和欄位同名</h3>
-<p class="file-label">簡單範例：有寫 this 和沒寫 this（實際執行過）</p>
-<pre><code class="language-csharp">var a = new Author("小明");
-Console.WriteLine(a.Describe());
-
-var b = new AuthorBug("小明");
-Console.WriteLine(b.Describe());
-
-class Author
-{
-    private readonly string name;
-
-    public Author(string name)
+// 標題「」</code></pre>
+<p>編譯會過，但標題是空的。在 <code>SetTitle</code> 裡面，參數 <code>title</code> 把欄位 <code>title</code> 遮住了，<code>title = title</code> 是把參數指派給它自己。要碰到欄位，得寫 <code>this.</code>：</p>
+<pre><code class="nohighlight">    public void SetTitle(string title)
     {
-        this.name = name;   // 左邊 this.name 是欄位，右邊 name 是參數
+        <span class="hl a">this.title</span> = title;     // 左邊 this.title 是欄位，右邊 title 是參數
     }
-
-    public string Describe() =&gt; $"作者：{name}";
-}
-
-class AuthorBug
-{
-    private string name = "";
-
-    public AuthorBug(string name)
-    {
-        name = name;        // 兩邊都是參數，欄位沒被設定
-    }
-
-    public string Describe() =&gt; $"作者：{name}";
-}
 
 // 輸出：
-// 作者：小明
-// 作者：</code></pre>
-<p><code>AuthorBug</code> 編譯會過，但 Rider 和編譯器都會警告：<code>warning CS1717: 對同一個變數進行指派; 您是否想要指派別的東西?</code>。參數 <code>name</code> 把欄位 <code>name</code> 遮住了，不寫 <code>this.</code> 就碰不到欄位。</p>
-<p>常見的做法是欄位用底線開頭命名（<code>_name</code>）、參數叫 <code>name</code>，名稱不同就不會遮住，也就不用寫 <code>this.</code>。</p>
-<p>省略 <code>this</code> 的不只欄位：在 <code>Author</code> 裡呼叫自己的 <code>Describe()</code>，其實是 <code>this.Describe()</code>；從父類別繼承來的方法也一樣，寫方法名稱就是對「這個物件」呼叫（第 5 節）。</p>
+// 標題「Docker 入門」</code></pre>
+<p>另一個常見的做法是欄位用底線開頭命名（<code>_title</code>）、參數叫 <code>title</code>。名稱不同就不會遮住，也就不用寫 <code>this.</code>。</p>
 
 <div class="callout warn">
 <p>⚠️ <strong>同一個字，三種用法</strong></p>
@@ -131,15 +205,112 @@ class AuthorBug
 </div>
 </div>
 
+
 <!-- ============================================================ -->
 <h2 id="ctor">3. 建構子：物件誕生時跑的那段程式</h2>
-<p><strong>建構子（constructor）</strong>是名稱和類別相同、沒有回傳型別的特殊方法。<code>new</code> 的時候執行，<strong>每個物件剛好執行一次</strong>，執行完這個物件才能被使用。它的工作是把物件的欄位設成可用的狀態。</p>
+<p class="lead"><mark class="key">建構子（constructor）</mark>是 <code>new</code> 的時候執行的那段程式，每個物件剛好執行一次。它的工作是讓物件一做出來就是可用的狀態。</p>
 
-<h3 id="ctor-when">什麼時候被呼叫：每一個 new</h3>
-<p>規則只有一條：<strong>每一次 <code>new</code> 就呼叫一次建構子</strong>。不管那個 <code>new</code> 是自己寫的，還是別人的程式（例如框架）替你寫的，建構子都在那一刻跑一次，物件做好才交到你手上。</p>
+<h3 id="ctor-empty">第 1 步：沒有建構子，new 出來的物件是空的</h3>
+<pre><code class="nohighlight">var post = <span class="hl c">new Post()</span>;          // 忘了設定 Title
+Console.WriteLine(post.Describe());
 
-<h3 id="ctor-order">沒寫建構子時，以及三段程式的順序</h3>
-<p>類別裡一個建構子都沒寫，編譯器會補一個<strong>無參數</strong>的，什麼都不做。一個只寫了屬性的類別，<code>new Post()</code> 和 <code>new Post { Title = "Hi" }</code> 都合法。後者的大括號叫<strong>物件初始設定式</strong>，它<strong>不是</strong>建構子的一部分，是 new 完之後再逐一設定屬性。三段程式的順序：</p>
+class Post
+{
+    public string Title = "";
+    public int Views;
+
+    public string Describe()
+    {
+        return $"標題「{Title}」，{Views} 次瀏覽";
+    }
+}
+
+// 輸出：
+// 標題「」，0 次瀏覽</code></pre>
+<p>一篇沒有標題的文章被做出來了，而且可以照常使用。「文章一定要有標題」這件事，全靠寫 <code>new</code> 的人記得在下一行補上，忘了也不會有任何錯誤。</p>
+
+<h3 id="ctor-when">第 2 步：寫一個建構子，new 的時候一定要給標題</h3>
+<pre><code class="nohighlight">Console.WriteLine("new 之前");
+var post = new Post(<span class="hl b">"Docker 入門"</span>);
+Console.WriteLine("new 之後");
+Console.WriteLine(post.Describe());
+var post2 = new Post(<span class="hl b">"Hi"</span>);
+
+class Post
+{
+    public string Title;
+    public int Views;
+
+    <span class="hl a">public Post(string title)</span>
+    {
+        Console.WriteLine($"  建構子執行，title 是「{title}」");
+        Title = title;
+    }
+
+    public string Describe()
+    {
+        return $"標題「{Title}」，{Views} 次瀏覽";
+    }
+}
+
+// 輸出：
+// new 之前
+//   建構子執行，title 是「Docker 入門」
+// new 之後
+// 標題「Docker 入門」，0 次瀏覽
+//   建構子執行，title 是「Hi」</code></pre>
+<ul>
+  <li>建構子的寫法：<mark class="key">名稱和類別相同、沒有回傳型別</mark>。參數寫在括號裡，<code>new Post("…")</code> 括號裡的值就傳給它</li>
+  <li>每一次 <code>new</code> 就執行一次建構子。上面 new 了兩次，印了兩行。不管那個 <code>new</code> 是自己寫的，還是別人的程式替你寫的，都一樣</li>
+  <li>建構子跑完，物件才交到 <code>post</code> 這個變數裡</li>
+</ul>
+<p id="ctor-params">現在不給標題就做不出文章：</p>
+<pre><code class="nohighlight">var post = <span class="hl c">new Post()</span>;
+error CS7036: 未提供任何可對應到 'Post.Post(string)' 之必要參數 'title' 的引數</code></pre>
+<p>第 1 步的 <code>new Post()</code> 之所以能寫，是因為類別裡一個建構子都沒寫時，編譯器會補一個沒有參數、什麼都不做的。<mark class="caution">只要自己寫了任何一個建構子，編譯器就不再補</mark>。</p>
+
+<h3 id="ctor-protect">第 3 步：new 完之後，外面還是能把資料改壞</h3>
+<pre><code class="nohighlight">var post = new Post("Docker 入門");
+<span class="hl c">post.Title = ""</span>;                // 建構子擋不到這一行
+Console.WriteLine($"標題「{post.Title}」");
+
+// 輸出：
+// 標題「」</code></pre>
+<p><code>Title</code> 是 <code>public</code> 的欄位，類別外面隨時可以改。建構子只管得到 <code>new</code> 的那一刻。要擋住，有兩種寫法，差在外面還能不能讀：</p>
+<p><strong>改成 <code>private</code>：外面不能讀、也不能寫</strong></p>
+<pre><code class="nohighlight">class Post
+{
+    <span class="hl a">private</span> string title;
+
+    public Post(string title)
+    {
+        this.title = title;
+    }
+}
+
+<span class="hl c">post.title</span> = "";
+error CS0122: 'Post.title' 由於其保護層級之故，所以無法存取</code></pre>
+<p><code>private</code> 的成員只有這個類別自己的方法碰得到。外面要用這份資料，得透過類別提供的方法（例如 <code>Describe()</code>）。</p>
+<p><strong>改成只有 <code>get</code> 的屬性：外面可以讀、不能寫</strong></p>
+<pre><code class="nohighlight">class Post
+{
+    public string Title <span class="hl a">{ get; }</span>
+
+    public Post(string title)
+    {
+        Title = title;
+    }
+}
+
+Console.WriteLine(post.Title);     // 可以讀 → Docker 入門
+<span class="hl c">post.Title = ""</span>;
+error CS0200: 無法指派為屬性或索引子 'Post.Title' -- 其為唯讀</code></pre>
+<p>名稱後面接 <code>{ get; }</code> 的叫<mark class="key">屬性</mark>。<code>get</code> 是「可以讀」，<code>set</code> 是「可以寫」：<code>{ get; }</code> 只能讀，只有建構子裡可以設定它；<code>{ get; set; }</code> 讀寫都可以，例如瀏覽次數寫成 <code>public int Views { get; set; }</code>，外面 <code>post.Views = 5</code> 是合法的。</p>
+<p>什麼時候用哪一種：物件內部自己用、外面不需要知道的資料用 <code>private</code> 欄位；要給外面讀的資料用屬性，要不要讓外面改，就看有沒有 <code>set</code>。</p>
+
+<h3 id="ctor-order">第 4 步：一次 new 裡，三段程式的順序</h3>
+<p>類別裡一個建構子都沒寫，編譯器會補一個<strong>無參數</strong>的，什麼都不做。一個只寫了屬性的類別，<code>new Post()</code> 和 <code>new Post { Title = "Hi" }</code> 都合法。後者的大括號叫<strong>物件初始設定式</strong>，它<strong>不是</strong>建構子的一部分，是 new 完之後再逐一設定屬性。</p>
+<p>欄位宣告時的 <code>= …</code>、建構子本體、大括號裡的設定，這三段哪一段先跑？下面的程式在三個地方各印一行來看（為了能印，<code>Title</code> 的 <code>get</code> 和 <code>set</code> 寫成完整的本體，<code>value</code> 是被設定進來的值）：</p>
 <pre><code class="language-csharp">Console.WriteLine("開始 new Post { Title = \"Hi\" }");
 var post = new Post { Title = "Hi" };
 Console.WriteLine($"new 完成，post.Title = {post.Title}");
@@ -178,24 +349,7 @@ class Post
 // new 完成，post.Title = Hi</code></pre>
 <p>順序固定是：① 欄位和屬性宣告時的 <code>= …</code> → ② 建構子本體 → ③ <code>{ … }</code> 裡的設定。所以一個屬性宣告時寫了 <code>= string.Empty</code>，new 的時候又用 <code>{ Title = "Hi" }</code> 蓋掉，兩段都會跑，最後留下的是 ③ 的值。</p>
 
-<h3 id="ctor-params">有參數的建構子</h3>
-<p>建構子收參數，就能要求「做這個物件一定要給我這些東西」。第 2 節的 <code>Author(string name)</code> 就是：<code>new Author("小明")</code> 一定要給名字。而且<strong>只要你自己寫了任何一個建構子，編譯器就不再補無參數的那個</strong>：</p>
-<pre><code class="language-csharp">var a = new Author();          // 想用無參數的建構子
-
-class Author
-{
-    private readonly string name;
-
-    public Author(string name)
-    {
-        this.name = name;
-    }
-}
-
-// 編譯錯誤：
-// error CS7036: 未提供任何可對應到 'Author.Author(string)' 之必要參數 'name' 的引數</code></pre>
-
-<h3 id="ctor-overload">多個建構子，用 : this(…) 共用</h3>
+<h3 id="ctor-overload">第 5 步：多個建構子，用 : this(…) 共用</h3>
 <p>一個類別可以有好幾個建構子，參數不同就行（多載）。要避免重複寫，一個建構子可以用 <code>: this(…)</code> 先呼叫另一個：</p>
 <pre><code class="language-csharp">Console.WriteLine("== new Author(\"小明\")");
 var a = new Author("小明");
@@ -234,9 +388,10 @@ class Author
 // == new Author("小華", "編輯部")
 //   兩個參數的建構子本體
 // 作者：小華（編輯部）</code></pre>
-<p>注意順序：被 <code>: this(…)</code> 指到的那個先跑完，才輪到自己的本體。第 5 節的 <code>: base(…)</code> 寫法一樣，只是呼叫的是父類別的建構子。</p>
+<p>順序是：被 <code>: this(…)</code> 指到的那個先跑完，才輪到自己的本體。</p>
+<p><code>Describe() =&gt; …</code> 是「方法本體只有一句 <code>return</code>」的簡寫，和寫成大括號加 <code>return</code> 完全一樣。這一頁後面的短方法都用這個寫法。</p>
 
-<h3 id="ctor-readonly">readonly：只有建構子能設</h3>
+<h3 id="ctor-readonly">第 6 步：readonly，只有建構子能設</h3>
 <p><code>readonly</code> 加在欄位上，意思是這個欄位<strong>只能在宣告時或建構子裡設定</strong>，之後任何方法都改不了。想保證「這個東西 new 完就不會被換掉」，就標它：</p>
 <pre><code class="language-csharp">var a = new Author("小明");
 a.Rename("小華");
@@ -260,19 +415,16 @@ class Author
 // error CS0191: 無法指派給唯讀欄位 (除非位於建構函式內; 或位於已定義此欄位的類型中，僅供初始化的 Setter 內; 或位於變數初始設定式內)</code></pre>
 <p>常見用法：建構子收進來、之後整個物件生命期都不該被換掉的東西（設定、別的服務物件），就標 <code>readonly</code>，讓編譯器替你擋。</p>
 
-<h3 id="record">record：專門裝資料的類別</h3>
+<h3 id="record">第 7 步：record，專門裝資料的類別</h3>
 <p><code>record</code> 是一種 class，專門用來裝資料。宣告時把屬性直接寫在名稱後面的括號裡：<code>record PostRequest(string Title, string Content);</code>，這一行就同時宣告了建構子 <code>PostRequest(string Title, string Content)</code> 和兩個唯讀屬性 <code>Title</code>、<code>Content</code>。除此之外，編譯器還替你多做了幾件「裝資料的類別」都需要的事。同樣一份資料，用 class 要自己寫建構子和兩個屬性，而且還是少了下面幾項：</p>
-<div class="table-wrap">
-<table>
-  <tr><th></th><th><code>record PostRequest(string Title, string Content)</code></th><th>自己寫的 class</th></tr>
-  <tr><td>宣告</td><td>一行</td><td>建構子和屬性自己寫</td></tr>
-  <tr><td>屬性</td><td>唯讀（<code>init</code>）：new 完就不能改</td><td>你自己決定</td></tr>
-  <tr><td><code>ToString()</code></td><td>印出每個屬性的值</td><td>只印型別名稱</td></tr>
-  <tr><td><code>==</code>、<code>Equals</code></td><td><strong>比內容</strong>：每個屬性都相同就相等</td><td>比「是不是同一個物件」</td></tr>
-  <tr><td><code>with</code></td><td>複製一份、只換幾個屬性</td><td>沒有</td></tr>
-  <tr><td>解構</td><td><code>var (title, content) = a;</code></td><td>沒有</td></tr>
-</table>
-</div>
+<ul>
+  <li>宣告：record 一行；class 要自己寫建構子和屬性</li>
+  <li>屬性：record 的屬性是唯讀的，new 完就不能改；class 由你自己決定</li>
+  <li><code>ToString()</code>：record 印出每個屬性的值；class 只印型別名稱</li>
+  <li><code>==</code>、<code>Equals</code>：record <mark class="key">比內容</mark>，每個屬性都相同就相等；class 比「是不是同一個物件」</li>
+  <li><code>with</code>：record 可以複製一份、只換幾個屬性；class 沒有</li>
+  <li>解構：record 可以寫 <code>var (title, content) = a;</code> 照位置拆回變數；class 沒有</li>
+</ul>
 <p class="file-label">範例：同一份資料，record 和 class 的差別（實際執行過）</p>
 <pre><code class="language-csharp">var a = new PostRequest("Docker 入門", "Docker 是打包工具");
 var b = new PostRequest("Docker 入門", "Docker 是打包工具");
@@ -354,6 +506,7 @@ class Counter(int start)
 // 輸出：
 // Current = 12</code></pre>
 <p>和「欄位加建構子」的寫法差別只有一個：主要建構子的參數<strong>不是 readonly</strong>，類別裡任何地方都能改它，編譯器不會擋（上面的 <code>start++</code> 編譯會過、輸出 12）。要不要用，看你喜不喜歡多那層保護；這份筆記的範例都維持 <code>private readonly</code> 加建構子的寫法。Rider 看到「欄位加建構子」的類別，可能會提議改成主要建構子，接不接受都可以。</p>
+
 
 <!-- ============================================================ -->
 <h2 id="static">4. static：屬於類別，不屬於物件</h2>
@@ -442,14 +595,206 @@ static class StringTools
 </div>
 <p>這頁後面的繼承、abstract、介面，都是「沒有 static」那一邊的事。</p>
 
+
 <!-- ============================================================ -->
 <h2 id="inherit">5. 繼承：base、protected、virtual / override</h2>
-<p><code>class 子類別 : 父類別</code> 的意思是：<strong>子類別拿到父類別所有 public 和 protected 的成員</strong>，自己再加新的或換掉其中幾個。</p>
-<p>.NET 的框架大多這樣用：你寫一個子類別，繼承框架給的父類別，父類別裡寫好的方法不用寫就有，你只補自己的部分。</p>
+<p class="lead"><code>class 子類別 : 父類別</code> 的意思是：<mark class="key">父類別有的成員，子類別不用再寫一次就有</mark>，自己只補新的，或換掉其中幾個。.NET 的框架大多這樣用：繼承框架給的父類別，父類別寫好的方法直接有，只補自己的部分。</p>
 
-<h3 id="inherit-ctor">建構子的順序：父類別先跑，: base(…) 把東西交上去</h3>
-<p>new 一個子類別物件時，<strong>父類別的建構子一定先跑完</strong>，才輪到子類別的本體。父類別的建構子要參數的話，子類別用 <code>: base(…)</code> 交給它。</p>
+<h3 id="inherit-dup">第 1 步：兩個類別，大部分內容一樣</h3>
+<p>作者有名字。員工也是作者，只是多一個部門。不用繼承，就是兩個類別各寫一次：</p>
+<pre><code class="nohighlight">class Author
+{
+    private readonly string name;
 
+    public Author(string name)
+    {
+        this.name = name;
+    }
+
+    public string Describe()
+    {
+        return $"作者：{name}";
+    }
+}
+
+class Staff
+{
+    <span class="hl c">private readonly string name;</span>
+    private readonly string department;
+
+    public Staff(string name, string department)
+    {
+        <span class="hl c">this.name = name;</span>
+        this.department = department;
+    }
+
+    <span class="hl c">public string Describe()</span>
+    <span class="hl c">{</span>
+    <span class="hl c">    return $"作者：{name}";</span>
+    <span class="hl c">}</span>
+}</code></pre>
+<p>紅色的部分和 <code>Author</code> 一模一樣。<code>Author</code> 的 <code>Describe</code> 改了格式，<code>Staff</code> 的也要記得改。</p>
+
+<h3 id="inherit-basic">第 2 步：寫上 : Author，先遇到一個錯誤</h3>
+<p>在類別名稱後面寫 <code>: Author</code>，先什麼都不加：</p>
+<pre><code class="nohighlight">class Staff <span class="hl a">: Author</span>
+{
+}
+
+error CS7036: 未提供任何可對應到 'Author.Author(string)' 之必要參數 'name' 的引數</code></pre>
+<p>編譯不過，錯誤指在 <code>Staff</code> 那一行。做一個 <code>Staff</code> 物件時，裡面屬於 <code>Author</code> 的那一部分也要做出來，而 <code>Author</code> 的建構子要一個 <code>name</code>，現在沒有人給它。</p>
+
+<h3 id="inherit-ctor">第 3 步：用 : base(…) 把參數交給父類別的建構子</h3>
+<pre><code class="nohighlight">Console.WriteLine("開始 new Staff");
+var s = new Staff("小華");
+Console.WriteLine("new 完成");
+Console.WriteLine(<span class="hl b">s.Describe()</span>);       // Staff 裡沒有寫 Describe
+
+class Author
+{
+    private readonly string name;
+
+    public Author(string name)
+    {
+        Console.WriteLine("  Author 建構子本體");
+        this.name = name;
+    }
+
+    public string Describe()
+    {
+        return $"作者：{name}";
+    }
+}
+
+class Staff : Author
+{
+    public Staff(string name) <span class="hl a">: base(name)</span>
+    {
+        Console.WriteLine("  Staff 建構子本體");
+    }
+}
+
+// 輸出：
+// 開始 new Staff
+//   Author 建構子本體
+//   Staff 建構子本體
+// new 完成
+// 作者：小華</code></pre>
+<ul>
+  <li><code>: base(name)</code> 把 <code>name</code> 交給父類別 <code>Author</code> 的建構子</li>
+  <li><mark class="key">父類別的建構子先跑完</mark>，才輪到子類別的本體</li>
+  <li><code>Staff</code> 裡沒有寫 <code>Describe</code>，<code>s.Describe()</code> 卻能呼叫：這是從 <code>Author</code> 繼承來的</li>
+</ul>
+<p>第 2 步的錯誤，原因是沒寫 <code>: base(…)</code> 等於寫 <code>: base()</code>，也就是要呼叫父類別沒有參數的建構子，但 <code>Author</code> 沒有那一個。</p>
+
+<h3 id="inherit-protected">第 4 步：子類別要用父類別的欄位，private 改成 protected</h3>
+<p>替 <code>Staff</code> 加上部門，再寫一個方法把名字和部門一起印出來：</p>
+<pre><code class="nohighlight">class Staff : Author
+{
+    private readonly string department;
+
+    public Staff(string name, string department) : base(name)
+    {
+        this.department = department;
+    }
+
+    public string DescribeWithDepartment()
+    {
+        return $"作者：{<span class="hl c">name</span>}（{department}）";
+    }
+}
+
+error CS0122: 'Author.name' 由於其保護層級之故，所以無法存取</code></pre>
+<p><code>name</code> 在 <code>Author</code> 裡是 <code>private</code>，只有 <code>Author</code> 自己的方法碰得到，連子類別也不行。把它改成 <code>protected</code>：</p>
+<pre><code class="nohighlight">class Author
+{
+    <span class="hl a">protected</span> readonly string name;
+    …
+}
+
+// new Staff("小華", "編輯部").DescribeWithDepartment() 的輸出：
+// 作者：小華（編輯部）</code></pre>
+<p><code>protected</code> 在 <code>public</code> 和 <code>private</code> 中間：<mark class="key">自己和子類別</mark>碰得到，其他類別碰不到。類別外面寫 <code>s.name</code> 還是同一個 <code>CS0122</code> 錯誤。</p>
+
+<h3 id="inherit-override">第 5 步：子類別要換掉父類別的方法，virtual 和 override</h3>
+<p>另外取一個方法名稱 <code>DescribeWithDepartment</code> 不理想：用的人要知道員工得呼叫另一個方法。想要的是 <code>Staff</code> 的 <code>Describe()</code> 自己就帶部門。先直接在 <code>Staff</code> 裡寫一個同名的方法：</p>
+<pre><code class="nohighlight">Staff s = new Staff("小華", "編輯部");
+Author a = s;                        // 同一個物件，放進 Author 型別的變數
+Console.WriteLine(s.Describe());
+Console.WriteLine(a.Describe());
+
+class Staff : Author
+{
+    …
+    <span class="hl c">public string Describe()</span>
+    {
+        return $"作者：{name}（{department}）";
+    }
+}
+
+warning CS0108: 'Staff.Describe()' 會隱藏繼承的成員 'Author.Describe()'。若本意即為要隱藏，請使用 new 關鍵字。
+
+// 輸出：
+// 作者：小華（編輯部）
+// 作者：小華</code></pre>
+<p><mark class="caution">同一個物件，印出兩種結果</mark>。兩個類別現在各有一個 <code>Describe</code>，呼叫哪一個是看<strong>變數的型別</strong>：變數是 <code>Staff</code> 就用 <code>Staff</code> 的，變數是 <code>Author</code> 就用 <code>Author</code> 的。編譯器的警告就是在說這件事。</p>
+<p>要讓它不管放在哪種變數裡，都用 <code>Staff</code> 的版本：父類別的方法標 <code>virtual</code>（允許子類別換掉），子類別的標 <code>override</code>（換掉它）：</p>
+<pre><code class="nohighlight">class Author
+{
+    …
+    public <span class="hl a">virtual</span> string Describe()
+    {
+        return $"作者：{name}";
+    }
+}
+
+class Staff : Author
+{
+    …
+    public <span class="hl a">override</span> string Describe()
+    {
+        return $"作者：{name}（{department}）";
+    }
+}
+
+// 輸出：
+// 作者：小華（編輯部）
+// 作者：小華（編輯部）</code></pre>
+<p>兩個要成對。父類別沒標 <code>virtual</code>，子類別就寫 <code>override</code>，會得到 <code>error CS0506: 'Staff.Describe()': 無法覆寫繼承的成員 'Author.Describe()'，因為其未標記為 virtual、abstract 或 override</code>。</p>
+<p>換掉之後還想用父類別原本的版本，寫 <code>base.方法()</code>。<code>Staff</code> 的 <code>Describe</code> 前半段和父類別一樣，可以不用重寫：</p>
+<pre><code class="nohighlight">    public override string Describe()
+    {
+        return <span class="hl a">base.Describe()</span> + $"（{department}）";
+    }
+
+// 輸出一樣：
+// 作者：小華（編輯部）</code></pre>
+<p>不確定父類別的版本做了什麼時，就在自己的 override 裡先呼叫 <code>base.方法(…)</code>。多呼叫一個空的方法沒有成本，漏呼叫一個有內容的方法會出問題。</p>
+
+<h3 id="inherit-isa">第 6 步：子類別物件可以放進父類別型別的變數</h3>
+<p><code>Staff</code> 是一種 <code>Author</code>，所以 <code>Author</code> 型別的變數、<code>List&lt;Author&gt;</code>、收 <code>Author</code> 的參數，都能放 <code>Staff</code> 物件。呼叫 <code>virtual</code> 方法時，跑的是<strong>物件實際型別</strong>的版本，不是變數型別的版本：</p>
+<pre><code class="language-csharp">// 變數型別是父類別 Author，但放進去的可以是 Author 或它的子類別
+List&lt;Author&gt; people = [new Author("小明"), new Staff("小華", "編輯部")];
+
+foreach (var person in people)
+{
+    Console.WriteLine(person.Describe());    // 同一行程式，跑的是各自那個類別的 Describe
+}
+
+Author one = new Staff("小芳", "行銷部");    // 子類別物件放進父類別型別的變數
+Console.WriteLine(one.Describe());
+Console.WriteLine($"one 的實際型別：{one.GetType().Name}");
+
+// 輸出：
+// 作者：小明
+// 作者：小華（編輯部）
+// 作者：小芳（行銷部）
+// one 的實際型別：Staff</code></pre>
+<p>簽章頁 <a href="csharp-delegates-signature.html#generic">第 1 節</a>的泛型限制 <code>where T : Author</code> 就是這件事：填進去的可以是 <code>Author</code>，也可以是 <code>Staff</code>。</p>
+
+
+<h3 id="inherit-all">六步合起來：一次 new 的完整順序</h3>
+<p>把 <code>: base(…)</code>、<code>protected</code>、<code>virtual</code>、<code>override</code> 放進同一個程式，再加上第 3 節的物件初始設定式，看一次 <code>new</code> 裡每一段的順序（實際執行過）：</p>
 <div class="diagram">
 <div class="mermaid">
 sequenceDiagram
@@ -518,61 +863,144 @@ class Staff : Author
 // new 完成
 // 作者：小華（編輯部）</code></pre>
 
-<p>父類別只有「要參數的建構子」時，子類別<strong>一定要</strong>寫 <code>: base(…)</code>，不然編譯器不知道要拿什麼交上去：</p>
-<pre><code class="language-csharp">class Staff : Author
-{
-    private readonly string department;
-
-    public Staff(string name, string department)     // 沒寫 : base(name)
-    {
-        this.department = department;
-    }
-}
-
-// 編譯錯誤（指在 Staff 建構子那一行）：
-// error CS7036: 未提供任何可對應到 'Author.Author(string)' 之必要參數 'name' 的引數</code></pre>
-<p>和第 3 節 <code>new Author()</code> 的錯誤是同一個編號：沒寫 <code>: base(…)</code> 等於寫 <code>: base()</code>，也就是想呼叫父類別的無參數建構子，但它不存在。</p>
-<h3 id="inherit-protected">protected：子類別用得到，外面用不到</h3>
-<p>前面只用到 <code>public</code> 和 <code>private</code>。<code>protected</code> 在中間：<strong>自己和子類別</strong>看得到，其他類別看不到。上面的 <code>protected readonly string name</code> 就是讓 <code>Staff</code> 的 <code>Describe</code> 能讀 <code>name</code>，但類別外面不能寫 <code>s.name</code>。框架常把「給子類別覆寫、外面不該直接呼叫」的方法標成 <code>protected</code>。</p>
-
-<h3 id="inherit-override">virtual / override：父類別允許你換掉它的方法</h3>
-<p>父類別把方法標 <code>virtual</code>，意思是「子類別可以換成自己的版本」；子類別用 <code>override</code> 換掉；換掉之後還想用父類別原本的，寫 <code>base.方法()</code>。上面的 <code>Staff.Describe</code> 就是三件事一起用：<code>override</code> 換掉、本體裡 <code>base.Describe()</code> 拿父類別的結果再補一段。<strong>一般原則：不確定父類別的版本做了什麼，就在自己的 override 裡先呼叫 <code>base.XXX(…)</code></strong>，多呼叫一個空方法沒有成本，漏呼叫一個有內容的方法會出怪事。</p>
-<h3 id="inherit-isa">子類別物件可以放進父類別型別的變數</h3>
-<p><code>Staff</code> 是一種 <code>Author</code>，所以 <code>Author</code> 型別的變數、<code>List&lt;Author&gt;</code>、收 <code>Author</code> 的參數，都能放 <code>Staff</code> 物件。呼叫 <code>virtual</code> 方法時，跑的是<strong>物件實際型別</strong>的版本，不是變數型別的版本：</p>
-<pre><code class="language-csharp">// 變數型別是父類別 Author，但放進去的可以是 Author 或它的子類別
-List&lt;Author&gt; people = [new Author("小明"), new Staff("小華", "編輯部")];
-
-foreach (var person in people)
-{
-    Console.WriteLine(person.Describe());    // 同一行程式，跑的是各自那個類別的 Describe
-}
-
-Author one = new Staff("小芳", "行銷部");    // 子類別物件放進父類別型別的變數
-Console.WriteLine(one.Describe());
-Console.WriteLine($"one 的實際型別：{one.GetType().Name}");
-
-// 輸出：
-// 作者：小明
-// 作者：小華（編輯部）
-// 作者：小芳（行銷部）
-// one 的實際型別：Staff</code></pre>
-<p>簽章頁 <a href="csharp-delegates-signature.html#generic">第 1 節</a>的泛型限制 <code>where T : Author</code> 就是這件事：填進去的可以是 <code>Author</code>，也可以是 <code>Staff</code>。</p>
 
 <!-- ============================================================ -->
 <h2 id="abstract">6. abstract 類別和介面</h2>
-<p>第 5 節的 <code>Author</code> 自己可以 new，也可以被繼承。有時候父類別<strong>只是用來被繼承的</strong>，自己 new 出來沒意義，甚至有些方法它寫不出來、要子類別才知道怎麼做。這就是 <code>abstract</code>；再極端一點，連一行程式都沒有、只剩「約定」，就是<strong>介面（interface）</strong>。</p>
+<p class="lead">有些父類別只是用來被繼承的，自己 <code>new</code> 出來沒有意義，這種標 <mark class="key"><code>abstract</code></mark>。再進一步，連一行程式都沒有、只規定「要有哪些方法」，就是<mark class="key">介面（interface）</mark>。</p>
 
-<div class="table-wrap">
-<table>
-  <tr><th></th><th>一般類別</th><th>abstract 類別</th><th>介面</th></tr>
-  <tr><td>可以 new 嗎</td><td>可以</td><td><strong>不行</strong></td><td><strong>不行</strong></td></tr>
-  <tr><td>裡面有寫好的程式嗎</td><td>有</td><td>可以有，也可以有「只有簽章」的 abstract 方法</td><td>只有簽章，沒有本體</td></tr>
-  <tr><td>子類別一定要做什麼</td><td>不用</td><td>把每個 abstract 方法 <code>override</code> 寫完</td><td>把每個方法都寫出來（實作）</td></tr>
-  <tr><td>一個類別可以接幾個</td><td colspan="2">父類別只能有一個</td><td>介面可以同時實作很多個</td></tr>
-  <tr><td>讀法</td><td colspan="2">「X <strong>是一種</strong> Y」</td><td>「X <strong>做得到</strong> Y」</td></tr>
-</table>
-</div>
+<h3 id="abstract-problem">第 1 步：一般的父類別，有兩個地方擋不住</h3>
+<p>文章和頁面都是「內容」，都有標題，也都要能產生摘要。先用第 5 節的寫法，父類別 <code>Content</code> 是一般的類別：</p>
+<pre><code class="nohighlight">class Content
+{
+    public string Title { get; }
 
+    public Content(string title)
+    {
+        Title = title;
+    }
+
+    public virtual string Summary()
+    {
+        <span class="hl c">return "";</span>             // 父類別不知道摘要該怎麼產生，只能先回空字串
+    }
+}
+
+class Post : Content
+{
+    private readonly string body;
+
+    public Post(string title, string body) : base(title)
+    {
+        this.body = body;
+    }
+
+    public override string Summary()
+    {
+        return $"{Title}：{body.Substring(0, 6)}…";
+    }
+}
+
+class Page : Content
+{
+    public Page(string title) : base(title)
+    {
+    }
+    <span class="hl c">// 忘了寫 Summary</span>
+}</code></pre>
+<pre><code class="nohighlight">var content = <span class="hl c">new Content("x")</span>;       // 一個不是文章也不是頁面的「內容」
+Console.WriteLine($"[{content.Summary()}]");
+var page = new Page("關於我");
+Console.WriteLine($"[{<span class="hl c">page.Summary()</span>}]");
+
+// 輸出：
+// []
+// []</code></pre>
+<p>兩個問題，編譯器都沒有擋：</p>
+<ul>
+  <li><code>new Content("x")</code> 做出一個沒有意義的物件</li>
+  <li><code>Page</code> 忘了寫自己的 <code>Summary</code>，結果用到父類別那個回空字串的版本，執行時才發現摘要是空的</li>
+</ul>
+
+<h3 id="abstract-class">第 2 步：父類別標 abstract</h3>
+<pre><code class="nohighlight"><span class="hl a">abstract</span> class Content
+{
+    public string Title { get; }
+
+    protected Content(string title)
+    {
+        Title = title;
+    }
+
+    // 只有簽章、沒有本體，結尾是分號
+    public <span class="hl a">abstract</span> string Summary();
+}</code></pre>
+<p>兩個地方加了 <code>abstract</code>，第 1 步的兩個問題都變成編譯錯誤：</p>
+<pre><code class="nohighlight">var content = <span class="hl c">new Content("x")</span>;
+error CS0144: 無法建立抽象類型或介面 'Content' 的執行個體
+
+class <span class="hl c">Page</span> : Content       // 沒有寫 Summary
+error CS0534: 'Page' 未實作繼承的抽象成員 'Content.Summary()'</code></pre>
+<ul>
+  <li>類別標 <code>abstract</code>：不能 <code>new</code>，只能被繼承</li>
+  <li>方法標 <code>abstract</code>：父類別不寫本體，<mark class="key">每個子類別一定要 <code>override</code></mark>，沒寫就編譯不過</li>
+</ul>
+<p>abstract 類別裡還是可以有寫好的方法和屬性（上面的 <code>Title</code>），子類別直接有。建構子標 <code>protected</code> 就夠了：外面不能 <code>new</code> 它，只有子類別會用 <code>: base(title)</code> 呼叫。</p>
+
+<h3 id="interface">第 3 步：沒有共同的父類別，卻都做得到同一件事，用介面</h3>
+<p>文章可以發佈，電子報也可以發佈。這兩個東西沒有共同的資料，硬找一個父類別不合理；而且一個類別只能有一個父類別。想表達的只是「它做得到發佈」：</p>
+<pre><code class="nohighlight">List&lt;IPublishable&gt; queue = [new Post("Docker 入門"), new Newsletter("十一月號")];
+foreach (var item in queue)
+{
+    <span class="hl b">item.Publish()</span>;
+}
+
+<span class="hl a">interface IPublishable</span>
+{
+    void Publish();             // 只有簽章，沒有本體
+}
+
+class Post <span class="hl a">: IPublishable</span>
+{
+    public string Title { get; }
+
+    public Post(string title)
+    {
+        Title = title;
+    }
+
+    public void Publish()
+    {
+        Console.WriteLine($"發佈文章「{Title}」");
+    }
+}
+
+class Newsletter <span class="hl a">: IPublishable</span>
+{
+    public string Issue { get; }
+
+    public Newsletter(string issue)
+    {
+        Issue = issue;
+    }
+
+    public void Publish()
+    {
+        Console.WriteLine($"寄出電子報「{Issue}」");
+    }
+}
+
+// 輸出：
+// 發佈文章「Docker 入門」
+// 寄出電子報「十一月號」</code></pre>
+<ul>
+  <li>介面只列出方法的簽章，沒有本體，也沒有欄位。名稱習慣用 <code>I</code> 開頭</li>
+  <li>類別在冒號後面寫介面名稱，表示「我做得到這些方法」，然後每一個都要寫出來。少寫一個：<code>error CS0535: 'Post' 未實作介面成員 'IPublishable.Publish()'</code></li>
+  <li><code>List&lt;IPublishable&gt;</code> 可以同時放 <code>Post</code> 和 <code>Newsletter</code>。迴圈那一行只知道「它做得到 <code>Publish</code>」，不用知道實際是哪個類別</li>
+</ul>
+<p>介面和 abstract 類別一樣不能 <code>new</code>：<code>new IPublishable()</code> 是 <code>error CS0144: 無法建立抽象類型或介面 'IPublishable' 的執行個體</code>。</p>
+
+<h3 id="abstract-both">第 4 步：一個類別可以同時有父類別和介面</h3>
+<p>冒號後面<mark class="key">第一個可以是父類別，後面全部是介面</mark>。父類別只能有一個，介面可以有很多個：</p>
 <p class="file-label">範例：abstract 類別 Content，介面 IPublishable（實際執行過）</p>
 <pre><code class="language-csharp">Console.WriteLine("== 用父類別 Content 裝");
 List&lt;Content&gt; contents = [new Post("Docker 入門", "Docker 是把程式和環境一起打包的工具"), new Page("關於我")];
@@ -642,15 +1070,22 @@ class Page : Content, IPublishable
 // 發佈文章「Docker 入門」
 // 發佈頁面「關於我」</code></pre>
 <p><code>class Post : Content, IPublishable</code>：冒號後面<strong>第一個可以是父類別，後面全部是介面</strong>。abstract 類別的建構子標 <code>protected</code> 就夠了，反正外面不能 new 它，只有子類別會用 <code>: base(title)</code> 呼叫。</p>
-<p>真的去 new 一個 abstract 類別或介面：</p>
-<pre><code class="language-csharp">var content = new Content("x");        // abstract 類別不能 new
-var item = new IPublishable();         // 介面也不能 new
 
-// 編譯錯誤：
-// error CS0144: 無法建立抽象類型或介面 'Content' 的執行個體
-// error CS0144: 無法建立抽象類型或介面 'IPublishable' 的執行個體</code></pre>
+<h3 id="abstract-compare">三種放在一起比</h3>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>一般類別</th><th>abstract 類別</th><th>介面</th></tr>
+  <tr><td>可以 new 嗎</td><td>可以</td><td><strong>不行</strong></td><td><strong>不行</strong></td></tr>
+  <tr><td>裡面有寫好的程式嗎</td><td>有</td><td>可以有，也可以有「只有簽章」的 abstract 方法</td><td>只有簽章，沒有本體</td></tr>
+  <tr><td>子類別一定要做什麼</td><td>不用</td><td>把每個 abstract 方法 <code>override</code> 寫完</td><td>把每個方法都寫出來（實作）</td></tr>
+  <tr><td>一個類別可以接幾個</td><td colspan="2">父類別只能有一個</td><td>介面可以同時實作很多個</td></tr>
+  <tr><td>讀法</td><td colspan="2">「X <strong>是一種</strong> Y」</td><td>「X <strong>做得到</strong> Y」</td></tr>
+</table>
+</div>
+
 
 <p>.NET 本身到處是這兩種東西：所有集合都實作 <code>IEnumerable&lt;T&gt;</code> 這個介面，所以 <code>foreach</code> 和 LINQ 對 <code>List</code>、陣列都能用；框架給你繼承的父類別很多是 abstract，自己不能 new，一定要寫子類別才用得到。</p>
+
 
 <!-- ============================================================ -->
 <h2 id="exercise">7. 練習：單檔程式</h2>

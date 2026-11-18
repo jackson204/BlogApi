@@ -19,7 +19,9 @@
 </div>
 
 <div class="callout">
-<p>📌 <strong>這頁和專案無關</strong>，用的是 .NET 內建的 <code>System.Text.Json</code>。Web API 收請求、回回應時框架會自動做這些轉換，知道規則才看得懂「為什麼這個欄位沒收到」。頁面上的輸出都是單檔程式實際執行的結果（.NET 10）。</p>
+<p>📌 <strong>這頁和專案無關</strong>，用的是 .NET 內建的 <code>System.Text.Json</code>。Web API 收請求、回回應時框架會自動做這些轉換，知道規則才看得懂「為什麼這個欄位沒收到」。</p>
+<p>每一節都從最簡單的寫法開始，一步只多一樣東西。頁面上的輸出、例外訊息和編譯訊息都是單檔程式實際執行的結果（.NET 10）。丟例外的地方，「輸出」只列例外的型別和訊息那一行；實際執行時那一行前面還有 <code>Unhandled exception.</code>，後面接著幾行出錯位置，程式在那裡結束。</p>
+<p>用單檔程式（<code>dotnet run xxx.cs</code>）跑這頁的範例時，檔案第一行要加 <code>#:property PublishAot=false</code>。實測不加這一行，呼叫 <code>JsonSerializer.Serialize</code> 會丟 <code>InvalidOperationException: Reflection-based serialization has been disabled for this application.</code>。</p>
 </div>
 
 <nav class="toc">
@@ -37,25 +39,103 @@
 
 <!-- ============================================================ -->
 <h2 id="format">1. JSON 的格式</h2>
-<p>JSON 是一段<strong>文字</strong>，用固定的寫法描述資料。API 的請求與回應、設定檔（<code>appsettings.json</code>）都是它。</p>
-<pre><code class="language-json">{
+<p class="lead">JSON 是一段<mark class="key">文字</mark>，用固定的寫法描述資料。API 的請求與回應、設定檔（<code>appsettings.json</code>）都是它。這一節用一張訂單當例子，從只有一項資料的 JSON 開始，一步加一種寫法，最後寫出完整的訂單。</p>
+<p>程式裡的顏色：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
+
+<h3 id="fmt-pair">第 1 步：一個名字配一個值</h3>
+<pre><code class="nohighlight">{
+  "Id": 5
+}</code></pre>
+<ul>
+  <li>最外面一對大括號 <code>{ }</code> 叫<strong>物件</strong>，裡面放「名字：值」</li>
+  <li>名字一定要用<strong>雙引號</strong>包起來，後面接冒號，再接值</li>
+  <li>這裡的值 <code>5</code> 是數字，不加引號</li>
+</ul>
+
+<h3 id="fmt-comma">第 2 步：多一項，用逗號隔開</h3>
+<pre><code class="nohighlight">{
+  "Id": 5<span class="hl a">,</span>
+  <span class="hl a">"Customer": "小華"</span>
+}</code></pre>
+<ul>
+  <li>每一項之間用逗號分隔。<mark class="caution">最後一項後面不能有逗號</mark></li>
+  <li><code>"小華"</code> 是字串，用雙引號，不能用單引號</li>
+</ul>
+
+<h3 id="fmt-values">第 3 步：值還有布林、null、小數、時間</h3>
+<pre><code class="nohighlight">{
+  "Id": 5,
+  "Customer": "小華",
+  <span class="hl a">"Paid": true,</span>
+  <span class="hl a">"Note": null,</span>
+  <span class="hl a">"Total": 285.5,</span>
+  <span class="hl a">"OrderedAt": "2026-10-15T09:30:00+08:00"</span>
+}</code></pre>
+<ul>
+  <li><code>true</code>、<code>false</code> 是布林，<code>null</code> 是「沒有值」。這三個字都是小寫，不加引號</li>
+  <li>數字可以有小數點，不加引號。<code>"5"</code> 是字串，<code>5</code> 是數字，兩者不同</li>
+  <li>JSON 沒有「日期」這種型別。時間是用字串寫的，要用什麼格式是傳的人和收的人之間的約定</li>
+</ul>
+
+<h3 id="fmt-array">第 4 步：值是一串東西時用中括號</h3>
+<p>一張訂單有好幾個品項。中括號 <code>[ ]</code> 叫<strong>陣列</strong>，裡面的值用逗號隔開。這裡每一個值是一個物件，就是第 1 步那種大括號：</p>
+<pre><code class="nohighlight">{
   "Id": 5,
   "Customer": "小華",
   "Paid": true,
   "Note": null,
   "Total": 285.5,
   "OrderedAt": "2026-10-15T09:30:00+08:00",
-  "Items": [
-    {
-      "Name": "可樂",
-      "Quantity": 6
-    },
-    {
-      "Name": "餅乾",
-      "Quantity": 2
-    }
-  ]
+  <span class="hl a">"Items": [</span>
+    <span class="hl a">{</span>
+      <span class="hl a">"Name": "可樂",</span>
+      <span class="hl a">"Quantity": 6</span>
+    <span class="hl a">},</span>
+    <span class="hl a">{</span>
+      <span class="hl a">"Name": "餅乾",</span>
+      <span class="hl a">"Quantity": 2</span>
+    <span class="hl a">}</span>
+  <span class="hl a">]</span>
 }</code></pre>
+<p>物件裡可以放陣列，陣列裡可以放物件，可以一層一層往裡面放。這就是完整的訂單，後面幾節都用這一段。</p>
+
+<h3 id="fmt-broken">第 5 步：寫錯一個符號，整段都讀不了</h3>
+<p>下面每一段只錯一個地方。錯誤訊息是 .NET 的 <code>JsonDocument.Parse</code> 讀這段文字時實際丟出來的（<code>LineNumber</code> 從 0 開始算）：</p>
+<p><strong>兩項之間少了逗號</strong></p>
+<pre><code class="nohighlight">{
+  "Id": 5<span class="hl c"> </span>
+  "Customer": "小華"
+}
+
+JsonReaderException: '"' is invalid after a value. Expected either ',', '}', or ']'. LineNumber: 2 | BytePositionInLine: 2.</code></pre>
+<p><strong>最後一項後面多了逗號</strong></p>
+<pre><code class="nohighlight">{
+  "Id": 5,
+  "Customer": "小華"<span class="hl c">,</span>
+}
+
+JsonReaderException: The JSON object contains a trailing comma at the end which is not supported in this mode. Change the reader options. LineNumber: 3 | BytePositionInLine: 0.</code></pre>
+<p><strong>字串用了單引號</strong></p>
+<pre><code class="nohighlight">{
+  "Id": 5,
+  "Customer": <span class="hl c">'小華'</span>
+}
+
+JsonReaderException: ''' is an invalid start of a value. LineNumber: 2 | BytePositionInLine: 14.</code></pre>
+<p><strong>名字沒有用雙引號</strong></p>
+<pre><code class="nohighlight">{
+  <span class="hl c">Id</span>: 5
+}
+
+JsonReaderException: 'I' is an invalid start of a property name. Expected a '"'. LineNumber: 1 | BytePositionInLine: 2.</code></pre>
+<p><strong><code>true</code> 寫成大寫開頭</strong></p>
+<pre><code class="nohighlight">{
+  "Paid": <span class="hl c">True</span>
+}
+
+JsonReaderException: 'T' is an invalid start of a value. LineNumber: 1 | BytePositionInLine: 10.</code></pre>
+
+<h3 id="fmt-table">六種值和 C# 型別的對應</h3>
 <div class="table-wrap">
 <table>
   <tr><th>JSON 的寫法</th><th>名稱</th><th>例子</th><th>C# 對應的型別</th></tr>
@@ -67,28 +147,60 @@
   <tr><td><code>null</code></td><td>沒有值</td><td><code>"Note": null</code></td><td><code>null</code></td></tr>
 </table>
 </div>
-<ul>
-  <li>名字一定要用<strong>雙引號</strong>包起來，後面接冒號</li>
-  <li>每一項之間用逗號分隔，<strong>最後一項後面不能有逗號</strong></li>
-  <li>字串用雙引號，不能用單引號；數字、<code>true</code>、<code>false</code>、<code>null</code> 不加引號。<code>"5"</code> 是字串，<code>5</code> 是數字，兩者不同</li>
-  <li>可以一層包一層：物件裡放陣列，陣列裡放物件</li>
-  <li>JSON 沒有「日期」這種型別，時間是用字串寫的，格式是雙方的約定</li>
-</ul>
 
 <!-- ============================================================ -->
 <h2 id="serialize">2. 物件轉 JSON</h2>
-<pre><code class="language-csharp">using System.Text.Json;
+<p class="lead">把 C# 的物件變成 JSON 文字叫<mark class="key">序列化（serialize）</mark>，用 <code>JsonSerializer.Serialize</code>。這一節先轉一個只有兩個屬性的小物件，再一步一步處理中文、巢狀的物件、換行、名字的大小寫。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
 
-var order = new Order
+<h3 id="ser-first">第 1 步：轉一個最小的物件</h3>
+<pre><code class="nohighlight">#:property PublishAot=false
+using System.Text.Json;
+
+var item = new Item { Name = "Cola", Quantity = 6 };
+
+string json = <span class="hl a">JsonSerializer.Serialize(item)</span>;
+Console.WriteLine(json);
+
+class Item
 {
-    Id = 5, Customer = "小華", Paid = true, Note = null, Total = 285.5m,
-    OrderedAt = new DateTimeOffset(2026, 10, 15, 9, 30, 0, TimeSpan.FromHours(8)),
-    Items = [new Item { Name = "可樂", Quantity = 6 }, new Item { Name = "餅乾", Quantity = 2 }],
-};
+    public string Name { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+}
 
-string json = JsonSerializer.Serialize(order);
+// 輸出：
+// {"Name":"Cola","Quantity":6}</code></pre>
+<p>規則：<mark class="key">屬性的名稱變成 JSON 的名字，屬性的值變成 JSON 的值</mark>。<code>string</code> 變成有雙引號的字串，<code>int</code> 變成數字。結果是一個 <code>string</code>，全部在同一行，沒有空白。</p>
+<p>下面每一步都沿用這個 <code>Item</code> 類別和開頭那兩行。</p>
 
-class Order
+<h3 id="ser-chinese">第 2 步：值是中文時，輸出變成一串代碼</h3>
+<pre><code class="nohighlight">var item = new Item { Name = <span class="hl a">"可樂"</span>, Quantity = 6 };
+Console.WriteLine(JsonSerializer.Serialize(item));
+
+// 輸出：
+// {"Name":"\u53EF\u6A02","Quantity":6}</code></pre>
+<p>「可樂」被寫成 <code>\u53EF\u6A02</code>。這是同一個字串的另一種寫法，JSON 的規格允許：把這段 JSON 再轉回物件，<code>Name</code> 還是「可樂」（實際轉回來比對過）。資料沒有壞，只是人不好讀。預設這樣輸出的原因見<a href="encoding-json-html.html">編碼器那一頁</a>。</p>
+
+<h3 id="ser-encoder">第 3 步：傳一組設定，讓中文直接輸出</h3>
+<p><code>Serialize</code> 的第二個參數可以傳一個 <code>JsonSerializerOptions</code>，裡面是各種輸出的設定。<code>Encoder</code> 這一項決定哪些字要寫成代碼：</p>
+<pre><code class="nohighlight"><span class="hl a">using System.Text.Encodings.Web;</span>
+using System.Text.Json;
+
+var item = new Item { Name = "可樂", Quantity = 6 };
+
+<span class="hl a">var options = new JsonSerializerOptions</span>
+<span class="hl a">{</span>
+    <span class="hl a">Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,</span>
+<span class="hl a">}</span>;
+Console.WriteLine(JsonSerializer.Serialize(item<span class="hl b">, options</span>));
+
+// 輸出：
+// {"Name":"可樂","Quantity":6}</code></pre>
+<p><code>JavaScriptEncoder</code> 在 <code>System.Text.Encodings.Web</code> 這個 namespace，所以最上面多一行 <code>using</code>。</p>
+
+<h3 id="ser-nested">第 4 步：屬性有各種型別，其中一個是清單</h3>
+<p>換成第 1 節那張訂單。<code>Order</code> 的屬性有各種型別，其中 <code>Items</code> 是一個 <code>List&lt;Item&gt;</code>，清單裡每一個是前面的 <code>Item</code>：</p>
+<pre><code class="language-csharp">class Order
 {
     public int Id { get; set; }
     public string Customer { get; set; } = string.Empty;
@@ -97,149 +209,462 @@ class Order
     public decimal Total { get; set; }
     public DateTimeOffset OrderedAt { get; set; }
     public List&lt;Item&gt; Items { get; set; } = new();
-}
-
-class Item
-{
-    public string Name { get; set; } = string.Empty;
-    public int Quantity { get; set; }
 }</code></pre>
-<p>結果就是上一節那段 JSON（上一節為了好讀有換行與縮排）。規則很單純：<strong>屬性的名稱變成 JSON 的名字，屬性的值變成 JSON 的值</strong>。</p>
-<p>預設的輸出有兩個地方和想像的不一樣：</p>
-<pre><code class="language-csharp">Console.WriteLine(JsonSerializer.Serialize(new { Name = "可樂" }));
-// {"Name":"\u53EF\u6A02"}      ← 不換行；中文被寫成 \uXXXX
-
-var pretty = new JsonSerializerOptions
+<pre><code class="nohighlight">var order = new Order
 {
-    WriteIndented = true,                                    // 換行與縮排
-    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,   // 中文直接輸出
+    Id = 5,
+    Customer = "小華",
+    Paid = true,
+    Note = null,
+    Total = 285.5m,
+    OrderedAt = new DateTimeOffset(2026, 10, 15, 9, 30, 0, TimeSpan.FromHours(8)),
+    Items = new List&lt;Item&gt;
+    {
+        new Item { Name = "可樂", Quantity = 6 },
+        new Item { Name = "餅乾", Quantity = 2 },
+    },
+};
+
+Console.WriteLine(JsonSerializer.Serialize(<span class="hl a">order</span>, options));
+
+// 輸出（同一行）：
+// {"Id":5,"Customer":"小華","Paid":true,"Note":null,"Total":285.5,"OrderedAt":"2026-10-15T09:30:00+08:00","Items":[{"Name":"可樂","Quantity":6},{"Name":"餅乾","Quantity":2}]}</code></pre>
+<p><code>285.5m</code> 結尾的 <code>m</code> 表示這個數字是 <code>decimal</code>。呼叫的寫法沒有變。規則還是同一條，只是每種型別各有對應：<code>bool</code> 變 <code>true</code>、C# 的 <code>null</code> 變 <code>null</code>、<code>decimal</code> 變數字、<code>DateTimeOffset</code> 變成帶時區的字串、<code>List&lt;Item&gt;</code> 變成陣列，裡面每個 <code>Item</code> 各變成一個物件。</p>
+<p>內容和第 1 節那段一樣，但全部擠在同一行。</p>
+
+<h3 id="ser-indent">第 5 步：設定裡加 WriteIndented，換行與縮排</h3>
+<pre><code class="nohighlight">var pretty = new JsonSerializerOptions
+{
+    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    <span class="hl a">WriteIndented = true,</span>
 };
 Console.WriteLine(JsonSerializer.Serialize(order, pretty));
 
-var camel = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-Console.WriteLine(JsonSerializer.Serialize(new Item { Name = "可樂", Quantity = 6 }, camel));
-// {"name":"可樂","quantity":6}  ← 名字的第一個字母變小寫</code></pre>
-<ul>
-  <li><code>\u53EF\u6A02</code> 和「可樂」是同一個字串的兩種寫法，讀回來完全一樣。只是人不好讀，原因見<a href="encoding-json-html.html">編碼器那一頁</a></li>
-  <li>ASP.NET Core 的 Web API 預設會用 camelCase 輸出（<code>name</code> 而不是 <code>Name</code>），除非專案另外設定</li>
-</ul>
+// 輸出：
+// {
+//   "Id": 5,
+//   "Customer": "小華",
+//   "Paid": true,
+//   "Note": null,
+//   "Total": 285.5,
+//   "OrderedAt": "2026-10-15T09:30:00+08:00",
+//   "Items": [
+//     {
+//       "Name": "可樂",
+//       "Quantity": 6
+//     },
+//     {
+//       "Name": "餅乾",
+//       "Quantity": 2
+//     }
+//   ]
+// }</code></pre>
+<p>這就是第 1 節第 4 步那段。有沒有換行只影響人好不好讀，資料一樣。</p>
+
+<h3 id="ser-camel">第 6 步：設定裡加 PropertyNamingPolicy，名字的第一個字母變小寫</h3>
+<p>C# 的屬性習慣大寫開頭（<code>Name</code>），JavaScript 那邊習慣小寫開頭（<code>name</code>）。這種「第一個字母小寫」的寫法叫 <mark class="key">camelCase</mark>：</p>
+<pre><code class="nohighlight">var camel = new JsonSerializerOptions
+{
+    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    <span class="hl a">PropertyNamingPolicy = JsonNamingPolicy.CamelCase,</span>
+};
+Console.WriteLine(JsonSerializer.Serialize(item, camel));
+
+// 輸出：
+// {"<span class="hl b">name</span>":"可樂","<span class="hl b">quantity</span>":6}</code></pre>
+<p>類別沒有改，改的只是輸出時 JSON 的名字。以 ASP.NET Core 為例，它的 Web API 預設就用 camelCase 輸出（<code>name</code> 而不是 <code>Name</code>），除非另外設定。</p>
 
 <!-- ============================================================ -->
 <h2 id="deserialize">3. JSON 轉物件</h2>
-<pre><code class="language-csharp">var json = """{"Id":5,"Customer":"小華","Paid":true,"Note":null,"Total":285.5,"OrderedAt":"2026-10-15T09:30:00+08:00","Items":[{"Name":"可樂","Quantity":6},{"Name":"餅乾","Quantity":2}]}""";
+<p class="lead">反方向：把 JSON 文字變回 C# 的物件，叫<mark class="key">反序列化（deserialize）</mark>，用 <code>JsonSerializer.Deserialize</code>。這一節先解決「JSON 文字怎麼寫進 C# 的字串」，再轉一個小物件，最後轉整張訂單。<code>Item</code> 和 <code>Order</code> 是上一節的類別。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
 
-Order back = JsonSerializer.Deserialize&lt;Order&gt;(json)!;
+<h3 id="de-escape">第 1 步：把 JSON 文字寫進 C# 的字串</h3>
+<p>JSON 裡到處是雙引號，而 C# 的字串也用雙引號包。所以裡面每一個雙引號前面都要加反斜線：</p>
+<pre><code class="nohighlight">string json = "{<span class="hl c">\"</span>Name<span class="hl c">\"</span>:<span class="hl c">\"</span>可樂<span class="hl c">\"</span>,<span class="hl c">\"</span>Quantity<span class="hl c">\"</span>:6}";
+Console.WriteLine(json);
 
-Console.WriteLine(back.Customer);          // 小華
-Console.WriteLine(back.Items.Count);       // 2
-Console.WriteLine(back.Items[1].Name);     // 餅乾</code></pre>
-<ul>
-  <li><code>Deserialize&lt;Order&gt;</code>：尖括號裡寫要轉成哪個型別</li>
-  <li>做法是反過來：先建立一個空的 <code>Order</code>，再照 JSON 裡的每個名字找同名的屬性，把值填進去</li>
-  <li>結尾的 <code>!</code>：這個方法的回傳型別是 <code>Order?</code>，因為 JSON 的內容如果剛好是 <code>null</code>，結果就是 null。<code>!</code> 是告訴編譯器「我確定不是 null」</li>
-  <li><code>"""…"""</code> 是原始字串，裡面的雙引號不用加反斜線</li>
-</ul>
-<p>Web API 的 Controller 收到 <code>[FromBody] Order order</code> 時，框架做的就是這件事。</p>
+// 輸出：
+// {"Name":"可樂","Quantity":6}</code></pre>
+<p>可以用，但很難讀，也容易漏掉一個反斜線。</p>
+
+<h3 id="de-raw">第 2 步：改用三個雙引號的原始字串</h3>
+<pre><code class="nohighlight">string json = <span class="hl a">"""</span>{"Name":"可樂","Quantity":6}<span class="hl a">"""</span>;
+Console.WriteLine(json);
+
+// 輸出：
+// {"Name":"可樂","Quantity":6}</code></pre>
+<p>前後各用三個雙引號包起來的叫<strong>原始字串</strong>，裡面的雙引號照寫，不用加反斜線。兩種寫法得到的字串一樣（實際用 <code>==</code> 比過是 <code>True</code>）。後面的範例都用這種寫法。</p>
+
+<h3 id="de-first">第 3 步：Deserialize，尖括號裡寫要轉成哪個型別</h3>
+<pre><code class="nohighlight">string json = """{"Name":"可樂","Quantity":6}""";
+
+var item = <span class="hl a">JsonSerializer.Deserialize&lt;Item&gt;(json)</span>;
+Console.WriteLine(item.Name);
+
+// 輸出：
+// 可樂
+//
+// 編譯時多一行警告，指的是 item.Name 那裡：
+// warning CS8602: 可能 null 參考的取值 (dereference)。</code></pre>
+<p><code>Deserialize&lt;Item&gt;</code> 做的事和上一節相反：先建立一個空的 <code>Item</code>，再照 JSON 裡的每個名字找同名的屬性，把值填進去。</p>
+<p>程式跑得出結果，但編譯器給了一個警告，說 <code>item</code> 可能是 <code>null</code>。</p>
+
+<h3 id="de-null">第 4 步：為什麼可能是 null，以及結尾的 !</h3>
+<p><code>Deserialize&lt;Item&gt;</code> 的回傳型別是 <code>Item?</code>，不是 <code>Item</code>。因為 JSON 文字的內容可以整段就是 <code>null</code>，這時沒有東西可以建立：</p>
+<pre><code class="nohighlight">Item? nothing = JsonSerializer.Deserialize&lt;Item&gt;(<span class="hl c">"null"</span>);
+Console.WriteLine(nothing is null);
+
+// 輸出：
+// True</code></pre>
+<p>知道拿到的 JSON 一定是一個物件時，在結尾加 <code>!</code>，告訴編譯器「我確定這裡不是 null」，警告就不見了：</p>
+<pre><code class="nohighlight">var item = JsonSerializer.Deserialize&lt;Item&gt;(json)<span class="hl a">!</span>;
+Console.WriteLine(item.Name);
+Console.WriteLine(item.Quantity + 1);      // Quantity 是 int，可以直接拿來算
+
+// 輸出：
+// 可樂
+// 7</code></pre>
+<p><code>!</code> 只是讓警告消失，<mark class="caution">執行時不會幫忙檢查</mark>。JSON 真的是 <code>null</code> 時，下一行用到 <code>item.Name</code> 照樣丟 <code>NullReferenceException</code>（實際執行過）。</p>
+
+<h3 id="de-order">第 5 步：轉整張訂單</h3>
+<pre><code class="nohighlight">var json = """{"Id":5,"Customer":"小華","Paid":true,"Note":null,"Total":285.5,"OrderedAt":"2026-10-15T09:30:00+08:00","Items":[{"Name":"可樂","Quantity":6},{"Name":"餅乾","Quantity":2}]}""";
+
+Order back = JsonSerializer.Deserialize&lt;<span class="hl a">Order</span>&gt;(json)!;
+
+Console.WriteLine(back.Customer);
+Console.WriteLine(back.Total);
+Console.WriteLine(back.OrderedAt.Year);
+Console.WriteLine(back.Note is null);
+Console.WriteLine(back.Items.Count);
+Console.WriteLine(back.Items[1].Name);
+
+// 輸出：
+// 小華
+// 285.5
+// 2026
+// True
+// 2
+// 餅乾</code></pre>
+<p>只換了尖括號裡的型別。JSON 的陣列填進 <code>List&lt;Item&gt;</code>，陣列裡每個物件各變成一個 <code>Item</code>；時間的字串變成 <code>DateTimeOffset</code>，所以可以用 <code>.Year</code>。</p>
+<p>以 ASP.NET Core 為例：Controller 的方法參數寫 <code>[FromBody] Order order</code> 時，框架對請求的內容做的就是這件事。</p>
 
 <!-- ============================================================ -->
 <h2 id="case">4. 最容易踩的坑：名字的大小寫</h2>
-<pre><code class="language-csharp">var lower = """{"id":5,"customer":"小華"}""";       // 名字是小寫開頭
+<p class="lead">上一節說「照 JSON 裡的名字找同名的屬性」。這一節看名字只差在大小寫時會怎樣。類別還是 <code>Item</code>，屬性是 <code>Name</code> 和 <code>Quantity</code>。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
 
-var x1 = JsonSerializer.Deserialize&lt;Order&gt;(lower)!;
-Console.WriteLine($"Id={x1.Id} Customer=\"{x1.Customer}\"");
-// Id=0 Customer=""        ← 沒有丟例外，但值都沒填進去
+<h3 id="case-same">第 1 步：名字大小寫一樣，值填得進去</h3>
+<pre><code class="nohighlight">var upper = """{"Name":"可樂","Quantity":6}""";
 
-var x2 = JsonSerializer.Deserialize&lt;Order&gt;(lower, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
-// Id=5 Customer=小華
+var x0 = JsonSerializer.Deserialize&lt;Item&gt;(upper)!;
+Console.WriteLine($"Name=\"{x0.Name}\" Quantity={x0.Quantity}");
 
-var x3 = JsonSerializer.Deserialize&lt;Order&gt;(lower, JsonSerializerOptions.Web)!;
-// Id=5 Customer=小華</code></pre>
+// 輸出：
+// Name="可樂" Quantity=6</code></pre>
+
+<h3 id="case-lower">第 2 步：JSON 的名字是小寫開頭，值沒填進去，也沒報錯</h3>
+<pre><code class="nohighlight">var lower = """{"<span class="hl c">name</span>":"可樂","<span class="hl c">quantity</span>":6}""";
+
+var x1 = JsonSerializer.Deserialize&lt;Item&gt;(lower)!;
+Console.WriteLine($"Name=\"{x1.Name}\" Quantity={x1.Quantity}");
+
+// 輸出：
+// Name="" Quantity=0</code></pre>
 <div class="callout warn">
-<p>⚠️ <strong>對不上名字不會報錯</strong>。<code>JsonSerializer</code> 預設區分大小寫，JSON 的 <code>id</code> 對不上屬性 <code>Id</code>，它就當作「JSON 裡沒有這個欄位」，屬性停在預設值。你拿到的是一個看起來正常、但內容全是 0 與空字串的物件。</p>
+<p>⚠️ <strong>對不上名字不會報錯</strong>。<code>JsonSerializer</code> 預設區分大小寫，JSON 的 <code>name</code> 對不上屬性 <code>Name</code>，它就當作「JSON 裡沒有這個欄位」，屬性停在預設值。拿到的是一個看起來正常、但內容全是 0 與空字串的物件。</p>
 </div>
+
+<h3 id="case-insensitive">第 3 步：設定 PropertyNameCaseInsensitive，比對名字時不分大小寫</h3>
+<p><code>Deserialize</code> 的第二個參數也可以傳 <code>JsonSerializerOptions</code>：</p>
+<pre><code class="nohighlight"><span class="hl a">var ignoreCase = new JsonSerializerOptions</span>
+<span class="hl a">{</span>
+    <span class="hl a">PropertyNameCaseInsensitive = true,</span>
+<span class="hl a">}</span>;
+
+var x2 = JsonSerializer.Deserialize&lt;Item&gt;(lower<span class="hl b">, ignoreCase</span>)!;
+Console.WriteLine($"Name=\"{x2.Name}\" Quantity={x2.Quantity}");
+
+// 輸出：
+// Name="可樂" Quantity=6</code></pre>
+
+<h3 id="case-web">第 4 步：JsonSerializerOptions.Web，一組現成的設定</h3>
+<p>.NET 內建一組給 Web API 用的設定，不用自己 <code>new</code>：</p>
+<pre><code class="nohighlight">var x3 = JsonSerializer.Deserialize&lt;Item&gt;(lower, <span class="hl a">JsonSerializerOptions.Web</span>)!;
+Console.WriteLine($"Name=\"{x3.Name}\" Quantity={x3.Quantity}");
+
+Console.WriteLine(JsonSerializer.Serialize(x3, <span class="hl a">JsonSerializerOptions.Web</span>));
+
+// 輸出：
+// Name="可樂" Quantity=6
+// {"name":"\u53EF\u6A02","quantity":6}</code></pre>
+<p>它一次設定了幾件事（實際印出這組設定的屬性確認過）：讀的時候名字不分大小寫、寫的時候名字用 camelCase、數字寫成字串（<code>"6"</code>）也收。中文的輸出沒有包含在裡面，所以第二行還是代碼。</p>
+
+<h3 id="case-table">三種設定的差別</h3>
 <div class="table-wrap">
 <table>
-  <tr><th>設定</th><th><code>id</code> 對得上 <code>Id</code> 嗎</th><th>用在哪</th></tr>
-  <tr><td>預設（<code>new JsonSerializerOptions()</code>）</td><td>對不上</td><td>自己呼叫 <code>JsonSerializer</code> 而且沒帶設定時</td></tr>
+  <tr><th>設定</th><th><code>name</code> 對得上 <code>Name</code> 嗎</th><th>用在哪</th></tr>
+  <tr><td>預設（不傳設定）</td><td>對不上</td><td>自己呼叫 <code>JsonSerializer</code> 而且沒帶設定時</td></tr>
   <tr><td><code>PropertyNameCaseInsensitive = true</code></td><td>對得上</td><td>只想放寬大小寫</td></tr>
-  <tr><td><code>JsonSerializerOptions.Web</code></td><td>對得上，輸出也變 camelCase</td><td>ASP.NET Core 的 Web API 預設就是這一組</td></tr>
+  <tr><td><code>JsonSerializerOptions.Web</code></td><td>對得上，輸出也變 camelCase</td><td>以 ASP.NET Core 為例，它的 Web API 預設就是這一組</td></tr>
 </table>
 </div>
 <p>所以同一段 JSON，Controller 收得到、自己用 <code>JsonSerializer.Deserialize</code> 卻收不到，通常就是這個原因。</p>
 
 <!-- ============================================================ -->
 <h2 id="mismatch">5. 少欄位、多欄位、型別不對</h2>
-<div class="table-wrap">
-<table>
-  <tr><th>JSON 的狀況</th><th>結果</th><th>實際輸出</th></tr>
-  <tr><td>少了某個欄位</td><td>那個屬性停在預設值，不報錯</td><td>只送 <code>{"Id":7}</code> → <code>Customer=""</code>、<code>Paid=False</code>、<code>Total=0</code>、<code>OrderedAt=0001-01-01</code>、<code>Items.Count=0</code></td></tr>
-  <tr><td>多了類別沒有的欄位</td><td>被忽略，不報錯</td><td><code>{"Id":7,"Unknown":"abc"}</code> → <code>Id=7</code></td></tr>
-  <tr><td>明確送 <code>null</code></td><td><strong>蓋掉屬性的預設值</strong></td><td><code>{"Id":7,"Items":null}</code> → <code>Items is null = True</code></td></tr>
-  <tr><td>數字送成字串</td><td>丟 <code>JsonException</code></td><td><code>{"Id":"7"}</code> → <code>The JSON value could not be converted to System.Int32. Path: $.Id</code></td></tr>
-  <tr><td>布林送成字串</td><td>丟 <code>JsonException</code></td><td><code>{"Paid":"true"}</code> → <code>could not be converted to System.Boolean. Path: $.Paid</code></td></tr>
-  <tr><td>JSON 本身寫錯</td><td>丟 <code>JsonException</code></td><td>少一個大括號 → <code>'7' is an invalid end of a number. Expected a delimiter.</code></td></tr>
-  <tr><td>整段 JSON 是 <code>null</code></td><td>回傳 null</td><td><code>Deserialize&lt;Order&gt;("null")</code> → null</td></tr>
-</table>
-</div>
-<h3>「沒送」和「送 null」不一樣</h3>
-<p>類別裡寫了 <code>public List&lt;Item&gt; Items { get; set; } = new();</code>，意思是預設給一個空清單。</p>
+<p class="lead">收到的 JSON 不一定和類別完全對得上。這一節一次只弄壞一個地方，從「不會報錯」的情況開始，走到「會丟例外」的情況。每一步都是把一小段 JSON 轉成 <code>Order</code>。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
+
+<h3 id="mis-missing">第 1 步：少了欄位，屬性停在預設值</h3>
+<pre><code class="nohighlight">var a = JsonSerializer.Deserialize&lt;Order&gt;("""<span class="hl a">{"Id":7}</span>""")!;
+
+Console.WriteLine(a.Id);
+Console.WriteLine($"\"{a.Customer}\"");
+Console.WriteLine(a.Paid);
+Console.WriteLine(a.Total);
+Console.WriteLine(a.OrderedAt.ToString("yyyy-MM-dd"));
+Console.WriteLine(a.Items.Count);
+
+// 輸出：
+// 7
+// ""
+// False
+// 0
+// 0001-01-01
+// 0</code></pre>
+<p>不報錯。JSON 裡沒有的名字，對應的屬性沒有人去動，保持建立物件時的值：類別裡寫了 <code>= string.Empty</code> 的 <code>Customer</code> 是空字串，寫了 <code>= new()</code> 的 <code>Items</code> 是空清單，其他是型別的預設值。</p>
+
+<h3 id="mis-extra">第 2 步：多了類別沒有的欄位，被忽略</h3>
+<pre><code class="nohighlight">var b = JsonSerializer.Deserialize&lt;Order&gt;("""{"Id":7,<span class="hl a">"Unknown":"abc"</span>}""")!;
+Console.WriteLine(b.Id);
+
+// 輸出：
+// 7</code></pre>
+<p>不報錯。<code>Order</code> 沒有 <code>Unknown</code> 這個屬性，這一項直接跳過。</p>
+
+<h3 id="mis-null">第 3 步：明確送 null，屬性原本的值被換成 null</h3>
+<p>「沒送」和「送 <code>null</code>」不一樣。第 1 步沒送 <code>Items</code>，它是空清單。這次明確寫 <code>"Items": null</code>：</p>
+<pre><code class="nohighlight">var c = JsonSerializer.Deserialize&lt;Order&gt;("""{"Id":7,<span class="hl a">"Items":null</span>}""")!;
+
+Console.WriteLine(c.Items is null);
+Console.WriteLine(<span class="hl c">c.Items.Count</span>);
+
+// 輸出：
+// True
+// NullReferenceException: Object reference not set to an instance of an object.</code></pre>
 <ul>
-  <li>JSON 裡<strong>沒有</strong> <code>Items</code>：沒人去動這個屬性，它保持空清單。<code>Items.Count</code> 是 0</li>
-  <li>JSON 裡寫 <code>"Items": null</code>：轉換時把 null 填進去，空清單被蓋掉。之後 <code>Items.Count</code> 會丟 <code>NullReferenceException</code></li>
+  <li>JSON 裡<strong>沒有</strong> <code>Items</code>：沒人去動這個屬性，它保持空清單，<code>Items.Count</code> 是 0</li>
+  <li>JSON 裡寫 <code>"Items": null</code>：轉換時把 <code>null</code> 填進屬性，原本的空清單被換掉。之後 <code>Items.Count</code> 丟 <code>NullReferenceException</code></li>
 </ul>
-<p>所以接 API 請求時，屬性有預設值不代表它一定不是 null。重要的欄位要自己檢查。</p>
-<h3>錯誤訊息裡的 Path</h3>
-<p><code>Path: $.Id</code> 指出是哪個欄位出問題：<code>$</code> 是最外層，<code>$.Id</code> 是最外層的 <code>Id</code>，<code>$.Items[1].Name</code> 是 <code>Items</code> 第二個的 <code>Name</code>。</p>
-<h3>放寬「數字送成字串」</h3>
-<pre><code class="language-csharp">var options = new JsonSerializerOptions { NumberHandling = JsonNumberHandling.AllowReadingFromString };
-var x = JsonSerializer.Deserialize&lt;Order&gt;("""{"Id":"7"}""", options)!;   // Id=7</code></pre>
-<h3>時間的格式</h3>
-<div class="table-wrap">
-<table>
-  <tr><th>JSON 裡的時間</th><th>轉成 <code>DateTimeOffset</code></th><th></th></tr>
-  <tr><td><code>"2026-10-15T09:30:00+08:00"</code></td><td>成功</td><td>ISO 8601，帶時區。最不會出錯的寫法</td></tr>
-  <tr><td><code>"2026-10-15T09:30:00"</code></td><td>成功，但<strong>時區用的是這台電腦的</strong></td><td>在台灣的電腦上變成 <code>+08:00</code>，放到別的時區的伺服器上就不一樣</td></tr>
-  <tr><td><code>"2026/10/15 09:30:00"</code></td><td>丟 <code>JsonException</code></td><td>斜線與空格的寫法不收</td></tr>
-</table>
-</div>
-<p>第二種最危險：不會報錯，本機測試也正常，到了伺服器上時間卻差了幾個小時。</p>
+<p>轉換本身還是沒有報錯。所以接 API 請求時，<mark class="caution">屬性有預設值不代表它一定不是 null</mark>，重要的欄位要自己檢查。</p>
+
+<h3 id="mis-number">第 4 步：數字送成字串，丟 JsonException</h3>
+<p>從這一步開始會丟例外。<code>Id</code> 是 <code>int</code>，JSON 裡卻是有引號的 <code>"7"</code>：</p>
+<pre><code class="nohighlight">var d = JsonSerializer.Deserialize&lt;Order&gt;("""{"Id":<span class="hl c">"7"</span>}""")!;
+
+// 輸出：
+// JsonException: The JSON value could not be converted to System.Int32. Path: $.Id | LineNumber: 0 | BytePositionInLine: 9.</code></pre>
+<p>訊息的意思是「這個 JSON 的值沒辦法轉成 <code>int</code>」。第 1 節說過 <code>"7"</code> 是字串、<code>7</code> 是數字，<code>JsonSerializer</code> 預設不會幫忙轉。</p>
+
+<h3 id="mis-path">第 5 步：用訊息裡的 Path 找出是哪個欄位</h3>
+<p><code>Path: $.Id</code> 指出問題在哪裡：<code>$</code> 是最外層，<code>$.Id</code> 是最外層的 <code>Id</code>。錯在比較裡面時，Path 會一層一層寫出來：</p>
+<pre><code class="nohighlight">var json = """{"Id":7,"Items":[{"Name":"可樂","Quantity":6},{"Name":"餅乾","Quantity":<span class="hl c">"兩個"</span>}]}""";
+var e = JsonSerializer.Deserialize&lt;Order&gt;(json)!;
+
+// 輸出：
+// JsonException: The JSON value could not be converted to System.Int32. Path: <span class="hl a">$.Items[1].Quantity</span> | LineNumber: 0 | BytePositionInLine: 84.</code></pre>
+<p><code>$.Items[1].Quantity</code> 是 <code>Items</code> 的第 1 個（從 0 算，也就是第二個）的 <code>Quantity</code>。</p>
+
+<h3 id="mis-allow">第 6 步：放寬「數字送成字串」</h3>
+<p>對方就是會把數字送成字串、又沒辦法請對方改時，可以用設定放寬：</p>
+<pre><code class="nohighlight"><span class="hl a">using System.Text.Json.Serialization;</span>
+
+var options = new JsonSerializerOptions
+{
+    <span class="hl a">NumberHandling = JsonNumberHandling.AllowReadingFromString,</span>
+};
+var f = JsonSerializer.Deserialize&lt;Order&gt;("""{"Id":"7"}"""<span class="hl b">, options</span>)!;
+Console.WriteLine(f.Id);
+
+// 輸出：
+// 7</code></pre>
+<p><code>JsonNumberHandling</code> 在 <code>System.Text.Json.Serialization</code> 這個 namespace。引號裡不是數字時（例如 <code>"七"</code>），加了這個設定還是丟同樣的 <code>JsonException</code>。</p>
+
+<h3 id="mis-bool">第 7 步：布林送成字串，丟 JsonException</h3>
+<pre><code class="nohighlight">var g = JsonSerializer.Deserialize&lt;Order&gt;("""{"Paid":<span class="hl c">"true"</span>}""")!;
+
+// 輸出：
+// JsonException: The JSON value could not be converted to System.Boolean. Path: $.Paid | LineNumber: 0 | BytePositionInLine: 14.</code></pre>
+<p>上一步的 <code>NumberHandling</code> 只管數字。帶著那組設定再轉一次，這裡丟的例外一模一樣。</p>
+
+<h3 id="mis-broken">第 8 步：JSON 本身寫錯，丟 JsonException</h3>
+<pre><code class="nohighlight">// 少了結尾的大括號
+var h = JsonSerializer.Deserialize&lt;Order&gt;("""<span class="hl c">{"Id":7</span>""")!;
+
+// 輸出：
+// JsonException: '7' is an invalid end of a number. Expected a delimiter. Path: $.Id | LineNumber: 0 | BytePositionInLine: 7.</code></pre>
+<p>這種是第 1 節第 5 步那類格式錯誤，和類別長什麼樣子無關。</p>
+
+<h3 id="mis-wholenull">第 9 步：整段 JSON 是 null，回傳 null</h3>
+<pre><code class="nohighlight">var i = JsonSerializer.Deserialize&lt;Order&gt;(<span class="hl a">"null"</span>);
+Console.WriteLine(i is null);
+
+// 輸出：
+// True</code></pre>
+<p>不丟例外，回傳值是 <code>null</code>。這就是第 3 節說回傳型別是 <code>Order?</code> 的原因。</p>
+
+<h3 id="mis-time">時間的格式：三種寫法，三種結果</h3>
+<p>JSON 的時間是字串。同一個時間用三種寫法，轉成 <code>DateTimeOffset</code> 的屬性 <code>OrderedAt</code>：</p>
+<p><strong>帶時區的 ISO 8601：成功</strong></p>
+<pre><code class="nohighlight">var t1 = JsonSerializer.Deserialize&lt;Order&gt;("""{"OrderedAt":"2026-10-15T09:30:00<span class="hl a">+08:00</span>"}""")!;
+Console.WriteLine(t1.OrderedAt.ToString("yyyy-MM-dd HH:mm:ss zzz"));
+
+// 輸出：
+// 2026-10-15 09:30:00 +08:00</code></pre>
+<p>最不會出錯的寫法：時區寫在字串裡，在哪一台電腦上轉都一樣。</p>
+<p><strong>沒寫時區：成功，但時區是補上去的</strong></p>
+<pre><code class="nohighlight">var t2 = JsonSerializer.Deserialize&lt;Order&gt;("""{"OrderedAt":"<span class="hl c">2026-10-15T09:30:00</span>"}""")!;
+Console.WriteLine(t2.OrderedAt.ToString("yyyy-MM-dd HH:mm:ss zzz"));
+
+// 輸出（這台電腦的時區是台北）：
+// 2026-10-15 09:30:00 +08:00</code></pre>
+<p>字串裡沒有時區，結果卻有 <code>+08:00</code>，用的是<mark class="caution">執行這段程式的電腦的時區</mark>。這種最危險：不會報錯，在台灣的電腦上測試也正常。放到別的時區的伺服器上，補上去的時差會不一樣（這一點沒有在別的時區的電腦上實測）。</p>
+<p><strong>斜線與空格的寫法：丟 JsonException</strong></p>
+<pre><code class="nohighlight">var t3 = JsonSerializer.Deserialize&lt;Order&gt;("""{"OrderedAt":"<span class="hl c">2026/10/15 09:30:00</span>"}""")!;
+
+// 輸出：
+// JsonException: The JSON value could not be converted to System.DateTimeOffset. Path: $.OrderedAt | LineNumber: 0 | BytePositionInLine: 34.</code></pre>
 
 <!-- ============================================================ -->
 <h2 id="dictionary">6. JSON 轉 Dictionary</h2>
-<p>JSON 的物件就是一堆「名字：值」，和 <a href="csharp-dictionary.html">Dictionary</a> 是同一種形狀。不想為了讀一段 JSON 特地寫一個類別，或名字事先不知道時，可以轉成 <code>Dictionary</code>。</p>
-<h3>值的型別都一樣</h3>
-<pre><code class="language-csharp">var d1 = JsonSerializer.Deserialize&lt;Dictionary&lt;string, int&gt;&gt;("""{"可樂":30,"綠茶":25,"咖啡":60}""")!;
-Console.WriteLine(d1.Count);        // 3
-Console.WriteLine(d1["綠茶"]);      // 25
+<p class="lead">JSON 的物件就是一堆「名字：值」，和 <a href="csharp-dictionary.html">Dictionary</a> 是同一種形狀。不想為了讀一段 JSON 特地寫一個類別，或名字事先不知道時，可以轉成 <code>Dictionary</code>。這一節從值都是同一種型別的 JSON 開始，再處理值的型別混在一起的情況。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
 
-Console.WriteLine(JsonSerializer.Serialize(d1));   // {"可樂":30,"綠茶":25,"咖啡":60}（Dictionary 也能轉回 JSON）
+<h3 id="dict-same">第 1 步：值都是數字，轉成 Dictionary&lt;string, int&gt;</h3>
+<pre><code class="nohighlight">var d1 = JsonSerializer.Deserialize&lt;<span class="hl a">Dictionary&lt;string, int&gt;</span>&gt;("""{"可樂":30,"綠茶":25,"咖啡":60}""")!;
 
-var d4 = JsonSerializer.Deserialize&lt;Dictionary&lt;string, List&lt;string&gt;&gt;&gt;("""{"飲料":["可樂","綠茶"],"零食":["餅乾"]}""")!;
-Console.WriteLine(string.Join(", ", d4["飲料"]));   // 可樂, 綠茶
+Console.WriteLine(d1.Count);
+Console.WriteLine(d1["綠茶"]);
 
-var d5 = JsonSerializer.Deserialize&lt;Dictionary&lt;int, string&gt;&gt;("""{"1":"可樂","2":"綠茶"}""")!;
-Console.WriteLine(d5[2]);           // 綠茶      ← JSON 的名字一定是字串，但可以轉成 int 的 key</code></pre>
-<h3>值的型別不一樣</h3>
-<p>訂單那段 JSON，值有數字、字串、布林、陣列。用 <code>Dictionary&lt;string, int&gt;</code> 會失敗：</p>
-<pre><code class="nohighlight">JsonException: The JSON value could not be converted to System.Int32. Path: $.Customer</code></pre>
-<p>這時 value 的型別用 <code>JsonElement</code>，它代表「JSON 裡的任何一種值」，要用的時候再指定要當成什麼讀：</p>
-<pre><code class="language-csharp">var d2 = JsonSerializer.Deserialize&lt;Dictionary&lt;string, JsonElement&gt;&gt;(json)!;
+// 輸出：
+// 3
+// 25</code></pre>
+<p>JSON 的名字變成 key，值變成 value。尖括號裡寫的不是自己的類別，是 <code>Dictionary&lt;string, int&gt;</code>，所以 JSON 裡有哪些名字都可以，不用事先知道。</p>
+<p>反方向也可以，<code>Dictionary</code> 能轉回 JSON（<code>options</code> 是第 2 節第 3 步那組讓中文直接輸出的設定）：</p>
+<pre><code class="nohighlight">Console.WriteLine(JsonSerializer.Serialize(d1, options));
 
-foreach (var (name, value) in d2)
+// 輸出：
+// {"可樂":30,"綠茶":25,"咖啡":60}</code></pre>
+
+<h3 id="dict-types">第 2 步：value 和 key 換成別的型別</h3>
+<p>值都是「字串的陣列」時，value 的型別寫 <code>List&lt;string&gt;</code>：</p>
+<pre><code class="nohighlight">var d4 = JsonSerializer.Deserialize&lt;Dictionary&lt;string, <span class="hl a">List&lt;string&gt;</span>&gt;&gt;("""{"飲料":["可樂","綠茶"],"零食":["餅乾"]}""")!;
+
+Console.WriteLine(d4["飲料"].Count);
+Console.WriteLine(d4["飲料"][1]);
+
+// 輸出：
+// 2
+// 綠茶</code></pre>
+<p>JSON 的名字一定是字串，但名字的內容是數字時，key 的型別可以寫 <code>int</code>：</p>
+<pre><code class="nohighlight">var d5 = JsonSerializer.Deserialize&lt;Dictionary&lt;<span class="hl a">int</span>, string&gt;&gt;("""{"1":"可樂","2":"綠茶"}""")!;
+
+Console.WriteLine(d5[<span class="hl b">2</span>]);
+
+// 輸出：
+// 綠茶</code></pre>
+
+<h3 id="dict-mixed">第 3 步：值的型別不一樣，Dictionary&lt;string, int&gt; 失敗</h3>
+<p>拿訂單那段 JSON 來轉（<code>json</code> 是第 3 節第 5 步那個字串）。它的值有數字、字串、布林、陣列：</p>
+<pre><code class="nohighlight">var bad = JsonSerializer.Deserialize&lt;Dictionary&lt;string, <span class="hl c">int</span>&gt;&gt;(json)!;
+
+// 輸出：
+// JsonException: The JSON value could not be converted to System.Int32. Path: $.Customer | LineNumber: 0 | BytePositionInLine: 27.</code></pre>
+<p>第一項 <code>Id</code> 是數字，過了；第二項 <code>Customer</code> 是字串，轉不成 <code>int</code>。有一個值的型別不合，整個轉換就失敗。</p>
+
+<h3 id="dict-object">第 4 步：value 改成 object，轉得過，但拿不出 int</h3>
+<p><code>object</code> 什麼都能放，直覺上 value 的型別寫 <code>object</code> 就好：</p>
+<pre><code class="nohighlight">var d3 = JsonSerializer.Deserialize&lt;Dictionary&lt;string, <span class="hl a">object</span>&gt;&gt;(json)!;
+
+Console.WriteLine(d3.Count);
+Console.WriteLine(d3["Id"]);
+
+int id = <span class="hl c">(int)d3["Id"]</span>;
+
+// 輸出：
+// 7
+// 5
+// InvalidCastException: Unable to cast object of type 'System.Text.Json.JsonElement' to type 'System.Int32'.</code></pre>
+<p>轉換成功，印出來也是 5。但要把它當 <code>int</code> 用時失敗了。訊息說這個 value 實際的型別是 <code>JsonElement</code>，不是 <code>int</code>。印 <code>d3["Customer"].GetType()</code> 也是 <code>System.Text.Json.JsonElement</code>，不是 <code>string</code>。</p>
+<p>所以不建議用 <code>Dictionary&lt;string, object&gt;</code>：型別寫 <code>object</code>，裡面放的其實全是 <code>JsonElement</code>。</p>
+
+<h3 id="dict-element">第 5 步：value 直接寫 JsonElement，用 GetXxx() 取值</h3>
+<p><mark class="key"><code>JsonElement</code></mark> 代表「JSON 裡的任何一種值」。要用的時候呼叫對應的方法，指定要當成什麼讀：</p>
+<pre><code class="nohighlight">var d2 = JsonSerializer.Deserialize&lt;Dictionary&lt;string, <span class="hl a">JsonElement</span>&gt;&gt;(json)!;
+
+Console.WriteLine(d2["Id"]<span class="hl a">.GetInt32()</span> + 1);
+Console.WriteLine(d2["Customer"]<span class="hl a">.GetString()</span>);
+Console.WriteLine(d2["Paid"]<span class="hl a">.GetBoolean()</span>);
+Console.WriteLine(d2["Total"]<span class="hl a">.GetDecimal()</span>);
+
+// 輸出：
+// 6
+// 小華
+// True
+// 285.5</code></pre>
+<p><code>GetInt32()</code> 回傳的是真的 <code>int</code>，所以可以 <code>+ 1</code>。方法和值的種類不合時會丟例外，例如對字串呼叫 <code>GetInt32()</code>：</p>
+<pre><code class="nohighlight">Console.WriteLine(d2["Customer"]<span class="hl c">.GetInt32()</span>);
+
+// 輸出：
+// InvalidOperationException: The requested operation requires an element of type 'Number', but the target element has type 'String'.</code></pre>
+
+<h3 id="dict-kind">第 6 步：不知道值是哪一種時，先看 ValueKind</h3>
+<pre><code class="nohighlight">foreach (var (name, value) in d2)
 {
-    Console.WriteLine($"{name}: ValueKind={value.ValueKind} raw={value.GetRawText()}");
+    Console.WriteLine($"{name}: ValueKind={value.<span class="hl a">ValueKind</span>} raw={value.<span class="hl a">GetRawText()</span>}");
 }
 
-Console.WriteLine(d2["Id"].GetInt32());                                  // 5
-Console.WriteLine(d2["Customer"].GetString());                           // 小華
-Console.WriteLine(d2["Items"][0].GetProperty("Name").GetString());       // 可樂</code></pre>
-<pre><code class="nohighlight">Id: ValueKind=Number raw=5
-Customer: ValueKind=String raw="小華"
-Paid: ValueKind=True raw=true
-Note: ValueKind=Null raw=null
-Total: ValueKind=Number raw=285.5
-OrderedAt: ValueKind=String raw="2026-10-15T09:30:00+08:00"
-Items: ValueKind=Array raw=[{"Name":"可樂","Quantity":6},{"Name":"餅乾","Quantity":2}]</code></pre>
+// 輸出：
+// Id: ValueKind=Number raw=5
+// Customer: ValueKind=String raw="小華"
+// Paid: ValueKind=True raw=true
+// Note: ValueKind=Null raw=null
+// Total: ValueKind=Number raw=285.5
+// OrderedAt: ValueKind=String raw="2026-10-15T09:30:00+08:00"
+// Items: ValueKind=Array raw=[{"Name":"可樂","Quantity":6},{"Name":"餅乾","Quantity":2}]</code></pre>
+<p><code>ValueKind</code> 說這個值是 JSON 六種值裡的哪一種（布林分成 <code>True</code> 和 <code>False</code> 兩個）。<code>GetRawText()</code> 是它在 JSON 裡原本的那段文字。</p>
+
+<h3 id="dict-inside">第 7 步：值是陣列或物件時，往裡面走</h3>
+<p><code>d2["Items"]</code> 是一個陣列，裡面是物件。<code>JsonElement</code> 用 <code>[位置]</code> 拿陣列的第幾個，用 <code>GetProperty("名字")</code> 拿物件裡的某一項：</p>
+<pre><code class="nohighlight">Console.WriteLine(d2["Items"]<span class="hl a">.GetArrayLength()</span>);
+Console.WriteLine(d2["Items"]<span class="hl a">[0]</span><span class="hl a">.GetProperty("Name")</span>.GetString());
+Console.WriteLine(d2["Items"]<span class="hl a">[1]</span><span class="hl a">.GetProperty("Quantity")</span>.GetInt32());
+
+// 輸出：
+// 2
+// 可樂
+// 2</code></pre>
+
+<h3 id="dict-array">最外層是陣列時，轉成 List</h3>
+<pre><code class="nohighlight">var list = JsonSerializer.Deserialize&lt;<span class="hl a">List&lt;Item&gt;</span>&gt;("""<span class="hl a">[</span>{"Name":"可樂","Quantity":6},{"Name":"餅乾","Quantity":2}<span class="hl a">]</span>""")!;
+
+Console.WriteLine(list.Count);
+Console.WriteLine(list[0].Name);
+
+// 輸出：
+// 2
+// 可樂</code></pre>
+<p>最外層是 <code>[</code> 就轉成 <code>List&lt;T&gt;</code>，是 <code>{</code> 就轉成 class 或 <code>Dictionary</code>。兩者弄反會丟例外：</p>
+<pre><code class="nohighlight">// 最外層是陣列，卻轉成 Item
+JsonSerializer.Deserialize&lt;<span class="hl c">Item</span>&gt;("""[{"Name":"可樂","Quantity":6},{"Name":"餅乾","Quantity":2}]""");
+// JsonException: The JSON value could not be converted to Item. Path: $ | LineNumber: 0 | BytePositionInLine: 1.
+
+// 最外層是物件，卻轉成 List&lt;Item&gt;
+JsonSerializer.Deserialize&lt;<span class="hl c">List&lt;Item&gt;</span>&gt;("""{"Name":"可樂","Quantity":6}""");
+// JsonException: The JSON value could not be converted to System.Collections.Generic.List`1[Item]. Path: $ | LineNumber: 0 | BytePositionInLine: 1.</code></pre>
+
+<h3 id="dict-when">要轉成哪一種</h3>
 <div class="table-wrap">
 <table>
   <tr><th>想轉成</th><th>什麼時候用</th><th>注意</th></tr>
@@ -249,24 +674,68 @@ Items: ValueKind=Array raw=[{"Name":"可樂","Quantity":6},{"Name":"餅乾","Qua
   <tr><td><code>Dictionary&lt;string, object&gt;</code></td><td>不建議</td><td>value 實際上還是 <code>JsonElement</code>，不是 <code>int</code> 或 <code>string</code>，直接轉型會失敗</td></tr>
 </table>
 </div>
-<h3>JSON 陣列</h3>
-<pre><code class="language-csharp">var list = JsonSerializer.Deserialize&lt;List&lt;Item&gt;&gt;("""[{"Name":"可樂","Quantity":6},{"Name":"餅乾","Quantity":2}]""")!;
-Console.WriteLine(list.Count);       // 2
-Console.WriteLine(list[0].Name);     // 可樂</code></pre>
-<p>最外層是 <code>[</code> 就轉成 <code>List&lt;T&gt;</code>，是 <code>{</code> 就轉成 class 或 <code>Dictionary</code>。兩者弄反會丟 <code>JsonException: The JSON value could not be converted to Item. Path: $</code>。</p>
 
 <!-- ============================================================ -->
 <h2 id="node">7. 完全不知道形狀時：JsonNode</h2>
-<pre><code class="language-csharp">using System.Text.Json.Nodes;
+<p class="lead">上一節的 <code>Dictionary&lt;string, JsonElement&gt;</code> 可以讀任何形狀的 JSON。這一節先看它做不到的兩件事，再換成 <code>JsonNode</code>。<code>json</code> 還是訂單那個字串。</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是這一步多出來的寫法，<span class="hl b">綠色</span>是使用的地方跟著變的寫法，<span class="hl c">紅色</span>是會出錯或不建議的寫法。</p>
 
-var node = JsonNode.Parse(json)!;
+<h3 id="node-readonly">第 1 步：用 JsonElement 改不了值，名字不存在會丟例外</h3>
+<p>想把顧客改成「小明」：</p>
+<pre><code class="nohighlight">var d2 = JsonSerializer.Deserialize&lt;Dictionary&lt;string, JsonElement&gt;&gt;(json)!;
 
-Console.WriteLine(node["Customer"]);                    // 小華
-Console.WriteLine(node["Items"]![1]!["Quantity"]);      // 2
-Console.WriteLine(node["NoSuch"] is null);              // True   ← 沒有這個名字時是 null，不會丟例外
+d2["Customer"] = <span class="hl c">"小明"</span>;
 
-node["Customer"] = "小明";                              // 可以直接改</code></pre>
-<p><code>JsonNode</code> 把 JSON 讀成一棵可以用 <code>["名字"]</code> 與 <code>[位置]</code> 一層一層走的樹，不用事先定義任何型別。適合只想從一大段 JSON 裡拿一兩個值，或要修改後再輸出的情況。</p>
+error CS0029: 無法將類型 'string' 隱含轉換成 'System.Text.Json.JsonElement'</code></pre>
+<p>編譯不過。value 的型別是 <code>JsonElement</code>，不能直接放一個 <code>string</code> 進去。</p>
+<p>讀一個不存在的名字，則是 <code>Dictionary</code> 的中括號丟例外：</p>
+<pre><code class="nohighlight">Console.WriteLine(<span class="hl c">d2["NoSuch"]</span>);
+
+// 輸出：
+// KeyNotFoundException: The given key 'NoSuch' was not present in the dictionary.</code></pre>
+
+<h3 id="node-parse">第 2 步：JsonNode.Parse，用 ["名字"] 讀</h3>
+<pre><code class="nohighlight"><span class="hl a">using System.Text.Json.Nodes;</span>
+
+var node = <span class="hl a">JsonNode.Parse(json)</span>!;
+
+Console.WriteLine(node<span class="hl a">["Customer"]</span>);
+Console.WriteLine(node<span class="hl a">["Id"]</span>);
+
+// 輸出：
+// 小華
+// 5</code></pre>
+<p><code>JsonNode.Parse</code> 不用在尖括號裡寫任何型別。它把 JSON 讀成一棵樹，<code>node</code> 是最外層那個物件，<code>node["Customer"]</code> 是裡面叫 <code>Customer</code> 的那一項。<code>JsonNode</code> 在 <code>System.Text.Json.Nodes</code> 這個 namespace。</p>
+
+<h3 id="node-walk">第 3 步：用 [位置] 和 ["名字"] 一層一層往裡走</h3>
+<pre><code class="nohighlight">Console.WriteLine(node["Items"]<span class="hl a">![1]!["Quantity"]</span>);
+Console.WriteLine(node["Items"]<span class="hl a">![0]!["Name"]</span>);
+
+// 輸出：
+// 2
+// 可樂</code></pre>
+<p>陣列用 <code>[位置]</code>，物件用 <code>["名字"]</code>，寫法都是中括號。每一層後面的 <code>!</code> 和第 3 節的意思一樣：中括號的回傳型別是 <code>JsonNode?</code>，<code>!</code> 告訴編譯器「我確定這一層有東西」。</p>
+
+<h3 id="node-missing">第 4 步：名字不存在時是 null，不丟例外</h3>
+<pre><code class="nohighlight">Console.WriteLine(node[<span class="hl a">"NoSuch"</span>] is null);
+
+// 輸出：
+// True</code></pre>
+<p>這就是中括號回傳 <code>JsonNode?</code> 的原因。可以先用 <code>is null</code> 檢查再往下走。不檢查就接著往裡走（<code>node["NoSuch"]!["Name"]</code>），實際執行會丟 <code>NullReferenceException</code>。</p>
+<p>JSON 裡的值本來就是 <code>null</code> 時也一樣：<code>node["Note"] is null</code> 是 <code>True</code>。</p>
+
+<h3 id="node-edit">第 5 步：直接改值，再輸出成 JSON</h3>
+<pre><code class="nohighlight"><span class="hl a">node["Customer"] = "小明";</span>
+<span class="hl a">node["Items"]![1]!["Quantity"] = 3;</span>
+
+Console.WriteLine(node<span class="hl a">.ToJsonString(options)</span>);
+
+// 輸出：
+// {"Id":5,"Customer":"小明","Paid":true,"Note":null,"Total":285.5,"OrderedAt":"2026-10-15T09:30:00+08:00","Items":[{"Name":"可樂","Quantity":6},{"Name":"餅乾","Quantity":3}]}</code></pre>
+<p>第 1 步編譯不過的那一行，在 <code>JsonNode</code> 上可以寫。<code>ToJsonString</code> 把整棵樹輸出成 JSON 文字；<code>options</code> 是第 2 節第 3 步那組讓中文直接輸出的設定。</p>
+<p><code>JsonNode</code> 適合只想從一大段 JSON 裡拿一兩個值，或要修改後再輸出的情況。</p>
+
+<h3 id="node-when">三種做法怎麼選</h3>
 <div class="table-wrap">
 <table>
   <tr><th>做法</th><th>要不要先寫型別</th><th>適合</th></tr>
@@ -275,7 +744,7 @@ node["Customer"] = "小明";                              // 可以直接改</co
   <tr><td><code>JsonNode.Parse</code></td><td>不用</td><td>形狀不確定、只取其中幾個值、要修改</td></tr>
 </table>
 </div>
-<p>enum 進出 JSON 時是數字還是名字，見 <a href="csharp-enum-db.html#json">enum 那一頁第 5 節</a>。</p>
+<p>enum 進出 JSON 時是數字還是名字，見 <a href="csharp-enum-db.html#json">enum 那一頁講進出 API 的那一節</a>。</p>
 
 <nav class="footer-nav">
   <span></span>

@@ -650,44 +650,119 @@ RunLater(text =&gt; Console.WriteLine($"action 執行了：{text}"));
 
 <!-- ============================================================ -->
 <h2 id="signature">4. 拆解一整行：以 EF Core 的 AddDbContext 為例</h2>
-<p>三件事現在都看過了，把它們套到一行真實的程式碼上。EF Core 註冊 DbContext 的那一行通常長這樣（例子裡的 DbContext 叫 <code>BlogDbContext</code>，連線字串的名稱叫 <code>BlogDb</code>）：</p>
+<p class="lead">前三節的東西，現在套到一行真實的程式上。EF Core 註冊 DbContext 的那一行通常長這樣（例子裡的 DbContext 叫 <code>BlogDbContext</code>，連線字串的名稱叫 <code>BlogDb</code>）：</p>
 <pre><code class="language-csharp">builder.Services.AddDbContext&lt;BlogDbContext&gt;(options =&gt;
     options.UseSqlServer(builder.Configuration.GetConnectionString("BlogDb")));</code></pre>
-<p>先看 <code>AddDbContext</code> 的簽章，第 2 個參數 <code>optionsAction</code> 的型別就是 <code>Action&lt;DbContextOptionsBuilder&gt;</code>，那段 <code>options =&gt; options.UseSqlServer(…)</code> 就是填進這個參數的「方法」：</p>
-
-<div class="diagram">
-<img src="../images/delegates-adddbcontext.svg" alt="把 Action 套回 AddDbContext：第 2 個參數 optionsAction 的型別是 Action&lt;DbContextOptionsBuilder&gt;，options =&gt; options.UseSqlServer(…) 就是填進去的方法" style="width:100%;height:auto">
-<div class="diagram-caption">AddDbContext 當下只把 lambda 收起來；之後要建 BlogDbContext 時，EF Core 才 new 一個 options、呼叫它</div>
-</div>
-
-<p>這行其實是<strong>三個方法</strong>一層包一層。要看懂它在寫什麼，<strong>由內往外讀</strong>最好懂。這是讀的順序，不是執行的順序：② ③ 寫在 lambda 裡面，程式啟動時只有 ① 執行，② ③ 要等 lambda 被呼叫才跑。</p>
-
+<p>一行裡有<mark class="key">三個方法</mark>，一個包一個。下面從最裡面的開始，一步只看一個方法：先看它的簽章，再用前面學過的記號讀它。簽章是 EF Core 10 / .NET 10 的，用反射從套件讀出來，只列這一行用到的那個多載。</p>
 <div class="diagram">
 <img src="../images/adddbcontext.svg" alt="拆解 AddDbContext、UseSqlServer、GetConnectionString 三個方法：由內往外讀" style="width:100%;height:auto">
 <div class="diagram-caption">讀法：③ 的回傳值交給 ②；②③ 所在的整段 lambda 當成參數交給 ①（交出去時不執行）</div>
 </div>
 
-<p>下面是這三個方法在 EF Core 10 / .NET 10 的<strong>真正簽章</strong>（用反射從套件讀出來的，只列出這一行用到的那個多載）：</p>
+<p>顏色和前面一樣：<span class="hl a">藍色</span>是簽章裡這一步要看的記號，<span class="hl b">綠色</span>是那一行程式裡對應的地方。</p>
 
-<p class="file-label">③ Microsoft.Extensions.Configuration.ConfigurationExtensions</p>
-<pre><code class="language-csharp">public static string? GetConnectionString(
-    this IConfiguration configuration,
+<h3 id="sg-inner">第 1 步：最裡面的 GetConnectionString</h3>
+<pre><code class="nohighlight"><span class="hl b">builder.Configuration</span>.GetConnectionString("BlogDb")
+
+// 簽章（在 ConfigurationExtensions 這個 static class 裡）
+public static string<span class="hl a">?</span> GetConnectionString(
+    <span class="hl a">this IConfiguration</span> configuration,
     string name)</code></pre>
+<ul>
+  <li><code>this IConfiguration</code>：擴充方法（<a href="#extension">第 2 節</a>）。點前面的 <code>builder.Configuration</code> 填進第一個參數，所以括號裡只要給 <code>name</code></li>
+  <li>回傳 <code>string?</code>：可能是 <code>null</code>（<a href="#step-nullable">第 1 節第 7 步</a>）。設定檔裡沒有這個名稱時回傳 <code>null</code>，不會丟例外</li>
+</ul>
+<p>這一步做完，拿到一個連線字串（或 <code>null</code>）。把它想成一個變數 <code>connectionString</code>，那一行就變短了：</p>
+<pre><code class="nohighlight">builder.Services.AddDbContext&lt;BlogDbContext&gt;(options =&gt;
+    options.UseSqlServer(<span class="hl b">connectionString</span>));</code></pre>
 
-<p class="file-label">② Microsoft.EntityFrameworkCore.SqlServerDbContextOptionsExtensions</p>
-<pre><code class="language-csharp">public static DbContextOptionsBuilder UseSqlServer(
-    this DbContextOptionsBuilder optionsBuilder,
-    string? connectionString,
-    Action&lt;SqlServerDbContextOptionsBuilder&gt;? sqlServerOptionsAction = null)</code></pre>
+<h3 id="sg-middle">第 2 步：中間的 UseSqlServer</h3>
+<pre><code class="nohighlight"><span class="hl b">options</span>.UseSqlServer(<span class="hl b">connectionString</span>)
 
-<p class="file-label">① Microsoft.Extensions.DependencyInjection.EntityFrameworkServiceCollectionExtensions</p>
-<pre><code class="language-csharp">public static IServiceCollection AddDbContext&lt;TContext&gt;(
-    this IServiceCollection serviceCollection,
-    Action&lt;DbContextOptionsBuilder&gt;? optionsAction = null,
-    ServiceLifetime contextLifetime = ServiceLifetime.Scoped,
-    ServiceLifetime optionsLifetime = ServiceLifetime.Scoped)
-    where TContext : DbContext</code></pre>
+// 簽章（在 SqlServerDbContextOptionsExtensions 這個 static class 裡）
+public static DbContextOptionsBuilder UseSqlServer(
+    <span class="hl a">this DbContextOptionsBuilder</span> optionsBuilder,
+    string<span class="hl a">?</span> connectionString,
+    Action&lt;SqlServerDbContextOptionsBuilder&gt;? sqlServerOptionsAction <span class="hl a">= null</span>)</code></pre>
+<ul>
+  <li><code>this DbContextOptionsBuilder</code>：也是擴充方法。點前面的 <code>options</code> 填進第一個參數，所以 <code>options</code> 的型別是 <code>DbContextOptionsBuilder</code></li>
+  <li><code>string? connectionString</code>：參數的型別有 <code>?</code>，允許傳 <code>null</code>。所以第 1 步回傳 <code>null</code> 時，這一行編譯和啟動都不會出錯</li>
+  <li>第三個參數有 <code>= null</code>：選擇性參數（<a href="#step-optional">第 1 節第 5 步</a>）。例子沒有給，就是 <code>null</code></li>
+  <li>回傳 <code>DbContextOptionsBuilder</code>：和第一個參數同一個型別。實測回傳的就是傳進去的那個 <code>options</code>，所以後面可以接著再點別的設定方法</li>
+</ul>
+<p>這一步的意思是「對 <code>options</code> 做設定：資料庫用 SQL Server，連線字串是這個」。但 <code>options</code> 是哪裡來的？程式裡沒有任何一行在宣告它。</p>
 
+<h3 id="sg-lambda">第 3 步：options =&gt; … 是一個 lambda</h3>
+<pre><code class="nohighlight"><span class="hl b">options =&gt; options.UseSqlServer(connectionString)</span></code></pre>
+<p><code>=&gt;</code> 左邊的 <code>options</code> 是 lambda 的參數（<a href="#dg-lambda">第 3 節第 6 步</a>）。它不是變數，是「之後有人呼叫這段程式時，會傳進來的東西」。整段 lambda 是一段還沒執行的程式，要交給外面那個方法。</p>
+<p>lambda 的參數不用寫型別，編譯器從「它要填進去的那個參數」推出來。所以要看外面那個方法的簽章。</p>
+
+<h3 id="sg-outer">第 4 步：最外面的 AddDbContext</h3>
+<pre><code class="nohighlight"><span class="hl b">builder.Services</span>.AddDbContext<span class="hl b">&lt;BlogDbContext&gt;</span>(<span class="hl b">options =&gt; …</span>)
+
+// 簽章（在 EntityFrameworkServiceCollectionExtensions 這個 static class 裡）
+public static IServiceCollection AddDbContext<span class="hl a">&lt;TContext&gt;</span>(
+    <span class="hl a">this IServiceCollection</span> serviceCollection,
+    <span class="hl a">Action&lt;DbContextOptionsBuilder&gt;</span>? optionsAction = null,
+    ServiceLifetime contextLifetime <span class="hl a">= ServiceLifetime.Scoped</span>,
+    ServiceLifetime optionsLifetime <span class="hl a">= ServiceLifetime.Scoped</span>)
+    <span class="hl a">where TContext : DbContext</span></code></pre>
+<ul>
+  <li><code>this IServiceCollection</code>：擴充方法。點前面的 <code>builder.Services</code> 填進第一個參數</li>
+  <li><code>&lt;TContext&gt;</code> 和 <code>where TContext : DbContext</code>：泛型和泛型限制（<a href="#generic">第 1 節第 9 步</a>）。例子填的是 <code>BlogDbContext</code>，它繼承 <code>DbContext</code>，所以可以；填 <code>string</code> 會編譯錯誤</li>
+  <li><code>Action&lt;DbContextOptionsBuilder&gt;</code>：委派，「收一個 <code>DbContextOptionsBuilder</code>、不回傳」的方法（<a href="#dg-action">第 3 節第 5 步</a>）。第 3 步的 lambda 就是填進這個參數，所以 <mark class="key"><code>options</code> 的型別是 <code>DbContextOptionsBuilder</code></mark>，和第 2 步從 <code>UseSqlServer</code> 看到的一致</li>
+  <li>後面兩個參數都有預設值。例子只傳了 lambda，所以兩個都是 <code>ServiceLifetime.Scoped</code></li>
+</ul>
+<p><code>Action</code> 不回傳，而 <code>UseSqlServer</code> 有回傳值。lambda 右邊算出來的那個回傳值在這裡沒有人接，直接丟掉。</p>
+<div class="diagram">
+<img src="../images/delegates-adddbcontext.svg" alt="把 Action 套回 AddDbContext：第 2 個參數 optionsAction 的型別是 Action&lt;DbContextOptionsBuilder&gt;，options =&gt; options.UseSqlServer(…) 就是填進去的方法" style="width:100%;height:auto">
+<div class="diagram-caption">AddDbContext 當下只把 lambda 收起來；之後要建 BlogDbContext 時，EF Core 才 new 一個 options、呼叫它</div>
+</div>
+
+
+<h3 id="sg-explicit">第 5 步：把一行攤開，確認讀對了</h3>
+<p>照第 2 節的對應（<code>x.方法(a)</code> 等於 <code>類別名稱.方法(x, a)</code>），把三個擴充方法都改回一般 static 方法的寫法，lambda 也先放進一個變數。下面這段和原本那一行做的事一樣，可以編譯執行（實際執行過，<code>Console.WriteLine</code> 是為了看順序加的）：</p>
+<pre><code class="language-csharp">Console.WriteLine("[1] 呼叫 AddDbContext 之前");
+
+Action&lt;DbContextOptionsBuilder&gt; configure = options =&gt;
+{
+    Console.WriteLine("[lambda] 被呼叫了，options 的型別是 " + options.GetType().Name);
+
+    // 第 1 步
+    string? connectionString =
+        ConfigurationExtensions.GetConnectionString(builder.Configuration, "BlogDb");
+
+    // 第 2 步
+    DbContextOptionsBuilder result =
+        SqlServerDbContextOptionsExtensions.UseSqlServer(options, connectionString);
+
+    Console.WriteLine("[lambda] UseSqlServer 回傳的和 options 是同一個物件：" + ReferenceEquals(result, options));
+};
+
+// 第 4 步
+EntityFrameworkServiceCollectionExtensions.AddDbContext&lt;BlogDbContext&gt;(builder.Services, configure);
+
+Console.WriteLine("[2] AddDbContext 回來了");</code></pre>
+
+<h3 id="sg-when">第 6 步：三個方法什麼時候執行</h3>
+<p>讀的順序是由內往外，<mark class="caution">執行的順序不是</mark>。接著第 5 步的程式，再往下寫 <code>Build()</code>，然後向 DI 容器要兩次 <code>BlogDbContext</code>，看每一行什麼時候印出來（實際執行過）：</p>
+<pre><code class="nohighlight">[1] 呼叫 AddDbContext 之前
+[2] AddDbContext 回來了
+[3] Build 完成
+[4] 第一次要 BlogDbContext
+[lambda] 被呼叫了，options 的型別是 DbContextOptionsBuilder`1
+[lambda] UseSqlServer 回傳的和 options 是同一個物件：True
+[5] 拿到了 BlogDbContext
+[6] 第二次要 BlogDbContext
+[7] 拿到了</code></pre>
+<ul>
+  <li><strong>[1] 和 [2] 中間沒有 [lambda]</strong>：<code>AddDbContext</code> 執行時只把 lambda 收下來，沒有呼叫它（<a href="#dg-later">第 3 節第 7 步</a>）。所以程式啟動時，<code>GetConnectionString</code> 和 <code>UseSqlServer</code> 都還沒執行</li>
+  <li><strong>[4] 之後才出現 [lambda]</strong>：第一次有人要 <code>BlogDbContext</code> 時，EF Core 建立一個 <code>DbContextOptionsBuilder</code>，把它當成 <code>options</code> 傳進 lambda。這時裡面兩個方法才執行</li>
+  <li><strong>[6] 之後沒有再出現 [lambda]</strong>：這次實測，第二次要 <code>BlogDbContext</code> 時 lambda 沒有再被呼叫</li>
+</ul>
+<p>這也解釋了一個常見的狀況：連線字串的名稱打錯時，<code>GetConnectionString</code> 回傳 <code>null</code>（實測），程式照樣啟動，要等到第一次真的用到資料庫才出錯。</p>
+
+<h3 id="sg-source">在 Rider 裡看到的會多兩樣東西</h3>
 <p>在 Rider 裡按 Ctrl + 左鍵跳進 <code>AddDbContext</code>，會比上面多看到兩個東西：</p>
 <pre><code class="language-csharp">public static IServiceCollection AddDbContext
     &lt;[DynamicallyAccessedMembers(DbContext.DynamicallyAccessedMemberTypes)] TContext&gt;(

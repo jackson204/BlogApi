@@ -18,7 +18,7 @@
   <span class="tag">attribute</span><span class="tag">特性</span><span class="tag">方括號</span><span class="tag">[Obsolete]</span><span class="tag">[Required]</span><span class="tag">AttributeUsage</span><span class="tag">GetCustomAttribute</span><span class="tag">reflection</span><span class="tag">反射</span><span class="tag">CS0182</span><span class="tag">CS0592</span><span class="tag">CS0618</span><span class="tag">file-based app</span>
 </div>
 
-<p>範例都是可以直接執行的單一檔案：存成 <code>demo.cs</code>，用 <code>dotnet run demo.cs</code> 執行（.NET 10）。輸出是實際執行的結果。這種執行方式會多印幾行 <code>IL2026</code> 警告，和這頁的內容無關，下面的輸出都省略了。</p>
+<p>範例都是可以直接執行的單一檔案：存成 <code>demo.cs</code>，用 <code>dotnet run demo.cs</code> 執行（.NET 10）。輸出和錯誤訊息都是實際執行的結果。有幾個範例用這種方式執行會多印一兩行 <code>IL2026</code> 警告，和這頁的內容無關，下面的輸出都省略了。</p>
 
 <nav class="toc">
   <strong>目錄</strong>
@@ -47,6 +47,114 @@
 
 <!-- ============================================================ -->
 <h2 id="syntax">2. 寫法</h2>
+<p class="lead">attribute 本身是一個<mark class="key">繼承 <code>Attribute</code> 的類別</mark>，方括號裡能寫什麼，由這個類別的建構子和屬性決定。這一節自己寫一個 <code>[Label]</code>，從空的類別開始，一步加一樣東西。類別、建構子、繼承的寫法見「<a href="csharp-class-object.html">類別與物件</a>」。</p>
+<p>程式裡的顏色：<span class="hl a">藍色</span>是這一步在 attribute 類別裡多寫的東西，<span class="hl b">綠色</span>是貼的地方跟著變的寫法，<span class="hl c">紅色</span>是編譯不過的寫法。這一節每個程式都只有一行 <code>Console.WriteLine("編譯通過")</code>，看的是編譯過不過。</p>
+
+<h3 id="syntax-empty">第 1 步：最短的 attribute，一個空的類別</h3>
+<pre><code class="nohighlight">Console.WriteLine("編譯通過");
+
+<span class="hl a">public class LabelAttribute : Attribute { }</span>
+
+<span class="hl b">[Label]</span>
+public class Apple { }
+
+// 輸出：
+// 編譯通過</code></pre>
+<p>類別裡什麼都沒有，就已經可以貼了。兩件事：</p>
+<ul>
+  <li>類別名稱是 <code>LabelAttribute</code>，貼的時候寫 <code>[Label]</code>。attribute 的類別名稱都用 <code>Attribute</code> 結尾，貼的時候可以省略這個結尾；寫完整的 <code>[LabelAttribute]</code> 也可以。所以 <code>[Obsolete]</code> 和 <code>[ObsoleteAttribute]</code> 是同一個</li>
+  <li><code>: Attribute</code> 不能少。拿掉之後貼的地方編譯不過：</li>
+</ul>
+<pre><code class="nohighlight">public class LabelAttribute <span class="hl c">{ }</span>      // 沒有繼承 Attribute
+
+[Label]
+public class Apple { }
+
+error CS0616: 'LabelAttribute' 不是屬性類別</code></pre>
+
+<h3 id="syntax-ctor">第 2 步：括號裡帶一個值，類別要有建構子</h3>
+<p>想在標記上寫文字，像第 1 節的 <code>[Obsolete("請改用 Add")]</code> 那樣。直接在空的 <code>LabelAttribute</code> 上這樣貼：</p>
+<pre><code class="nohighlight">public class LabelAttribute : Attribute { }
+
+[Label<span class="hl c">("蘋果")</span>]
+public class Apple { }
+
+error CS1729: 'LabelAttribute' 未包含使用 1 個引數的建構函式</code></pre>
+<p>編譯器在找「收一個值的建構子」。<mark class="key">括號裡的值，是照順序傳給 attribute 類別的建構子</mark>。補上建構子就過了：</p>
+<pre><code class="nohighlight">Console.WriteLine("編譯通過");
+
+public class LabelAttribute : Attribute
+{
+    <span class="hl a">public string Text { get; }</span>
+
+    <span class="hl a">public LabelAttribute(string text)</span>
+    <span class="hl a">{</span>
+        <span class="hl a">Text = text;</span>
+    <span class="hl a">}</span>
+}
+
+[Label<span class="hl b">("蘋果")</span>]
+public class Apple { }
+
+// 輸出：
+// 編譯通過</code></pre>
+<p>現在建構子一定要一個 <code>string</code>，所以第 1 步那種不帶值的貼法反而不過了：</p>
+<pre><code class="nohighlight"><span class="hl c">[Label]</span>
+public class Apple { }
+
+error CS7036: 未提供任何可對應到 'LabelAttribute.LabelAttribute(string)' 之必要參數 'text' 的引數</code></pre>
+
+<h3 id="syntax-named">第 3 步：名稱 = 值，設定 attribute 的屬性</h3>
+<p>再加一個顏色，但不想讓每個貼的地方都非給不可。在括號裡寫 <code>Color = "紅"</code> 試試：</p>
+<pre><code class="nohighlight">[Label("蘋果", <span class="hl c">Color = "紅"</span>)]
+public class Apple { }
+
+error CS0246: 找不到類型或命名空間名稱 'Color' (是否遺漏了 using 指示詞或組件參考?)</code></pre>
+<p><code>LabelAttribute</code> 裡沒有叫 <code>Color</code> 的東西。<code>名稱 = 值</code> 是<mark class="key">設定 attribute 類別的某個屬性</mark>，所以類別裡要有一個可以設定的 <code>Color</code> 屬性：</p>
+<pre><code class="nohighlight">Console.WriteLine("編譯通過");
+
+public class LabelAttribute : Attribute
+{
+    public string Text { get; }
+    <span class="hl a">public string Color { get; set; } = "沒有指定";</span>
+
+    public LabelAttribute(string text)
+    {
+        Text = text;
+    }
+}
+
+// "蘋果" 傳給建構子的 text；Color = "紅" 設定 Color 屬性
+[Label("蘋果", <span class="hl b">Color = "紅"</span>)]
+public class Apple { }
+
+// 沒有寫 Color，就是屬性的預設值「沒有指定」
+[Label("香蕉")]
+public class Banana { }
+
+// 輸出：
+// 編譯通過</code></pre>
+<p><code>名稱 = 值</code> 可以不寫，要寫就寫在照順序的值後面。順序反過來編譯不過：</p>
+<pre><code class="nohighlight">[Label(Color = "紅", <span class="hl c">"蘋果"</span>)]
+public class Apple { }
+
+error CS1016: 必須是具名屬性引數</code></pre>
+
+<h3 id="syntax-multi">第 4 步：一個方括號貼兩個</h3>
+<p>同一個地方要貼兩個 attribute 時，可以分兩行，也可以寫在同一個方括號裡用逗號隔開。以 .NET 內建的 <code>[Required]</code> 和 <code>[MaxLength]</code> 為例，下面兩個屬性貼的東西一樣（實際編譯過，兩個屬性讀出來都是這兩個 attribute）：</p>
+<pre><code class="nohighlight">using System.ComponentModel.DataAnnotations;
+
+public class Item
+{
+    <span class="hl b">[Required, MaxLength(100)]</span>
+    public string Name { get; set; } = "";
+
+    <span class="hl b">[Required]</span>
+    <span class="hl b">[MaxLength(100)]</span>
+    public string Title { get; set; } = "";
+}</code></pre>
+
+<h3 id="syntax-table">四步出現過的寫法</h3>
 <div class="table-wrap">
 <table>
   <tr><th>寫法</th><th>意思</th></tr>
@@ -54,10 +162,75 @@
   <tr><td><code>[Obsolete("請改用 Add")]</code></td><td>括號裡的值照順序傳給 attribute 的建構子</td></tr>
   <tr><td><code>[Label("蘋果", Color = "紅")]</code></td><td><code>名稱 = 值</code> 是設定 attribute 的某個屬性，寫在照順序的值後面</td></tr>
   <tr><td><code>[Required, MaxLength(100)]</code></td><td>一次貼兩個，和分兩行寫 <code>[Required]</code>、<code>[MaxLength(100)]</code> 一樣</td></tr>
-  <tr><td><code>[ObsoleteAttribute]</code></td><td>和 <code>[Obsolete]</code> 一樣。attribute 的類別名稱都用 <code>Attribute</code> 結尾，貼的時候可以省略這個結尾</td></tr>
+  <tr><td><code>[ObsoleteAttribute]</code></td><td>和 <code>[Obsolete]</code> 一樣，類別名稱結尾的 <code>Attribute</code> 可以省略</td></tr>
 </table>
 </div>
-<p>attribute 本身是一個<mark class="key">繼承 <code>Attribute</code> 的類別</mark>。方括號裡的寫法對應到這個類別的建構子和屬性：</p>
+
+<h3 id="syntax-const">括號裡只能放編譯時就確定的值</h3>
+<p>標記是編譯的時候就寫進程式裡的，所以括號裡只能放字串、數字、<code>true</code>／<code>false</code>、enum、<code>typeof(…)</code>、<code>nameof(…)</code> 這類不用執行程式就知道的值。</p>
+<div class="compare">
+<div class="bad">
+<p class="compare-label">✗ 編譯不過：值要執行了才知道</p>
+<pre><code class="language-csharp">[Label(DateTime.Now.ToString())]
+public class Apple { }</code></pre>
+<pre><code class="nohighlight">error CS0182: 屬性引數必須是常數運算式、typeof 運算式
+或屬性參數類型的陣列建立運算式</code></pre>
+</div>
+<div class="good">
+<p class="compare-label">✓ 可以：值寫死在程式碼裡</p>
+<pre><code class="language-csharp">[Label("蘋果")]
+public class Apple { }</code></pre>
+<p>需要執行時才決定的值，不適合放在 attribute，改用一般的屬性或方法參數。</p>
+</div>
+</div>
+<p>這一節每個編譯過的程式，執行結果都只有「編譯通過」那一行。「蘋果」和「紅」寫進去了，執行時卻看不到它們出現在任何地方。</p>
+
+<!-- ============================================================ -->
+<h2 id="reader">3. 標記自己不做事，要有人讀它</h2>
+<p class="lead">attribute 只是一筆附在程式碼上的資料。<mark class="key">沒有任何程式去讀它，它就沒有任何效果</mark>。這是 attribute 最容易誤會的地方。這一節先確認「沒有人讀」是什麼情況，再一步一步加上讀它的程式。</p>
+<p>程式裡的顏色：<span class="hl a">藍色</span>是這一步多出來的寫法。</p>
+
+<h3 id="reader-none">第 1 步：貼了標記，沒有人讀</h3>
+<p><code>LabelAttribute</code> 的建構子裡放了一行印字，用來看它有沒有被執行：</p>
+<pre><code class="language-csharp">var apple = new Apple();
+Console.WriteLine("程式照常執行，[Label] 沒有任何效果");
+
+public class LabelAttribute : Attribute
+{
+    public string Text { get; }
+
+    public LabelAttribute(string text)
+    {
+        Text = text;
+        Console.WriteLine("LabelAttribute 的建構子被呼叫了");
+    }
+}
+
+[Label("蘋果")]
+public class Apple { }</code></pre>
+<pre><code class="nohighlight">程式照常執行，[Label] 沒有任何效果</code></pre>
+<p><code>Apple</code> 被建立了，但「LabelAttribute 的建構子被呼叫了」沒有印出來。貼了標記、也建立了被貼的類別的物件，attribute 的程式碼一行都沒有執行。</p>
+
+<h3 id="reader-one">第 2 步：加一行，去讀 Apple 身上的標記</h3>
+<p><code>LabelAttribute</code> 和 <code>Apple</code> 都不動，只改最上面幾行：</p>
+<pre><code class="nohighlight"><span class="hl a">using System.Reflection;</span>
+
+var apple = new Apple();
+<span class="hl a">Console.WriteLine("Apple 建立好了，接下來讀標記");</span>
+
+<span class="hl a">var label = typeof(Apple).GetCustomAttribute&lt;LabelAttribute&gt;();</span>
+<span class="hl a">Console.WriteLine($"標記上的文字：{label!.Text}");</span>
+
+// 輸出：
+// Apple 建立好了，接下來讀標記
+// LabelAttribute 的建構子被呼叫了
+// 標記上的文字：蘋果</code></pre>
+<p><code>typeof(Apple)</code> 拿到「<code>Apple</code> 這個類別本身」的資料，<code>GetCustomAttribute&lt;LabelAttribute&gt;()</code> 問它「你身上有沒有 <code>[Label]</code>」。有的話回傳一個 <code>LabelAttribute</code> 物件，沒有就回傳 <code>null</code>。</p>
+<p>看輸出的順序：建構子是在 <code>GetCustomAttribute</code> 那一行才被呼叫的，不是 <code>new Apple()</code> 的時候。<mark class="caution">有人來讀，<code>[Label("蘋果")]</code> 括號裡的值才真的傳進建構子</mark>。</p>
+<p>在程式執行時查「這個類別有哪些成員、貼了哪些標記」的做法叫 <strong>reflection</strong>（反射）。<code>GetCustomAttribute&lt;T&gt;()</code> 就是 reflection 的方法，它放在 <code>System.Reflection</code> 這個 namespace 裡，所以最上面多了一行 <code>using</code>。</p>
+
+<h3 id="reader-values">第 3 步：把建構子的值和屬性的值都讀出來</h3>
+<p>用同一個讀法，讀第 2 節第 3 步那個有 <code>Text</code> 和 <code>Color</code> 的 <code>LabelAttribute</code>：</p>
 <pre><code class="language-csharp">using System.Reflection;
 
 var a = typeof(Apple).GetCustomAttribute&lt;LabelAttribute&gt;();
@@ -85,49 +258,10 @@ public class Apple { }
 public class Banana { }</code></pre>
 <pre><code class="nohighlight">蘋果 / 紅
 香蕉 / 沒有指定</code></pre>
-<p>類別、建構子、繼承的寫法見「<a href="csharp-class-object.html">類別與物件</a>」。</p>
+<p>方括號裡寫的值，在這裡才看得到：照順序的值進了建構子，<code>Color = "紅"</code> 設定了屬性，沒寫的用預設值。</p>
 
-<h3>括號裡只能放編譯時就確定的值</h3>
-<p>標記是編譯的時候就寫進程式裡的，所以括號裡只能放字串、數字、<code>true</code>／<code>false</code>、enum、<code>typeof(…)</code>、<code>nameof(…)</code> 這類不用執行程式就知道的值。</p>
-<div class="compare">
-<div class="bad">
-<p class="compare-label">✗ 編譯不過：值要執行了才知道</p>
-<pre><code class="language-csharp">[Label(DateTime.Now.ToString())]
-public class Apple { }</code></pre>
-<pre><code class="nohighlight">error CS0182: 屬性引數必須是常數運算式、typeof 運算式
-或屬性參數類型的陣列建立運算式</code></pre>
-</div>
-<div class="good">
-<p class="compare-label">✓ 可以：值寫死在程式碼裡</p>
-<pre><code class="language-csharp">[Label("蘋果")]
-public class Apple { }</code></pre>
-<p>需要執行時才決定的值，不適合放在 attribute，改用一般的屬性或方法參數。</p>
-</div>
-</div>
-
-<!-- ============================================================ -->
-<h2 id="reader">3. 標記自己不做事，要有人讀它</h2>
-<p class="lead">attribute 只是一筆附在程式碼上的資料。<mark class="key">沒有任何程式去讀它，它就沒有任何效果</mark>。這是 attribute 最容易誤會的地方。</p>
-<p>先看沒有人讀的情況。<code>LabelAttribute</code> 的建構子裡放了一行印字，用來看它有沒有被執行：</p>
-<pre><code class="language-csharp">var apple = new Apple();
-Console.WriteLine("程式照常執行，[Label] 沒有任何效果");
-
-public class LabelAttribute : Attribute
-{
-    public string Text { get; }
-
-    public LabelAttribute(string text)
-    {
-        Text = text;
-        Console.WriteLine("LabelAttribute 的建構子被呼叫了");
-    }
-}
-
-[Label("蘋果")]
-public class Apple { }</code></pre>
-<pre><code class="nohighlight">程式照常執行，[Label] 沒有任何效果</code></pre>
-<p><code>Apple</code> 被建立了，但「LabelAttribute 的建構子被呼叫了」沒有印出來。貼了標記、也建立了被貼的類別的物件，attribute 的程式碼一行都沒有執行。</p>
-<p>再加上讀標記的程式。下面最上面那個 <code>foreach</code> 就是「讀的人」：它找出這個程式裡所有的類別，一個一個問「你身上有沒有 <code>[Label]</code>」，有的話把上面的文字印出來。</p>
+<h3 id="reader-all">第 4 步：一次找出所有貼了標記的類別</h3>
+<p>第 2、3 步要先知道去問哪個類別。下面最上面那個 <code>foreach</code> 把這個程式裡所有的類別找出來，一個一個問「你身上有沒有 <code>[Label]</code>」，有的話把上面的文字印出來：</p>
 <pre><code class="language-csharp">using System.Reflection;
 
 // 讀標記的人：找出這個程式裡所有貼了 [Label] 的類別，把標記上的文字印出來
@@ -159,13 +293,13 @@ public class Banana { }
 public class Cherry { }</code></pre>
 <pre><code class="nohighlight">Apple 的標記文字：蘋果
 Banana 的標記文字：香蕉</code></pre>
-<p><code>Cherry</code> 沒有貼標記，<code>GetCustomAttribute</code> 回傳 <code>null</code>，所以沒有印出來。在程式執行時查「這個類別有哪些成員、貼了哪些標記」的做法叫 <strong>reflection</strong>（反射），<code>GetTypes()</code>、<code>GetCustomAttribute&lt;T&gt;()</code> 都屬於它。</p>
+<p><code>Cherry</code> 沒有貼標記，<code>GetCustomAttribute</code> 回傳 <code>null</code>，所以沒有印出來。<code>GetTypes()</code> 也是 reflection。</p>
 <p>整個機制就是這兩半：</p>
 <div class="table-wrap">
 <table>
   <tr><th></th><th>做什麼</th><th>上面的例子</th></tr>
   <tr><td>貼標記的人</td><td>在類別或方法上寫 <code>[…]</code></td><td><code>[Label("蘋果")]</code></td></tr>
-  <tr><td>讀標記的人</td><td>用 reflection 找出標記，依標記的內容決定要做什麼</td><td>最上面的 <code>foreach</code></td></tr>
+  <tr><td>讀標記的人</td><td>用 reflection 找出標記，依標記的內容決定要做什麼</td><td>第 4 步最上面的 <code>foreach</code></td></tr>
 </table>
 </div>
 

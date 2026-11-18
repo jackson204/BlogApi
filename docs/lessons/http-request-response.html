@@ -137,6 +137,7 @@ body：（沒有）</code></pre>
 <p><code>localhost</code> 是一個特別的主機名稱，固定代表<mark class="key">這台電腦自己</mark>，對應的 IP 位址是 <code>127.0.0.1</code>。所以這兩個網址連到同一個地方（實測）：</p>
 <pre><code class="nohighlight">http://localhost:5062/echo     → 200
 http://127.0.0.1:5062/echo     → 200</code></pre>
+<p>箭頭後面的 <code>200</code> 是伺服器回應開頭的三位數字，叫狀態碼。200 代表成功。</p>
 <p>網址沒寫 port 時，用協定的預設值：<code>http</code> 是 80，<code>https</code> 是 443。平常上網的網址看不到 port，就是因為用了預設值。開發時伺服器通常聽別的 port，所以網址要寫出來。</p>
 
 <h3>連不上，和 404 不一樣</h3>
